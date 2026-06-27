@@ -50,7 +50,7 @@
                 <StackPanel>
                     <TextBlock Text="Advanced Details" FontWeight="SemiBold" />
                     <TextBox Margin="0,8,0,0"
-                             Text="{Binding SelectedCandidateDetails}"
+                             Text="{Binding SelectedCandidateDetails, Mode=OneWay}"
                              IsReadOnly="True"
                              TextWrapping="Wrap"
                              AcceptsReturn="True"

@@ -24,7 +24,7 @@
 
         <TextBox Grid.Row="1"
                  Margin="0,16,0,16"
-                 Text="{Binding ConfirmationText}"
+                 Text="{Binding ConfirmationText, Mode=OneWay}"
                  IsReadOnly="True"
                  TextWrapping="Wrap"
                  AcceptsReturn="True"
