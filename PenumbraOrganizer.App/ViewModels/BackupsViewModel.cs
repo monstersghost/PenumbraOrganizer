@@ -16,9 +16,9 @@ public sealed class BackupsViewModel : ObservableObject
     private readonly ILogger<BackupsViewModel> _logger;
     private BackupOperationRowViewModel? _selectedOperation;
     private string _statusMessage = "Backup history will appear here.";
-    private string _selectionSummary = "Select an operation to view its summary and affected files.";
+    private string _selectionSummary = "Select a backup to review its result and affected files.";
     private string _selectedOperationFolder = string.Empty;
-    private string _selectedBackupAvailability = "Rollback details will appear after you select an operation.";
+    private string _selectedBackupAvailability = "Restore details will appear after you select a backup.";
 
     public BackupsViewModel(
         IOperationHistoryService historyService,
@@ -101,7 +101,7 @@ public sealed class BackupsViewModel : ObservableObject
 
             StatusMessage = operations.Count == 0
                 ? "No backup operations have been created yet."
-                : $"Loaded {operations.Count} backup operation{(operations.Count == 1 ? string.Empty : "s")}.";
+                : $"{operations.Count} backup operation{(operations.Count == 1 ? string.Empty : "s")} available.";
         }
         catch (Exception ex)
         {
@@ -154,18 +154,18 @@ public sealed class BackupsViewModel : ObservableObject
         var details = await _historyService.TryLoadOperationAsync(SelectedOperation.OperationId, CancellationToken.None);
         if (details is null || !details.Operation.RollbackAvailable || details.RollbackTransaction is null)
         {
-            StatusMessage = "Rollback is not available for the selected operation.";
+            StatusMessage = "Restore is not available for the selected backup.";
             return;
         }
 
         var summary =
-            $"Roll back {details.Operation.AffectedModCount ?? details.Operation.AffectedFileCount} affected mod change(s)?\n\n" +
+            $"Restore {details.Operation.AffectedModCount ?? details.Operation.AffectedFileCount} affected mod change(s)?\n\n" +
             "This restores Penumbra virtual-folder state only. Physical mod files are not moved.\n\n" +
             $"Backup verified: {(details.Operation.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No")}\n" +
             $"Current rollback status: {details.Operation.RollbackStatus}";
         if (MessageBox.Show(
                 summary,
-                "Roll Back Changes",
+                "Restore Backup",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning) != MessageBoxResult.OK)
         {
@@ -174,11 +174,11 @@ public sealed class BackupsViewModel : ObservableObject
 
         try
         {
-            StatusMessage = "Checking current hashes and restoring eligible files.";
+            StatusMessage = "Checking current data and restoring eligible records.";
             var result = await _rollbackService.ExecuteAsync(SelectedOperation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
             await RefreshAsync();
             StatusMessage =
-                $"Rollback finished with status {result.Status}. " +
+                $"Restore finished with status {result.Status}. " +
                 $"Restored: {result.Files.Count(file => file.Status == RollbackFileStatus.Restored)}, " +
                 $"Already restored: {result.Files.Count(file => file.Status == RollbackFileStatus.AlreadyRestored)}, " +
                 $"Skipped: {result.Files.Count(file => file.Status == RollbackFileStatus.Skipped)}, " +
@@ -188,7 +188,7 @@ public sealed class BackupsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to roll back operation {OperationId}", SelectedOperation.OperationId);
-            StatusMessage = "Rollback failed before completion.";
+            StatusMessage = "Restore failed before completion.";
         }
     }
 
@@ -212,9 +212,9 @@ public sealed class BackupsViewModel : ObservableObject
 
         if (selectedOperation is null)
         {
-            SelectionSummary = "Select an operation to view its summary and affected files.";
+            SelectionSummary = "Select a backup to review its result and affected files.";
             SelectedOperationFolder = string.Empty;
-            SelectedBackupAvailability = "Rollback details will appear after you select an operation.";
+            SelectedBackupAvailability = "Restore details will appear after you select a backup.";
             return;
         }
 
@@ -225,25 +225,24 @@ public sealed class BackupsViewModel : ObservableObject
             {
                 SelectionSummary = "The selected backup package could not be loaded.";
                 SelectedOperationFolder = string.Empty;
-                SelectedBackupAvailability = "Rollback details are unavailable for the selected operation.";
+                SelectedBackupAvailability = "Restore details are unavailable for the selected backup.";
                 return;
             }
 
             SelectedOperationFolder = details.Operation.OperationFolder;
             SelectedBackupAvailability = details.RollbackTransaction is null
-                ? "Rollback is not yet available for this operation."
+                ? "Restore is not yet available for this backup."
                 : details.Operation.RollbackAvailable
-                    ? "Rollback is available. The app will verify current hashes and skip conflicts instead of overwriting them."
-                    : "A rollback transaction exists, but rollback stays disabled until Apply finishes successfully.";
+                    ? "Restore is available. The app will verify current data and skip conflicts instead of overwriting them."
+                    : "A restore record exists, but restore stays disabled until Apply finishes successfully.";
             SelectionSummary =
-                $"Operation ID: {details.Operation.OperationId}\n" +
                 $"Created: {details.Operation.CreatedAtUtc:u}\n" +
                 $"Backup status: {details.Operation.BackupStatus}\n" +
                 $"Apply status: {details.Operation.ApplyStatus}\n" +
                 $"Backup verified: {(details.Operation.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No")}\n" +
                 $"Rollback status: {(details.Operation.HasRollbackTransaction ? details.Operation.RollbackStatus : "Not available")}\n" +
-                $"Rollback available: {(details.Operation.RollbackAvailable ? "Yes" : "No")}\n" +
-                $"Affected files: {details.Operation.AffectedFileCount}\n" +
+                $"Restore available: {(details.Operation.RollbackAvailable ? "Yes" : "No")}\n" +
+                $"Changed mods: {details.Operation.AffectedModCount ?? details.Operation.AffectedFileCount}\n" +
                 $"Conflicts: {details.Operation.ConflictCount}\n" +
                 $"Failures: {details.Operation.FailureCount}\n" +
                 $"Penumbra version: {details.Operation.PenumbraVersion ?? "Unknown"}\n" +
@@ -260,7 +259,7 @@ public sealed class BackupsViewModel : ObservableObject
             _logger.LogError(ex, "Failed to load backup operation {OperationId}", selectedOperation.OperationId);
             SelectionSummary = "The selected backup package could not be read.";
             SelectedOperationFolder = string.Empty;
-            SelectedBackupAvailability = "Rollback details are unavailable for the selected operation.";
+            SelectedBackupAvailability = "Restore details are unavailable for the selected backup.";
         }
     }
 }
@@ -278,7 +277,7 @@ public sealed class BackupOperationRowViewModel
     public DateTimeOffset CreatedAtUtc => _entry.CreatedAtUtc;
     public string BackupStatus => _entry.BackupStatus.ToString();
     public string ApplyStatus => _entry.ApplyStatus.ToString();
-    public int AffectedItems => _entry.AffectedFileCount;
+    public int AffectedItems => _entry.AffectedModCount ?? _entry.AffectedFileCount;
     public string BackupVerified => _entry.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No";
     public string RollbackStatus => _entry.HasRollbackTransaction ? _entry.RollbackStatus.ToString() : "Not available";
     public int Conflicts => _entry.ConflictCount;

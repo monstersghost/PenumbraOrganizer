@@ -49,6 +49,8 @@ public sealed class MainViewModel : ObservableObject
     private string _searchText = string.Empty;
     private string _activityLog = "Welcome. This app starts in read-only scan mode.";
     private string _selectedStrategy = "Start Manually";
+    private string _organizeFilter = "All Mods";
+    private string _manualConfigPath = string.Empty;
     private string _newFolderName = string.Empty;
     private string _renameFolderName = string.Empty;
     private string _reviewFilter = "All";
@@ -76,6 +78,8 @@ public sealed class MainViewModel : ObservableObject
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
     private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
+    private bool _showAdvancedTools;
+    private bool _isBusy;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -131,7 +135,8 @@ public sealed class MainViewModel : ObservableObject
         ChangedMods.Filter = item => item is ModRowViewModel mod && mod.IsChanged;
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
-        ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null);
+        ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
+        ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
         CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
         ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
         OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
@@ -156,9 +161,11 @@ public sealed class MainViewModel : ObservableObject
         RefreshReviewCommand = new RelayCommand(_ => RefreshReviewChanges());
         ConfigureControlledTestCommand = new AsyncRelayCommand(ConfigureControlledTestAsync, () => _installation is not null || _inventory is not null);
         ClearControlledTestCommand = new RelayCommand(_ => ClearControlledTest(), _ => _controlledTestRequest is not null);
-        CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null);
-        CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null);
-        ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null);
+        SetOrganizeFilterCommand = new RelayCommand(SetOrganizeFilter);
+        CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null && !IsBusy);
+        CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null && !IsBusy);
+        ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null && !IsBusy);
+        BackupAndApplyCommand = new AsyncRelayCommand(BackupAndApplyAsync, () => _inventory is not null && !IsBusy);
         ReverifyIncompleteOperationCommand = new AsyncRelayCommand(ReverifyIncompleteOperationAsync, () => _incompleteOperations.Count > 0);
         ContinueIncompleteVerificationCommand = new AsyncRelayCommand(ContinueIncompleteVerificationAsync, () => _incompleteOperations.Any(operation => operation.RecommendedActions.Contains(RecoveryRecommendedAction.ContinueVerification)));
         RollbackIncompleteOperationCommand = new AsyncRelayCommand(RollbackIncompleteOperationAsync, () => _incompleteOperations.Any(operation => operation.RecommendedActions.Contains(RecoveryRecommendedAction.RollBack)));
@@ -172,6 +179,7 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
+    public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
     public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
     public AsyncRelayCommand ImportAiProposalCommand { get; }
     public AsyncRelayCommand OpenExportFolderCommand { get; }
@@ -196,9 +204,11 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand RefreshReviewCommand { get; }
     public AsyncRelayCommand ConfigureControlledTestCommand { get; }
     public RelayCommand ClearControlledTestCommand { get; }
+    public RelayCommand SetOrganizeFilterCommand { get; }
     public AsyncRelayCommand CreateDryRunCommand { get; }
     public AsyncRelayCommand CreateBackupCommand { get; }
     public AsyncRelayCommand ApplyVirtualFolderChangesCommand { get; }
+    public AsyncRelayCommand BackupAndApplyCommand { get; }
     public AsyncRelayCommand ReverifyIncompleteOperationCommand { get; }
     public AsyncRelayCommand ContinueIncompleteVerificationCommand { get; }
     public AsyncRelayCommand RollbackIncompleteOperationCommand { get; }
@@ -254,6 +264,22 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _activityLog, value);
     }
 
+    public string PenumbraStateDirectory => _installation?.ConfigDirectory ?? "Not found";
+
+    public string ModLibraryRoot => _installation?.ModRoot ?? "Not found";
+
+    public string InstalledPenumbraVersion => _installation?.InstalledVersion ?? "Unknown";
+
+    public bool InstallationFound => _installation is not null;
+
+    public bool InstallationMissing => _installation is null;
+
+    public string ManualConfigPath
+    {
+        get => _manualConfigPath;
+        private set => SetProperty(ref _manualConfigPath, value);
+    }
+
     public int InstalledModCount
     {
         get => _installedModCount;
@@ -282,6 +308,12 @@ public sealed class MainViewModel : ObservableObject
     {
         get => _selectedStrategy;
         private set => SetProperty(ref _selectedStrategy, value);
+    }
+
+    public string OrganizeFilter
+    {
+        get => _organizeFilter;
+        private set => SetProperty(ref _organizeFilter, value);
     }
 
     public string NewFolderName
@@ -400,6 +432,33 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _diagnosticStatus, value);
     }
 
+    public bool ShowAdvancedTools
+    {
+        get => _showAdvancedTools;
+        set => SetProperty(ref _showAdvancedTools, value);
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                RaisePropertyChanged(nameof(IsNotBusy));
+                ScanCommand.RaiseCanExecuteChanged();
+                ChoosePenumbraConfigCommand.RaiseCanExecuteChanged();
+                CreateDryRunCommand.RaiseCanExecuteChanged();
+                CreateBackupCommand.RaiseCanExecuteChanged();
+                ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
+                BackupAndApplyCommand.RaiseCanExecuteChanged();
+                ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsNotBusy => !IsBusy;
+
     public int ReviewTotal => _reviewValidation?.Summary.TotalMods ?? 0;
     public int ReviewChanged => _reviewValidation?.Summary.Changed ?? 0;
     public int ReviewUnchanged => _reviewValidation?.Summary.Unchanged ?? 0;
@@ -411,38 +470,76 @@ public sealed class MainViewModel : ObservableObject
     public string UndoDescription => _undoStack.Count == 0 ? "Undo" : "Undo: " + _undoStack.Peek().Description;
     public string RedoDescription => _redoStack.Count == 0 ? "Redo" : "Redo: " + _redoStack.Peek().Description;
 
-    private async Task DetectAsync()
+    public async Task InitializeAsync()
     {
+        if (_installation is null)
+            await DetectAsync();
+    }
+
+    private void RaiseInstallationChanged()
+    {
+        RaisePropertyChanged(nameof(PenumbraStateDirectory));
+        RaisePropertyChanged(nameof(ModLibraryRoot));
+        RaisePropertyChanged(nameof(InstalledPenumbraVersion));
+        RaisePropertyChanged(nameof(InstallationFound));
+        RaisePropertyChanged(nameof(InstallationMissing));
+        ScanCommand.RaiseCanExecuteChanged();
+        ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task RunBusyAsync(string progressMessage, Func<Task> action)
+    {
+        if (IsBusy)
+            return;
+
         try
         {
-            ProgressMessage = "Finding Penumbra";
+            IsBusy = true;
+            ProgressMessage = progressMessage;
+            await action();
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task DetectAsync()
+    {
+        await RunBusyAsync("Finding Penumbra.", async () =>
+        {
             AppendLog("Looking for Penumbra in known XIVLauncher locations.");
             var result = await _discoveryService.DiscoverAsync(CancellationToken.None);
             _installation = result.Installations.FirstOrDefault();
-            ScanCommand.RaiseCanExecuteChanged();
-            ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+            RaiseInstallationChanged();
 
             if (_installation is null)
             {
-                DetectionSummary = "Penumbra could not be detected automatically. The folder-picker wizard is still pending implementation.";
+                DetectionSummary = "Penumbra could not be found automatically." + Environment.NewLine +
+                                   "Choose Penumbra.json manually if your setup is in a different location.";
                 if (result.Errors.Count > 0)
                     AppendLog(string.Join(Environment.NewLine, result.Errors));
+                ProgressMessage = "Penumbra was not found.";
                 return;
             }
 
-            DetectionSummary = $"Penumbra settings found at:{Environment.NewLine}{_installation.ConfigDirectory}{Environment.NewLine}{Environment.NewLine}Your mod library is located at:{Environment.NewLine}{_installation.ModRoot}{Environment.NewLine}{Environment.NewLine}Installed Penumbra version:{Environment.NewLine}{_installation.InstalledVersion ?? "Unknown"}";
+            DetectionSummary = BuildHomeSummary(_installation, _inventory);
             AppendLog($"Detected Penumbra at {_installation.ConfigurationPath}");
             foreach (var warning in _installation.Warnings)
                 AppendLog("Warning: " + warning);
             ProgressMessage = "Penumbra detected.";
-        }
-        catch (Exception ex)
+        }).ContinueWith(task =>
         {
+            if (task.Exception is null)
+                return;
+
+            var ex = task.Exception.GetBaseException();
             _logger.LogError(ex, "Penumbra detection failed");
-            DetectionSummary = "Penumbra detection failed. Try again or choose the installation manually once the wizard is added.";
+            DetectionSummary = "Penumbra could not be found automatically." + Environment.NewLine +
+                               "Choose Penumbra.json manually if your setup is in a different location.";
             AppendLog("Detection failed: " + ex.Message);
-            ProgressMessage = "Detection failed.";
-        }
+            ProgressMessage = "Penumbra detection failed.";
+        }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
     private async Task ScanAsync()
@@ -450,7 +547,7 @@ public sealed class MainViewModel : ObservableObject
         if (_installation is null)
             return;
 
-        try
+        await RunBusyAsync("Scanning your installed mods.", async () =>
         {
             var progress = new Progress<string>(message => ProgressMessage = message);
             AppendLog("Starting read-only scan.");
@@ -495,17 +592,64 @@ public sealed class MainViewModel : ObservableObject
             RebuildProposedFolders();
             RefreshOrganizerViews();
             CompatibilitySummary = BuildCompatibilitySummary(compatibility);
+            DetectionSummary = BuildHomeSummary(_installation, _inventory);
             ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
             AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
             CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
             ImportAiProposalCommand.RaiseCanExecuteChanged();
             ConfigureControlledTestCommand.RaiseCanExecuteChanged();
-        }
-        catch (Exception ex)
+            BackupAndApplyCommand.RaiseCanExecuteChanged();
+            RaiseInstallationChanged();
+        }).ContinueWith(task =>
         {
+            if (task.Exception is null)
+                return;
+
+            var ex = task.Exception.GetBaseException();
             _logger.LogError(ex, "Penumbra scan failed");
             ProgressMessage = "Scan failed.";
             AppendLog("Scan failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Scan failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private async Task ChoosePenumbraConfigAsync()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Choose Penumbra.json",
+            Filter = "Penumbra configuration|Penumbra.json|JSON files|*.json",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            var installation = await _discoveryService.ValidateManualSelectionAsync(dialog.FileName, null, null, CancellationToken.None);
+            if (installation is null)
+            {
+                MessageBox.Show(
+                    "That file does not look like a usable Penumbra configuration. Choose Penumbra.json from XIVLauncher's pluginConfigs folder.",
+                    "Penumbra not found",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            _installation = installation;
+            ManualConfigPath = dialog.FileName;
+            DetectionSummary = BuildHomeSummary(_installation, _inventory);
+            ProgressMessage = "Penumbra selected manually.";
+            AppendLog($"Selected Penumbra configuration manually: {dialog.FileName}");
+            RaiseInstallationChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manual Penumbra selection failed");
+            MessageBox.Show(ToUserMessage(ex), "Penumbra not found", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -808,19 +952,26 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildCompatibilitySummary(CompatibilityReport compatibility)
     {
-        var builder = new StringBuilder();
-        builder.AppendLine($"Compatibility: {compatibility.Status}");
-        builder.AppendLine($"Installed version: {compatibility.InstalledVersion}");
-        builder.AppendLine($"Scanned version: {compatibility.ScannedVersion}");
-        if (compatibility.Warnings.Count > 0)
-            builder.AppendLine(string.Join(Environment.NewLine, compatibility.Warnings));
-        return builder.ToString().TrimEnd();
+        if (compatibility.Warnings.Count == 0)
+            return $"Penumbra version {compatibility.InstalledVersion}. Ready to organize your mods.";
+
+        return $"Penumbra version {compatibility.InstalledVersion}.{Environment.NewLine}" +
+               string.Join(Environment.NewLine, compatibility.Warnings);
     }
 
     private bool FilterMod(object item)
     {
         if (item is not ModRowViewModel mod)
             return false;
+
+        if (OrganizeFilter == "Changed" && !mod.IsChanged)
+            return false;
+
+        if (OrganizeFilter == "Needs Review" &&
+            !(mod.Proposal.NeedsReview || mod.DetectedType == "Unknown type" || mod.EffectiveCreator == "Unknown creator"))
+        {
+            return false;
+        }
 
         if (string.IsNullOrWhiteSpace(SearchText))
             return true;
@@ -831,6 +982,15 @@ public sealed class MainViewModel : ObservableObject
                || mod.CurrentVirtualFolder.Contains(text, StringComparison.OrdinalIgnoreCase)
                || mod.ProposedVirtualFolder.Contains(text, StringComparison.OrdinalIgnoreCase)
                || mod.PhysicalDirectory.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetOrganizeFilter(object? parameter)
+    {
+        if (parameter is not string filter || string.IsNullOrWhiteSpace(filter))
+            return;
+
+        OrganizeFilter = filter;
+        FilteredMods.Refresh();
     }
 
     private bool FilterSelectedFolderMod(object item)
@@ -1200,7 +1360,7 @@ public sealed class MainViewModel : ObservableObject
             ApplyUnavailableReason = BuildApplyUnavailableReason();
             RefreshDryRunCommandState();
             ProgressMessage = "Dry run created.";
-            AppendLog($"Created dry run {_currentDryRunPlan.PlanId} with {_currentDryRunPlan.Summary.WriteOperationCount} writable target(s).");
+            AppendLog($"Created a fresh review plan with {_currentDryRunPlan.Summary.WriteOperationCount} writable target(s).");
         }
         catch (Exception ex)
         {
@@ -1208,10 +1368,10 @@ public sealed class MainViewModel : ObservableObject
             _currentDryRunPlan = null;
             _preparedApplyOperation = null;
             _latestApplyResult = null;
-            DryRunStatus = "Dry run creation failed.";
-            BackupStatus = "Create Backup is unavailable until a valid dry run exists.";
-            ApplyChecklist = "Dry run failed. Review the error and rescan if needed.";
-            ApplyUnavailableReason = ex.Message;
+            DryRunStatus = "Review preparation failed.";
+            BackupStatus = "Backup and Apply is unavailable until the review is refreshed.";
+            ApplyChecklist = "Refresh the review and try again.";
+            ApplyUnavailableReason = ToUserMessage(ex);
             RefreshDryRunCommandState();
             ProgressMessage = "Dry run failed.";
             AppendLog("Dry run failed: " + ex.Message);
@@ -1252,18 +1412,152 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    private async Task BackupAndApplyAsync()
+    {
+        if (_installation is null)
+            await DetectAsync();
+        if (_installation is null || _inventory is null)
+            return;
+
+        RefreshReviewChanges();
+
+        try
+        {
+            await RunBusyAsync("Refreshing your review plan.", async () =>
+            {
+                var snapshot = BuildActiveProposalSnapshot();
+                _currentDryRunPlan = await _dryRunPlanner.CreatePlanAsync(_installation, _inventory, snapshot, CancellationToken.None);
+                _preparedApplyOperation = null;
+                _latestApplyResult = null;
+                DryRunStatus = BuildDryRunStatus(_currentDryRunPlan);
+                BackupStatus = "Ready to create a verified backup and apply your reviewed changes.";
+                ApplyChecklist = BuildApplyChecklist();
+                ApplyUnavailableReason = BuildApplyUnavailableReason();
+                RefreshDryRunCommandState();
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Backup and Apply review preparation failed");
+            MessageBox.Show(ToUserMessage(ex), "Backup and Apply blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (_currentDryRunPlan is null)
+            return;
+
+        if (!_currentDryRunPlan.ApplyPermitted || _currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
+        {
+            BackupStatus = "Backup and Apply is blocked until the review issues are fixed.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            MessageBox.Show(
+                BuildPlanBlockedMessage(_currentDryRunPlan),
+                "Backup and Apply blocked",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await RunBusyAsync("Creating a verified backup.", async () =>
+            {
+                var snapshot = BuildActiveProposalSnapshot();
+                _currentDryRunPlan = await _dryRunPlanner.CreatePlanAsync(_installation, _inventory, snapshot, CancellationToken.None);
+                if (!_currentDryRunPlan.ApplyPermitted || _currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
+                    throw new InvalidOperationException("The Penumbra data changed after the review was generated.");
+
+                _preparedApplyOperation = await _applyService.PrepareAsync(_currentDryRunPlan, _installation, snapshot, CancellationToken.None);
+                BackupStatus = $"Verified backup ready in {_preparedApplyOperation.OperationId:N}.";
+                ApplyChecklist = BuildApplyChecklist();
+                ApplyUnavailableReason = BuildApplyUnavailableReason();
+                RefreshDryRunCommandState();
+            });
+
+            var confirmation = new ApplyTestConfirmationDialog(
+                title: "Apply Virtual-Folder Changes?",
+                heading: "Apply Virtual-Folder Changes?",
+                description: "A verified backup is ready. If you continue, the app will update Penumbra's virtual-folder database without moving any physical mod files.",
+                confirmationText: BuildApplyConfirmationMessage(),
+                confirmButtonText: "Backup and Apply")
+            {
+                Owner = Application.Current.MainWindow,
+            };
+            if (confirmation.ShowDialog() != true)
+            {
+                ProgressMessage = "Backup and Apply cancelled.";
+                BackupStatus = "The verified backup was kept. No changes were written.";
+                await _backups.RefreshAsync();
+                await RefreshRecoveryStatusAsync();
+                return;
+            }
+
+            await RunBusyAsync("Applying your changes and verifying the result.", async () =>
+            {
+                var snapshot = BuildActiveProposalSnapshot();
+                _latestApplyResult = await _applyService.ApplyAsync(_currentDryRunPlan, _preparedApplyOperation!, _installation, snapshot, CancellationToken.None);
+            });
+
+            var details = _preparedApplyOperation is null
+                ? null
+                : await _historyService.TryLoadOperationAsync(_preparedApplyOperation.OperationId, CancellationToken.None);
+
+            BackupStatus = BuildApplyResultSummary(_latestApplyResult!, details?.PostApplyVerification);
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
+
+            var title = details?.PostApplyVerification?.Succeeded == true ? "Organization completed" : "Organization finished with warnings";
+            MessageBox.Show(
+                BuildApplyCompletionMessage(_latestApplyResult!, details?.PostApplyVerification),
+                title,
+                MessageBoxButton.OK,
+                details?.PostApplyVerification?.Succeeded == true ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Backup and Apply failed");
+            await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
+
+            var details = _preparedApplyOperation is null
+                ? null
+                : await _historyService.TryLoadOperationAsync(_preparedApplyOperation.OperationId, CancellationToken.None);
+            var message = BuildApplyFailureMessage(ex, details);
+            BackupStatus = details?.Operation.RollbackAvailable == true
+                ? "Apply stopped after a partial live change. Rollback is available from Backups."
+                : "Apply stopped before any live change could be confirmed.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = ToUserMessage(ex);
+            RefreshDryRunCommandState();
+
+            MessageBox.Show(message, "Backup and Apply failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private async Task ApplyVirtualFolderChangesAsync()
     {
         if (_installation is null || _currentDryRunPlan is null || _preparedApplyOperation is null)
             return;
 
-        var confirmation = new ApplyTestConfirmationDialog(BuildApplyConfirmationMessage())
+        var confirmation = new ApplyTestConfirmationDialog(
+            title: "Apply Virtual-Folder Changes?",
+            heading: _controlledTestRequest is null ? "Apply Virtual-Folder Changes?" : "Apply Controlled Test Changes?",
+            description: _controlledTestRequest is null
+                ? "This updates Penumbra's virtual-folder database only. Physical mod folders and files stay where they are."
+                : "This updates only the selected Penumbra virtual-folder records for a controlled test. Physical mod folders and files stay where they are.",
+            confirmationText: BuildApplyConfirmationMessage(),
+            confirmButtonText: _controlledTestRequest is null ? "Backup and Apply" : "Apply Test Changes")
         {
             Owner = Application.Current.MainWindow,
         };
         if (confirmation.ShowDialog() != true)
         {
-            BackupStatus = "Controlled Test Apply was cancelled before any live write.";
+            BackupStatus = "Apply was cancelled before any live write.";
             return;
         }
 
@@ -1281,7 +1575,6 @@ public sealed class MainViewModel : ObservableObject
             await RefreshRecoveryStatusAsync();
             ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
             AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
-            await PromptForPenumbraObservationAsync(details);
         }
         catch (Exception ex)
         {
@@ -1345,9 +1638,9 @@ public sealed class MainViewModel : ObservableObject
         _currentDryRunPlan = null;
         _preparedApplyOperation = null;
         _latestApplyResult = null;
-        DryRunStatus = "Your plan is out of date. Create a new dry run before applying changes.";
+        DryRunStatus = "Your review needs to be refreshed before applying changes.";
         BackupStatus = reason;
-        ApplyChecklist = "Create a new dry run before creating a backup or applying changes.";
+        ApplyChecklist = "Review changes, then click Backup and Apply when you are ready.";
         ApplyUnavailableReason = BuildApplyUnavailableReason();
         RefreshDryRunCommandState();
     }
@@ -1357,23 +1650,23 @@ public sealed class MainViewModel : ObservableObject
         CreateDryRunCommand.RaiseCanExecuteChanged();
         CreateBackupCommand.RaiseCanExecuteChanged();
         ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
     }
 
     private string BuildDryRunStatus(DryRunPlan plan)
     {
         var fileChange = plan.FileChanges.SingleOrDefault();
         if (fileChange is null)
-            return "No supported Penumbra virtual-folder writes are needed.";
+            return "No supported Penumbra virtual-folder changes need to be written.";
 
         var controlledSummary = _controlledTestRequest is null
-            ? "Workflow: standard review plan"
+            ? "Workflow: standard organization review"
             : $"Workflow: Controlled Test Apply ({_controlledTestRequest.StableScanIds.Count} selected mod(s) -> {_controlledTestRequest.TestFolderName})";
         return
             $"{controlledSummary}{Environment.NewLine}" +
             $"Authoritative target: {Path.GetFileName(fileChange.TargetPath)}{Environment.NewLine}" +
-            $"Record scope: {fileChange.ExactRecordKey}{Environment.NewLine}" +
             $"Affected mods: {plan.Summary.AffectedModCount}{Environment.NewLine}" +
-            $"Plan status: {plan.Validation.Status}";
+            $"Status: {plan.Validation.Status}";
     }
 
     private string BuildApplyChecklist()
@@ -1391,8 +1684,7 @@ public sealed class MainViewModel : ObservableObject
             ChecklistLine("Game closed", preflight?.BlockingProcesses.Count == 0),
             ChecklistLine("Backup verified", _preparedApplyOperation is not null),
             ChecklistLine("Rollback prepared", _preparedApplyOperation is not null),
-            ChecklistLine("Dry run current", _currentDryRunPlan?.Validation.Status == DryRunPlanValidationStatus.Valid),
-            ChecklistLine("Controlled test selection ready", _controlledTestRequest is not null),
+            ChecklistLine("Review plan current", _currentDryRunPlan?.Validation.Status == DryRunPlanValidationStatus.Valid),
         };
 
         if (_latestApplyResult is not null)
@@ -1404,19 +1696,16 @@ public sealed class MainViewModel : ObservableObject
     private string BuildApplyUnavailableReason()
     {
         if (_reviewValidation is null)
-            return "Scan your mods and review proposals before creating a dry run.";
+            return "Scan your mods and review the proposed changes first.";
 
         if (_currentDryRunPlan is null)
-            return "Your plan is out of date. Create a new dry run before applying changes.";
+            return "Review changes, then click Backup and Apply.";
 
         if (_currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
-            return "Your plan is out of date. Create a new dry run before applying changes.";
-
-        if (_controlledTestRequest is null)
-            return "Choose controlled test mods before preparing a live alpha Apply.";
+            return "The review plan is out of date. Scan again before applying changes.";
 
         if (_preparedApplyOperation is null)
-            return "Create a verified backup package before applying changes.";
+            return "A verified backup will be created automatically before Apply.";
 
         if (_preparedApplyOperation.Preflight.BlockingProcesses.Count > 0)
             return $"Apply is blocked while these processes are running: {string.Join(", ", _preparedApplyOperation.Preflight.BlockingProcesses)}";
@@ -1427,7 +1716,7 @@ public sealed class MainViewModel : ObservableObject
                 : $"Apply finished with status {_latestApplyResult.Status}.";
 
         return _preparedApplyOperation.Preflight.Succeeded
-            ? "Apply is enabled only for supported virtual-folder changes in mod_data.db."
+            ? "Ready to write supported virtual-folder changes to mod_data.db."
             : string.Join(Environment.NewLine, _preparedApplyOperation.Preflight.Errors);
     }
 
@@ -1444,25 +1733,27 @@ public sealed class MainViewModel : ObservableObject
                 "PenumbraOrganizer",
                 "Backups",
                 _preparedApplyOperation.OperationId.ToString("N"));
-        var selectedMods = _controlledTestRequest?.StableScanIds
-            .Select(id => Mods.FirstOrDefault(mod => mod.StableScanId == id))
-            .Where(mod => mod is not null)
-            .Cast<ModRowViewModel>()
-            .ToArray() ?? Array.Empty<ModRowViewModel>();
-        var currentFolders = string.Join(", ", selectedMods.Select(mod => $"{mod.Name}: {mod.CurrentVirtualFolder}"));
-        var proposedFolders = string.Join(", ", selectedMods.Select(mod => $"{mod.Name}: {_controlledTestRequest?.TestFolderName ?? mod.ProposedVirtualFolder}"));
+        var changedRows = _reviewValidation?.ValidChanges ?? Array.Empty<OrganizerValidationRow>();
+        var protectedCount = _reviewValidation?.Summary.Protected ?? 0;
+        var examples = changedRows
+            .Take(8)
+            .Select(row => $"{row.ModName}: {row.CurrentVirtualFolder} -> {row.ProposedVirtualFolder}")
+            .ToArray();
+        var exampleBlock = examples.Length == 0
+            ? "No supported changes were found."
+            : string.Join(Environment.NewLine, examples) +
+              (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
+
         return
-            $"Selected mods: {selectedMods.Length}\n" +
-            $"Current folders: {currentFolders}\n" +
-            $"Proposed folders: {proposedFolders}\n\n" +
-            "Authoritative target: mod_data.db / LocalModData.Folder\n" +
-            $"Exact target path: {target?.TargetPath ?? "Unknown"}\n" +
-            $"Backup location: {operationFolder}\n" +
-            $"Rollback readiness: {(_preparedApplyOperation is null ? "Not prepared" : "Prepared")}\n\n" +
-            "Physical mod files will not move.\n" +
-            "FFXIV must remain closed.\n" +
-            "This is an alpha controlled live test.\n\n" +
-            "Apply the controlled test changes now?";
+            $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
+            $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
+            $"Planned changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
+            "Authoritative target: mod_data.db / LocalModData.Folder" + Environment.NewLine +
+            $"Database file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
+            $"Backup location: {operationFolder}{Environment.NewLine}" +
+            $"Rollback readiness: {(_preparedApplyOperation is null ? "Will be prepared before writing" : "Prepared")}{Environment.NewLine}{Environment.NewLine}" +
+            "Physical mod folders and mod files will not be moved." + Environment.NewLine +
+            "FFXIV must be closed before Apply.";
     }
 
     private string BuildApplyResultSummary(ApplyResult applyResult, PostApplyVerificationResult? verification)
@@ -1484,9 +1775,100 @@ public sealed class MainViewModel : ObservableObject
         var verificationLine = verification is null
             ? "Post-Apply verification is still pending."
             : verification.Succeeded
-                ? "Selected records were re-read and verified against the plan."
+                ? "The updated records were re-read and verified against the plan."
                 : string.Join(" ", verification.Errors.Take(2));
         return $"{category}. {verificationLine} {rollbackLine}";
+    }
+
+    private string BuildApplyCompletionMessage(ApplyResult applyResult, PostApplyVerificationResult? verification)
+    {
+        var changedCount = _reviewValidation?.Summary.Changed ?? applyResult.Files.Count(file => file.WriteCompleted);
+        var protectedCount = _reviewValidation?.Summary.Protected ?? 0;
+        var verificationLine = verification?.Succeeded == true
+            ? "Result verified"
+            : "Verification finished with warnings";
+
+        return
+            $"Organization completed{Environment.NewLine}{Environment.NewLine}" +
+            $"{changedCount} mod(s) updated{Environment.NewLine}" +
+            $"{protectedCount} protected mod(s) unchanged{Environment.NewLine}" +
+            $"Backup verified{Environment.NewLine}" +
+            $"{verificationLine}{Environment.NewLine}{Environment.NewLine}" +
+            "Your physical mod files were not moved." + Environment.NewLine +
+            "If the new folders do not appear right away in Penumbra, reload the plugin or restart XIVLauncher.";
+    }
+
+    private string BuildApplyFailureMessage(Exception exception, OperationPackageDetails? details)
+    {
+        var summary = ToUserMessage(exception);
+        if (details is null)
+            return $"{summary}{Environment.NewLine}{Environment.NewLine}No files were changed.";
+
+        if (details.Operation.RollbackAvailable)
+            return $"{summary}{Environment.NewLine}{Environment.NewLine}Some changes may have been written. Use Backups to restore the verified backup.";
+
+        if (details.Operation.VerificationStatus == OperationVerificationStatus.Verified)
+            return $"{summary}{Environment.NewLine}{Environment.NewLine}A verified backup was created and kept in Backups.";
+
+        return $"{summary}{Environment.NewLine}{Environment.NewLine}No live change was confirmed.";
+    }
+
+    private string BuildPlanBlockedMessage(DryRunPlan plan)
+    {
+        var blockers = plan.Validation.Errors
+            .Concat(plan.Validation.Warnings)
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(5)
+            .ToArray();
+
+        if (blockers.Length == 0)
+            return "Backup and Apply is blocked until the current review issues are fixed.";
+
+        return "Backup and Apply is blocked right now." +
+               Environment.NewLine + Environment.NewLine +
+               string.Join(Environment.NewLine, blockers);
+    }
+
+    private static string BuildHomeSummary(PenumbraInstallation? installation, ScanInventory? inventory)
+    {
+        if (installation is null)
+        {
+            return "Penumbra could not be found yet." + Environment.NewLine +
+                   "Use Scan My Mods after Penumbra is detected.";
+        }
+
+        var lines = new List<string>
+        {
+            "Penumbra found",
+            Directory.Exists(installation.ModRoot) ? "Mod library found" : "Mod library not found",
+        };
+
+        if (inventory is null)
+            lines.Add("Scan My Mods to load your library.");
+        else
+            lines.Add($"{inventory.Mods.Count:N0} mods detected");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string ToUserMessage(Exception exception)
+    {
+        return exception switch
+        {
+            UnauthorizedAccessException => "Windows blocked access to mod_data.db." + Environment.NewLine + "No files were changed.",
+            IOException ioException when ioException.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
+                => "Penumbra's data is locked right now." + Environment.NewLine + "Close FFXIV and any tool that may be holding mod_data.db open, then try again.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("blocking process", StringComparison.OrdinalIgnoreCase)
+                => "FFXIV is currently running." + Environment.NewLine + "Close the game before applying changes.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("authoritative target", StringComparison.OrdinalIgnoreCase)
+                => "The Penumbra data changed after the scan." + Environment.NewLine + "Scan again before applying changes.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("no supported writable changes", StringComparison.OrdinalIgnoreCase)
+                => "There are no supported virtual-folder changes to apply.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("The Penumbra data changed after the review", StringComparison.OrdinalIgnoreCase)
+                => "The Penumbra data changed after the scan." + Environment.NewLine + "Scan again before applying changes.",
+            _ => "The operation could not be completed safely." + Environment.NewLine + exception.Message,
+        };
     }
 
     private async Task PromptForPenumbraObservationAsync(OperationPackageDetails? details)
