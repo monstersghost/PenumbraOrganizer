@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
 using Microsoft.Extensions.Logging;
+using PenumbraOrganizer.App;
 using PenumbraOrganizer.App.Commands;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
@@ -106,6 +107,7 @@ public sealed class BackupsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to refresh backup history");
+            StartupBootstrapLogger.RecordException("Backup history refresh failed.", ex);
             StatusMessage = "Backup history could not be loaded.";
         }
     }
@@ -137,6 +139,7 @@ public sealed class BackupsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to verify backup {OperationId}", SelectedOperation.OperationId);
+            StartupBootstrapLogger.RecordException("Backup verification failed.", ex);
             StatusMessage = "Backup verification failed.";
         }
     }
@@ -188,6 +191,7 @@ public sealed class BackupsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to roll back operation {OperationId}", SelectedOperation.OperationId);
+            StartupBootstrapLogger.RecordException("Backup restore failed.", ex);
             StatusMessage = "Restore failed before completion.";
         }
     }
@@ -257,6 +261,7 @@ public sealed class BackupsViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load backup operation {OperationId}", selectedOperation.OperationId);
+            StartupBootstrapLogger.RecordException("Backup details load failed.", ex);
             SelectionSummary = "The selected backup package could not be read.";
             SelectedOperationFolder = string.Empty;
             SelectedBackupAvailability = "Restore details are unavailable for the selected backup.";

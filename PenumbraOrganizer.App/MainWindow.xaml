@@ -225,9 +225,9 @@
                                                Foreground="#FF556171" />
                                     <TextBlock FontSize="28"
                                                FontWeight="SemiBold">
-                                        <Run Text="{Binding CollectionCount}" />
+                                        <Run Text="{Binding CollectionCount, Mode=OneWay}" />
                                         <Run Text=" / " />
-                                        <Run Text="{Binding WarningCount}" />
+                                        <Run Text="{Binding WarningCount, Mode=OneWay}" />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
@@ -339,9 +339,9 @@
                                        Margin="16,0,0,0"
                                        VerticalAlignment="Center"
                                        Foreground="#FF556171">
-                                <Run Text="{Binding ChangedProposalCount}" />
+                                <Run Text="{Binding ChangedProposalCount, Mode=OneWay}" />
                                 <Run Text=" changed, " />
-                                <Run Text="{Binding NeedsReviewCount}" />
+                                <Run Text="{Binding NeedsReviewCount, Mode=OneWay}" />
                                 <Run Text=" need review" />
                             </TextBlock>
                         </Grid>
@@ -543,11 +543,11 @@
                                 <TextBlock Margin="0,10,0,0"
                                            FontSize="16"
                                            TextWrapping="Wrap">
-                                    <Run Text="{Binding ReviewChanged}" />
+                                    <Run Text="{Binding ReviewChanged, Mode=OneWay}" />
                                     <Run Text=" mods will change, " />
-                                    <Run Text="{Binding ReviewProtected}" />
+                                    <Run Text="{Binding ReviewProtected, Mode=OneWay}" />
                                     <Run Text=" protected mods will remain unchanged, " />
-                                    <Run Text="{Binding ReviewInvalid}" />
+                                    <Run Text="{Binding ReviewInvalid, Mode=OneWay}" />
                                     <Run Text=" invalid changes." />
                                 </TextBlock>
                                 <TextBlock Margin="0,10,0,0"
@@ -892,7 +892,7 @@
                                            FontWeight="SemiBold" />
                                 <TextBox Grid.Row="1"
                                          Margin="0,12,0,0"
-                                         Text="{Binding ActivityLog}"
+                                         Text="{Binding ActivityLog, Mode=OneWay}"
                                          IsReadOnly="True"
                                          AcceptsReturn="True"
                                          VerticalScrollBarVisibility="Auto"

@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using PenumbraOrganizer.App;
 using PenumbraOrganizer.App.Commands;
 using PenumbraOrganizer.App.Dialogs;
 using PenumbraOrganizer.Core.Interfaces;
@@ -173,8 +174,7 @@ public sealed class MainViewModel : ObservableObject
         UndoCommand = new RelayCommand(_ => Undo(), _ => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(_ => Redo(), _ => _redoStack.Count > 0);
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
-        _ = _backups.RefreshAsync();
-        _ = RefreshRecoveryStatusAsync();
+        _ = InitializeSidebarStateAsync();
     }
 
     public ICommand DetectCommand { get; }
@@ -476,6 +476,20 @@ public sealed class MainViewModel : ObservableObject
             await DetectAsync();
     }
 
+    private async Task InitializeSidebarStateAsync()
+    {
+        try
+        {
+            await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Sidebar initialization failed");
+            StartupBootstrapLogger.RecordException("Sidebar initialization failed.", ex);
+        }
+    }
+
     private void RaiseInstallationChanged()
     {
         RaisePropertyChanged(nameof(PenumbraStateDirectory));
@@ -535,6 +549,7 @@ public sealed class MainViewModel : ObservableObject
 
             var ex = task.Exception.GetBaseException();
             _logger.LogError(ex, "Penumbra detection failed");
+            StartupBootstrapLogger.RecordException("Automatic Penumbra detection failed.", ex);
             DetectionSummary = "Penumbra could not be found automatically." + Environment.NewLine +
                                "Choose Penumbra.json manually if your setup is in a different location.";
             AppendLog("Detection failed: " + ex.Message);
@@ -607,6 +622,7 @@ public sealed class MainViewModel : ObservableObject
 
             var ex = task.Exception.GetBaseException();
             _logger.LogError(ex, "Penumbra scan failed");
+            StartupBootstrapLogger.RecordException("Scan failed.", ex);
             ProgressMessage = "Scan failed.";
             AppendLog("Scan failed: " + ex.Message);
             MessageBox.Show(ToUserMessage(ex), "Scan failed", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -1901,6 +1917,7 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to refresh incomplete-operation status");
+            StartupBootstrapLogger.RecordException("Incomplete-operation refresh failed.", ex);
             RecoveryStatus = "Incomplete-operation status could not be refreshed.";
         }
 

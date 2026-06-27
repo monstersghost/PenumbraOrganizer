@@ -20,10 +20,22 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>PenumbraOrganizer</AssemblyName>
     <RootNamespace>PenumbraOrganizer.App</RootNamespace>
+    <Product>Penumbra Organizer</Product>
+    <Company>Penumbra Organizer Contributors</Company>
+    <Authors>Penumbra Organizer Contributors</Authors>
+    <Copyright>Copyright (c) 2026 Penumbra Organizer Contributors</Copyright>
+    <PackageId>PenumbraOrganizer</PackageId>
+    <PackageProjectUrl>https://github.com/monstersghost/PenumbraOrganizer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/monstersghost/PenumbraOrganizer</RepositoryUrl>
+    <Version>0.2.0-beta</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
+    <InformationalVersion>0.2.0-beta</InformationalVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>false</PublishTrimmed>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
