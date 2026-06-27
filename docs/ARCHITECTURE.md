@@ -1,0 +1,208 @@
+# Penumbra Organizer Architecture
+
+`PenumbraOrganizer` is an unofficial third-party Windows desktop application for scanning and organizing Penumbra's virtual mod folders. It must never modify Final Fantasy XIV game files and must remain usable offline.
+
+## Solution layout
+
+`PenumbraOrganizer.App`
+
+- WPF desktop shell
+- MVVM view models and commands
+- dependency injection startup
+- user-facing workflow states: `Scan`, `Review`, `Dry Run`, `Apply`
+- beginner-first visual organizer under `Organize`
+- manual folder-tree editing, drag and drop, bulk assignment, undo, redo, and before-and-after preview
+
+`PenumbraOrganizer.Core`
+
+- domain models
+- interfaces
+- protection rules
+- creator canonicalization
+- organization preferences and proposal source models
+- manual override models for organizer-only creator/type labels
+- versioned AI exchange models
+- organizer mutation, history, validation, and session models
+- schema fingerprinting rules
+- dry-run and apply planning primitives
+
+`PenumbraOrganizer.Infrastructure`
+
+- Penumbra discovery
+- config and metadata parsing
+- filesystem scanning
+- LiteDB access for `mod_data.db`
+- backup, atomic write, CSV/JSON export
+- versioned AI inventory package generation and validation
+- read-only AI proposal validation
+- organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
+- compatibility/version checks
+- application-owned persistence under `%LocalAppData%\PenumbraOrganizer`
+
+`PenumbraOrganizer.Tests`
+
+- fixture-backed parsing tests
+- discovery tests
+- compatibility tests
+- temporary-directory integration tests
+
+## Safety boundaries
+
+- scanning is read-only
+- AI export/import is read-only
+- apply is disabled until scan, validation, backup, and dry run all succeed
+- protected paths are immutable
+- physical mod assets are never deleted or merged
+- phase 1 writes only Penumbra virtual-folder metadata
+- manual drag-and-drop changes only the in-memory proposed plan until Review, Backup, Apply, and Verify succeed
+- spreadsheet export is optional advanced reporting, not the primary editor
+
+## PMP scope boundary
+
+Penumbra `.pmp` files are import/export packages and are outside the installed-library organization workflow for the first write-enabled milestones.
+
+The application must not parse, extract, modify, repack, import, restore, or otherwise operate on `.pmp` files during these milestones. It must not scan export/download directories for `.pmp` files and must not infer installed mods from `.pmp` packages.
+
+The source of truth for organization is the currently installed Penumbra state and installed mod metadata: recognized state/configuration files, `mod_data.db`, installed mod directories, `meta.json`, `default_mod.json`, and `group_*.json`.
+
+A future read-only "Inspect uninstalled package" feature may support `.pmp`, but it must remain separate and must not shape the organizer architecture now.
+
+## Key data sources
+
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra.json`
+  carries Penumbra's configured `ModDirectory`
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_data.db`
+  stores current virtual folders and local mod metadata
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_filesystem\organization.json`
+  stores virtual folder tree presentation
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\collections\*.json`
+  stores collection state and enabled information
+- installed plugin manifests and assemblies under `%AppData%\XIVLauncher\installedPlugins\Penumbra`
+- installed mod directories and recognized installed-mod metadata files
+
+The scanner intentionally ignores `.pmp` package archives for organizer decisions.
+
+## Organization model
+
+Organization must not force a single `Type/Creator` hierarchy. The supported strategies are:
+
+- `CreatorOnly`: `Creator`
+- `TypeOnly`: `Type`
+- `TypeThenCreator`: `Type/Creator`
+- `CreatorThenType`: `Creator/Type`
+- `PreserveAndClean`: preserve meaningful existing folders while flattening clearly temporary source/import wrappers
+- `Custom`: compose a validated pattern from `{Creator}`, `{Type}`, and an optional fixed root folder
+
+The organization-preferences model records:
+
+- strategy
+- useTypeFolders
+- useCreatorFolders
+- folderOrder
+- fixedRootFolder
+- preserveMeaningfulExistingFolders
+- flattenTemporarySourceFolders
+- normalizeCreatorAliases
+- unknownCreatorBehavior
+- unknownTypeBehavior
+- uncertainClassificationBehavior
+- preserveCurrentFolderWhenUncertain
+
+Protection overrides all organization preferences.
+
+## Manual organizer workspace
+
+Manual human organization is a primary workflow. Users must be able to organize entirely inside the GUI without AI, spreadsheets, exported CSV files, JSON editing, full path typing, command-line tools, or knowledge of Penumbra metadata.
+
+The `Organize` screen starts with "How would you like your mods organized?" and offers beginner-friendly cards:
+
+- Start Manually
+- By creator
+- By mod type
+- By type and creator
+- By creator and type
+- Keep my current layout and clean it
+- Custom
+- External AI review
+
+AI is optional and must not be presented as required or recommended.
+
+The visual organizer contains:
+
+- `Folder View`
+- `All Mods`
+- `Suggested`
+- `Needs Review`
+
+`Folder View` is the default. It uses a folder tree with counts and lock indicators, a mod list for the selected proposed folder, and an optional collapsible details pane. Users can create proposed folders, rename proposed folders, delete empty proposed folders, search/filter, assign selected mods, drag movable mods or folders, mark items protected, and undo/redo in-memory changes.
+
+Every proposed row tracks its source:
+
+- Manual
+- Deterministic rule
+- Imported AI suggestion
+- Preserved current
+- Restored by undo
+
+Manual changes override automated or AI suggestions and must not be silently replaced by later automation. Re-running a strategy must ask whether to preserve manual changes, replace all proposals, or cancel, defaulting to preserving manual changes.
+
+Primary organizer actions operate on selected rows. Filtered-but-unselected rows must remain unchanged. Any all-visible operation is exposed separately, clearly labeled, and confirmed with the exact count and destination.
+
+All in-memory proposal mutations go through `IOrganizerMutationService`, including assignment, return-to-current, protection changes, folder creation, folder rename, folder deletion, future deterministic suggestions, future AI import, and future drag-and-drop. The service creates one undo history entry per successful logical action and does not touch live Penumbra files.
+
+`IOrganizerProposalValidationService` provides reusable read-only validation for Review Changes, future AI import, and future dry-run planning.
+
+`IOrganizerSessionService` persists application proposal state only. The session format is documented in `docs/ORGANIZER_SESSION_FORMAT.md`.
+
+## Deterministic organization
+
+The app must be able to produce proposals without AI when metadata is sufficient:
+
+- Creator-only uses explicit author metadata, then meaningful existing creator folders, then preserves or sends to Review based on preference. It does not require type classification.
+- Type-only uses explicit metadata and content signals, does not add creator folders, and preserves or sends uncertain items to Review based on preference.
+- Combined strategies resolve type and creator independently, build destinations in the selected order, and omit empty components.
+- Preserve-and-clean removes only clearly temporary wrappers and does not impose new creator/type layers unless requested.
+
+## AI export and validation
+
+Sanitized AI exports include `organizationPreferences` at the payload root. The generated master prompt must require the external AI to follow those preferences exactly, avoid imposing type folders when disabled, avoid imposing creator folders when disabled, skip unneeded type/creator inference for single-axis strategies, minimize changes in preserve-and-clean mode, and not replace the user's strategy with the AI's preferred structure.
+
+Imported AI proposals must validate that proposed paths conform to the selected strategy unless a row is protected or explicitly manually overridden.
+
+The version 1 inventory and proposal contracts are documented in `docs/AI_EXCHANGE_FORMAT.md`. Inventory exports use explicit domain models, globally unique `sourceExportId` values, sanitized path-like fields, strict package validation, and byte-identical ZIP/standalone files.
+
+The read-only proposal validator accepts the original `AiInventoryExport` plus an imported `AiProposalDocument` and returns structured errors, warnings, accepted proposals, rejected proposals, and a summary. It does not apply changes or modify live Penumbra state.
+
+## Review model
+
+`Review Changes` remains mandatory for manual, deterministic, and imported AI proposals. It shows exact current and proposed virtual folders, validation status, and proposal source. Where applicable it can show proposed type, proposed creator, and final proposed folder, but Beginner mode hides irrelevant columns such as proposed type in Creator-only mode.
+
+Normal flow:
+
+1. Detect Penumbra.
+2. Scan the installed library.
+3. Select an organization strategy or start manually.
+4. Generate proposals manually, deterministically, or through external AI.
+5. Review exact virtual-folder changes.
+6. Create and verify a backup.
+7. Apply supported virtual-folder metadata changes.
+8. Verify and offer rollback.
+
+This flow must not introduce `.pmp` handling.
+
+## Milestone 1
+
+Milestone 1 focuses on a production-grade read-only inventory and safe planning foundation:
+
+- automatic and manual Penumbra discovery
+- installed version detection
+- recursive mod scan with metadata tolerance
+- current virtual folder inventory
+- protected row enforcement
+- beginner-friendly manual proposed-folder editing
+- visual folder organizer workspace
+- deterministic organization rules
+- strategy preferences and custom pattern validation
+- dry-run and backup artifacts
+- compatibility warning model
+- atomic metadata-write backend for future apply UI

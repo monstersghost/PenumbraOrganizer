@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a problem with Penumbra Organizer
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Do not upload mod files, paid/private mods, full Penumbra configs, credentials, or personal paths without redaction.
+  - type: input
+    id: version
+    attributes:
+      label: Penumbra Organizer version
+      placeholder: v0.1.0-alpha
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 23H2
+    validations:
+      required: true
+  - type: input
+    id: penumbra
+    attributes:
+      label: Penumbra version
+      placeholder: 1.6.x
+  - type: textarea
+    id: steps
+    attributes:
+      label: What did you click?
+      description: List the steps that led to the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Include the plain-language error. Do not paste secrets or private paths.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Privacy check
+      options:
+        - label: I did not attach mod files, paid/private mods, credentials, or full Penumbra configs.
+          required: true

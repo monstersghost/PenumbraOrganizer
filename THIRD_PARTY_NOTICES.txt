@@ -1,0 +1,25 @@
+Penumbra Organizer third-party notices
+
+This project currently uses:
+
+1. Microsoft.Extensions.DependencyInjection
+   License: MIT
+   Source: https://github.com/dotnet/runtime
+
+2. Microsoft.Extensions.Logging
+   License: MIT
+   Source: https://github.com/dotnet/runtime
+
+3. xUnit
+   License: Apache 2.0
+   Source: https://github.com/xunit/xunit
+
+4. FluentAssertions
+   License: Apache 2.0
+   Source: https://github.com/fluentassertions/fluentassertions
+
+5. LiteDB.dll
+   License: MIT
+   Source: https://www.litedb.org/
+
+Review the upstream repositories for complete license texts before public release packaging.
