@@ -8,6 +8,9 @@ internal sealed record OperationVerificationDocument
     [JsonPropertyName("backupVerification")]
     public BackupVerificationResult? BackupVerification { get; init; }
 
+    [JsonPropertyName("postApplyVerification")]
+    public PostApplyVerificationResult? PostApplyVerification { get; init; }
+
     [JsonPropertyName("rollbackVerification")]
     public RollbackVerificationResult? RollbackVerification { get; init; }
 }

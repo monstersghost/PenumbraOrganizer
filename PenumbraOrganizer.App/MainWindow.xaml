@@ -442,8 +442,31 @@
                                         <ComboBoxItem Content="Unchanged" />
                                     </ComboBox>
                                     <Button Command="{Binding RefreshReviewCommand}" Content="Refresh Review" MinWidth="120" Height="30" Margin="12,0,0,0" />
-                                    <Button Content="Apply is not available in this build" IsEnabled="False" MinWidth="220" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Virtual-Folder Changes" MinWidth="220" Height="30" Margin="12,0,0,0" />
                                 </StackPanel>
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1.15*" />
+                                        <ColumnDefinition Width="12" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
+                                        <StackPanel>
+                                            <TextBlock Text="Dry Run" FontWeight="SemiBold" />
+                                            <TextBlock Margin="0,8,0,0" Text="{Binding DryRunStatus}" TextWrapping="Wrap" />
+                                            <TextBlock Margin="0,12,0,0" Text="Backup and Apply" FontWeight="SemiBold" />
+                                            <TextBlock Margin="0,8,0,0" Text="{Binding BackupStatus}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="2" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
+                                        <StackPanel>
+                                            <TextBlock Text="Readiness Checklist" FontWeight="SemiBold" />
+                                            <TextBlock Margin="0,8,0,0" Text="{Binding ApplyChecklist}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </StackPanel>
                         </Border>
 
@@ -510,6 +533,7 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Date" Binding="{Binding CreatedAtUtc}" Width="1.2*" />
                                 <DataGridTextColumn Header="Status" Binding="{Binding BackupStatus}" Width="*" />
+                                <DataGridTextColumn Header="Apply" Binding="{Binding ApplyStatus}" Width="*" />
                                 <DataGridTextColumn Header="Affected Items" Binding="{Binding AffectedItems}" Width="110" />
                                 <DataGridTextColumn Header="Backup Verified" Binding="{Binding BackupVerified}" Width="120" />
                                 <DataGridTextColumn Header="Rollback Status" Binding="{Binding RollbackStatus}" Width="1.2*" />

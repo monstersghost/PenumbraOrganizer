@@ -26,6 +26,11 @@ Each package contains:
 
 `files\` contains only explicitly requested metadata backups. It must not contain full mod assets.
 
+Current apply-enabled packages also persist:
+
+* `plan.json`
+* `apply.json`
+
 ## operation.json
 
 `operation.json` is the durable summary record for the package. It stores:
@@ -36,6 +41,7 @@ Each package contains:
 * Penumbra version when known
 * scan identity
 * backup status
+* apply status
 * rollback status
 * verification status
 * affected file count
@@ -44,6 +50,7 @@ Each package contains:
 * failure count
 * operation folder
 * whether a rollback transaction exists
+* whether rollback is currently available
 * last error when present
 
 ## manifest.json
@@ -90,7 +97,7 @@ Each rollback file entry stores:
 
 ## verification.json
 
-`verification.json` stores the latest backup verification result and latest rollback verification result.
+`verification.json` stores the latest backup verification result, post-Apply verification result, and latest rollback verification result.
 
 Backup verification checks:
 
@@ -182,7 +189,7 @@ If a protected file is supplied:
 
 ## Current UI availability
 
-The WPF app now includes a read-only `Backups` screen foundation that lists operations and shows summaries and affected files.
+The WPF app now includes a read-only `Backups` screen foundation that lists operations, shows backup/apply/rollback summaries, and shows affected files.
 
 It may expose:
 
@@ -194,6 +201,7 @@ It may expose:
 
 It does not expose:
 
-* live Apply
 * public rollback execution
 * force restore
+
+Live Apply is now guarded from the Review Changes workflow, but only for the proven `mod_data.db` `LocalModData.Folder` target.

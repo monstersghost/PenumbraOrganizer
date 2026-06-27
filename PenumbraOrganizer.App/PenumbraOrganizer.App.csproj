@@ -17,6 +17,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>PenumbraOrganizer</AssemblyName>
     <RootNamespace>PenumbraOrganizer.App</RootNamespace>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

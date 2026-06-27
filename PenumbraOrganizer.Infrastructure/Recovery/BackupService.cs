@@ -183,6 +183,7 @@ public sealed class BackupService : IBackupService
             request.PenumbraVersion,
             request.ScanIdentity,
             backupStatus,
+            ApplyStatus.Pending,
             rollbackStatus,
             verificationStatus,
             request.Files.Count,
@@ -191,6 +192,7 @@ public sealed class BackupService : IBackupService
             failureCount,
             _layout.GetOperationDirectory(request.OperationId),
             hasRollbackTransaction,
+            RollbackAvailable: false,
             lastError);
 
     private static void ValidateRequest(BackupRequest request)

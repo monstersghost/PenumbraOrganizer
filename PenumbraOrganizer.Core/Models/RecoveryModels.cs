@@ -84,6 +84,7 @@ public sealed record BackupOperation(
     string? PenumbraVersion,
     string ScanIdentity,
     BackupStatus BackupStatus,
+    ApplyStatus ApplyStatus,
     RollbackTransactionStatus RollbackStatus,
     OperationVerificationStatus VerificationStatus,
     int AffectedFileCount,
@@ -92,6 +93,7 @@ public sealed record BackupOperation(
     int FailureCount,
     string OperationFolder,
     bool HasRollbackTransaction,
+    bool RollbackAvailable,
     string? LastError);
 
 public sealed record BackupManifest(
@@ -182,6 +184,7 @@ public sealed record OperationHistoryEntry(
     Guid OperationId,
     DateTimeOffset CreatedAtUtc,
     BackupStatus BackupStatus,
+    ApplyStatus ApplyStatus,
     RollbackTransactionStatus RollbackStatus,
     int AffectedFileCount,
     int? AffectedModCount,
@@ -190,14 +193,19 @@ public sealed record OperationHistoryEntry(
     int ConflictCount,
     int FailureCount,
     string OperationFolder,
-    bool HasRollbackTransaction);
+    bool HasRollbackTransaction,
+    bool RollbackAvailable);
 
 public sealed record OperationPackageDetails(
     BackupOperation Operation,
     BackupManifest? Manifest,
+    DryRunPlan? Plan,
+    ApplyOperation? ApplyOperation,
+    ApplyResult? ApplyResult,
     RollbackTransaction? RollbackTransaction,
     BackupVerificationResult? BackupVerification,
-    RollbackVerificationResult? RollbackVerification);
+    RollbackVerificationResult? RollbackVerification,
+    PostApplyVerificationResult? PostApplyVerification);
 
 public sealed record RollbackExecutionOptions(
     IReadOnlySet<string>? ForceRestoreTargets = null)

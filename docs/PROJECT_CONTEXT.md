@@ -106,9 +106,9 @@ Verified release package details:
 * ZIP SHA-256: `ae68aa55f0b7fd78c6b6346b82dcf49656ac6b8efd36daa13a0882f00e9fd500`
 * release EXE launches from the extracted ZIP
 * solution build passes with 0 warnings and 0 errors
-* tests pass: 75/75
-* Apply remains unavailable
-* no live Penumbra writes are implemented
+* tests pass: 92/92
+* guarded Apply foundation is implemented for supported `mod_data.db` virtual-folder writes
+* no physical mod, collection, or FFXIV writes are implemented
 
 ## Critical distinction between Penumbra state and mod storage
 
@@ -976,11 +976,12 @@ Implemented:
 * centralized in-memory organizer mutation service
 * read-only organizer proposal validation service
 * atomic organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
-* read-only Review Changes foundation with validation status rows and Apply-unavailable explanation
+* Review Changes foundation with validation status rows, immutable dry-run planning, backup preparation, and guarded Apply actions
 * verified backup foundation under `%LocalAppData%\PenumbraOrganizer\Backups`
 * immutable backup manifests and rollback transaction records
 * exact-byte rollback executor with conflict detection and post-rollback verification
 * operation-history persistence with package rebuilding
+* authoritative `mod_data.db` mapping, deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
 * read-only Backups screen foundation with backup verification and backup-folder access
 * fixture-based tests
 * self-contained single-file publishing
@@ -989,7 +990,7 @@ Implemented:
 * public alpha prerelease
 * smoke launch of the published EXE
 
-The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, and a read-only Review Changes foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, dry-run planning, backup, Apply, verification, and rollback remain part of the safe organizer milestone unless separately completed and verified.
+The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, guarded Review Changes dry-run/apply controls, and a read-only Backups foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, and any wider write target beyond `mod_data.db` remain part of the safe organizer milestone unless separately completed and verified.
 
 Existing projects:
 
@@ -1004,6 +1005,8 @@ Important existing files include:
 
 * `docs/ARCHITECTURE.md`
 * `docs/AI_EXCHANGE_FORMAT.md`
+* `docs/BACKUP_AND_ROLLBACK_FORMAT.md`
+* `docs/DRY_RUN_AND_APPLY_FORMAT.md`
 * `docs/HANDOFF_ROLLBACK_FOUNDATION.md`
 * `docs/ORGANIZER_SESSION_FORMAT.md`
 * `docs/PENUMBRA_DISCOVERY.md`
@@ -1093,7 +1096,8 @@ Unknown structures should remain readable and preserved. They must not be silent
 * Top-level mod directories are treated as candidate mod roots and validated using metadata and `mod_data.db`.
 * `.pmp` package handling is intentionally out of scope for the installed-library organizer.
 * Wine and Linux-style paths are reported unsupported for version 1.
-* The scanner exists, but Apply is not yet safe or complete.
+* The first guarded Apply path writes only `mod_data.db` `LocalModData.Folder`.
+* `mod_filesystem\organization.json` is not yet proven as a required write target and therefore remains read-only.
 * The manual folder-picker wizard is not yet complete.
 * The visual manual organizer workspace has selected-row actions, folder creation/rename/delete, undo/redo, session persistence, and Review Changes foundations, but drag-and-drop and richer tree interactions remain incomplete.
 * Clean-machine release validation remains outstanding.
@@ -1102,12 +1106,8 @@ Unknown structures should remain readable and preserved. They must not be silent
 
 The following are not yet complete:
 
-* dry-run planner
-* immutable operation plan
-* collision validation
-* source-hash validation
-* atomic metadata-write pipeline
-* post-write verification
+* proving whether any Penumbra structure beyond `mod_data.db` must be written
+* widening Apply beyond the narrow `LocalModData.Folder` target
 * persistent compatibility history
 * manual detection and folder-selection wizard
 * strategy-aware proposal generation and validation
@@ -1274,33 +1274,23 @@ Do not show stack traces or raw JSON by default.
 
 Core operation must remain offline.
 
-## Immediate next milestone
+## Current authoritative write target
 
-The rollback and verified-backup foundation is now implemented and tested using temporary fixture files only. It does not write to the user's real Penumbra installation, and Apply remains unavailable.
+The current project and fixtures now prove one authoritative live write target for a mod's current virtual folder:
 
-The next milestone is:
+* file: `mod_data.db`
+* collection: `LocalModData`
+* key: `_id`
+* field: `Folder`
 
-`Immutable dry-run planning and atomic Apply pipeline without enabling public Apply`
+`_id` matches the installed top-level physical mod directory name and is the stable mapping used by the scanner and dry-run/apply pipeline.
 
-Use this priority order:
+`mod_filesystem\organization.json` is currently treated as a derived or presentation structure. It is not written until its role is proven safely.
 
-1. Rollback subsystem
-2. Verified backup engine
-3. Immutable dry-run planner
-4. Atomic Apply pipeline
-5. Post-Apply verification
+The dry-run and Apply format is documented in:
 
-Rollback remains the central design constraint for all future writes. It must not depend on display names, the current AI proposal, the current organizer session, a new scan, a workbook, or reconstructing JSON from current state.
-
-The recovery package format is documented in:
-
-`docs/BACKUP_AND_ROLLBACK_FORMAT.md`
-
-Do not implement physical mod movement.
-
-Do not modify collections during the first write-enabled milestone unless separately proven and approved.
-
-Do not implement `.pmp` handling during the first write-enabled milestones.
+* `docs/BACKUP_AND_ROLLBACK_FORMAT.md`
+* `docs/DRY_RUN_AND_APPLY_FORMAT.md`
 
 ## Development rules
 

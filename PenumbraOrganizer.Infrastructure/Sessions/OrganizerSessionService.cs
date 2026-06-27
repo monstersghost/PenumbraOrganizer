@@ -103,6 +103,42 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
     }
 
+    public static string BuildSessionIdentity(OrganizerSessionDocument session)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(session.InstallationIdentity);
+        builder.AppendLine(session.ScanIdentity);
+        builder.AppendLine(session.InstalledPenumbraVersion ?? string.Empty);
+        builder.AppendLine(session.OrganizationPreferences.Strategy.ToString());
+
+        foreach (var folder in session.ProposedFolders.OrderBy(folder => folder.Path, StringComparer.OrdinalIgnoreCase))
+            builder.AppendLine($"{folder.Path}|{folder.ManuallyCreated}|{folder.Protected}");
+
+        foreach (var mod in session.Mods.OrderBy(mod => mod.StableScanId, StringComparer.Ordinal))
+            builder.AppendLine($"{mod.StableScanId}|{mod.CurrentVirtualFolder}|{mod.ProposedVirtualFolder}|{mod.Protected}|{mod.OrganizerCreatorLabel}|{mod.OrganizerTypeLabel}|{mod.ProposalSource}|{mod.NeedsReview}");
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+    }
+
+    public static string BuildProposalSnapshotIdentity(
+        IReadOnlyList<OrganizerModProposal> proposals,
+        IReadOnlyList<OrganizerFolder> folders,
+        OrganizationPreferences preferences)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(preferences.Strategy.ToString());
+        builder.AppendLine(preferences.CustomPattern ?? string.Empty);
+        builder.AppendLine(string.Join(",", preferences.FolderOrder.Select(component => component.ToString())));
+
+        foreach (var folder in folders.OrderBy(folder => folder.Path, StringComparer.OrdinalIgnoreCase))
+            builder.AppendLine($"{folder.Path}|{folder.ManuallyCreated}|{folder.Protected}");
+
+        foreach (var proposal in proposals.OrderBy(proposal => proposal.StableScanId, StringComparer.Ordinal))
+            builder.AppendLine($"{proposal.StableScanId}|{proposal.CurrentVirtualFolder}|{proposal.ProposedVirtualFolder}|{proposal.Protected}|{proposal.Source}|{proposal.NeedsReview}|{proposal.OrganizerCreatorLabel}|{proposal.OrganizerTypeLabel}");
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
+    }
+
     private static string NormalizeForIdentity(string path)
         => path.Trim().Replace('\\', '/').ToUpperInvariant();
 }

@@ -162,13 +162,17 @@ public sealed class BackupsViewModel : ObservableObject
             SelectedOperationFolder = details.Operation.OperationFolder;
             SelectedBackupAvailability = details.RollbackTransaction is null
                 ? "Rollback is not yet available for this operation."
-                : "A rollback transaction exists, but this public alpha screen remains read-only.";
+                : details.Operation.RollbackAvailable
+                    ? "Rollback data is available for this operation. The Backups screen stays read-only in this build."
+                    : "A rollback transaction exists, but rollback remains hidden until Apply finishes successfully.";
             SelectionSummary =
                 $"Operation ID: {details.Operation.OperationId}\n" +
                 $"Created: {details.Operation.CreatedAtUtc:u}\n" +
                 $"Backup status: {details.Operation.BackupStatus}\n" +
+                $"Apply status: {details.Operation.ApplyStatus}\n" +
                 $"Backup verified: {(details.Operation.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No")}\n" +
                 $"Rollback status: {(details.Operation.HasRollbackTransaction ? details.Operation.RollbackStatus : "Not available")}\n" +
+                $"Rollback available: {(details.Operation.RollbackAvailable ? "Yes" : "No")}\n" +
                 $"Affected files: {details.Operation.AffectedFileCount}\n" +
                 $"Conflicts: {details.Operation.ConflictCount}\n" +
                 $"Failures: {details.Operation.FailureCount}\n" +
@@ -202,6 +206,7 @@ public sealed class BackupOperationRowViewModel
     public Guid OperationId => _entry.OperationId;
     public DateTimeOffset CreatedAtUtc => _entry.CreatedAtUtc;
     public string BackupStatus => _entry.BackupStatus.ToString();
+    public string ApplyStatus => _entry.ApplyStatus.ToString();
     public int AffectedItems => _entry.AffectedFileCount;
     public string BackupVerified => _entry.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No";
     public string RollbackStatus => _entry.HasRollbackTransaction ? _entry.RollbackStatus.ToString() : "Not available";

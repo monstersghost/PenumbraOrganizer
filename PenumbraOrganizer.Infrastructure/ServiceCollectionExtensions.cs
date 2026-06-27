@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Services;
+using PenumbraOrganizer.Infrastructure.Apply;
 using PenumbraOrganizer.Infrastructure.Compatibility;
 using PenumbraOrganizer.Infrastructure.Discovery;
 using PenumbraOrganizer.Infrastructure.Exports;
@@ -19,6 +20,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPenumbraDiscoveryService, PenumbraDiscoveryService>();
         services.AddSingleton<IPenumbraScanService, PenumbraScanService>();
         services.AddSingleton<IPenumbraCompatibilityService, PenumbraCompatibilityService>();
+        services.AddSingleton<IPenumbraVirtualFolderWriter, PenumbraVirtualFolderWriter>();
+        services.AddSingleton<IPlanInvalidationService, PlanInvalidationService>();
+        services.AddSingleton<IDryRunValidationService, DryRunValidationService>();
+        services.AddSingleton<IDryRunPlanner, DryRunPlanner>();
+        services.AddSingleton<IWritePermissionPreflightService, WritePermissionPreflightService>();
+        services.AddSingleton<IPostApplyVerificationService, PostApplyVerificationService>();
         services.AddSingleton<IInventoryExportService, InventoryExportService>();
         services.AddSingleton<IAiProposalValidationService, AiProposalValidationService>();
         services.AddSingleton<IOrganizerMutationService, OrganizerMutationService>();
@@ -29,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRollbackVerificationService, RollbackVerificationService>();
         services.AddSingleton<IBackupService, BackupService>();
         services.AddSingleton<IRollbackService, RollbackService>();
+        services.AddSingleton<IApplyService, ApplyService>();
         return services;
     }
 }

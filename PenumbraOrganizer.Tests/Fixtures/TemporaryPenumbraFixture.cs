@@ -71,6 +71,13 @@ public sealed class TemporaryPenumbraFixture : IDisposable
         }
     }
 
+    public void WriteModDataDocument(BsonDocument document)
+    {
+        using var db = new LiteDatabase($"Filename={ModDataDbPath};Connection=Direct");
+        var collection = db.GetCollection("LocalModData");
+        collection.Upsert(document);
+    }
+
     public string CreateMod(string folderName, string metaJson, string? defaultModJson = null)
     {
         var modPath = Path.Combine(ModRoot, folderName);

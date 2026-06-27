@@ -190,8 +190,13 @@ public sealed class PenumbraScanService : IPenumbraScanService
         var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var doc in collection.FindAll())
         {
-            var id = doc["_id"].AsString;
-            var folder = doc.TryGetValue("Folder", out var bson) ? bson.AsString : string.Empty;
+            if (!doc.TryGetValue("_id", out var idValue) || idValue.Type != BsonType.String)
+                continue;
+
+            var id = idValue.AsString;
+            var folder = doc.TryGetValue("Folder", out var bson) && bson.Type == BsonType.String
+                ? bson.AsString
+                : string.Empty;
             folders[id] = folder;
         }
 
