@@ -68,6 +68,25 @@ public sealed class DiagnosticExportService : IDiagnosticExportService
                 : new
                 {
                     summary = Sanitize(request.RealInstallationValidation.Summary, installation, inventory),
+                    report = new
+                    {
+                        penumbraStateDirectory = RedactPath(request.RealInstallationValidation.Report.PenumbraStateDirectory, installation, inventory),
+                        modLibraryRoot = RedactPath(request.RealInstallationValidation.Report.ModLibraryRoot, installation, inventory),
+                        request.RealInstallationValidation.Report.InstalledPenumbraVersion,
+                        request.RealInstallationValidation.Report.ModsScanned,
+                        request.RealInstallationValidation.Report.ProposedChanges,
+                        request.RealInstallationValidation.Report.MappedRecords,
+                        request.RealInstallationValidation.Report.MissingRecords,
+                        request.RealInstallationValidation.Report.AmbiguousRecords,
+                        request.RealInstallationValidation.Report.ProtectedMods,
+                        request.RealInstallationValidation.Report.UnsupportedRecords,
+                        request.RealInstallationValidation.Report.UnsupportedStructures,
+                        writableTargetStatus = request.RealInstallationValidation.Report.WritableTargetStatus,
+                        gameOrLauncherStatus = request.RealInstallationValidation.Report.GameOrLauncherStatus,
+                        backupReadiness = request.RealInstallationValidation.Report.BackupReadiness,
+                        rollbackReadiness = request.RealInstallationValidation.Report.RollbackReadiness,
+                        request.RealInstallationValidation.Report.ApplyCurrentlySafe,
+                    },
                     errors = request.RealInstallationValidation.Errors.Select(e => Sanitize(e, installation, inventory)).ToArray(),
                     warnings = request.RealInstallationValidation.Warnings.Select(w => Sanitize(w, installation, inventory)).ToArray(),
                     schemaFingerprints = request.RealInstallationValidation.Plan.SourceSchemaFingerprints.Select(fp => new
@@ -91,6 +110,8 @@ public sealed class DiagnosticExportService : IDiagnosticExportService
                 conflictCount = operation.ConflictCount,
                 failureCount = operation.FailureCount,
                 operationFolder = Sanitize(operation.OperationFolder, installation, inventory),
+                observationStatus = operation.ObservationStatus?.ToString(),
+                observationRecordedAtUtc = operation.ObservationRecordedAtUtc,
             }).ToArray(),
         };
     }

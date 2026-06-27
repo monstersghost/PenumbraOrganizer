@@ -170,6 +170,11 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
     internal static PenumbraModDataState LoadState(PenumbraInstallation installation)
     {
         var databasePath = Path.Combine(installation.ConfigDirectory, "mod_data.db");
+        return LoadState(databasePath);
+    }
+
+    internal static PenumbraModDataState LoadState(string databasePath)
+    {
         if (!File.Exists(databasePath))
             throw new InvalidOperationException("The authoritative Penumbra state file mod_data.db is missing.");
 

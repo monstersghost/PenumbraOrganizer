@@ -32,6 +32,22 @@ public enum OperationVerificationStatus
     Failed,
 }
 
+public enum IncompleteOperationStage
+{
+    BackupPreparation,
+    Apply,
+    PostApplyVerification,
+    Rollback,
+}
+
+public enum RecoveryRecommendedAction
+{
+    Reverify,
+    ContinueVerification,
+    RollBack,
+    ViewDetails,
+}
+
 public enum RollbackTransactionStatus
 {
     Available,
@@ -94,7 +110,9 @@ public sealed record BackupOperation(
     string OperationFolder,
     bool HasRollbackTransaction,
     bool RollbackAvailable,
-    string? LastError);
+    string? LastError,
+    PenumbraUiObservationStatus? ObservationStatus,
+    DateTimeOffset? ObservationRecordedAtUtc);
 
 public sealed record BackupManifest(
     Guid OperationId,
@@ -194,6 +212,16 @@ public sealed record OperationHistoryEntry(
     int FailureCount,
     string OperationFolder,
     bool HasRollbackTransaction,
+    bool RollbackAvailable,
+    PenumbraUiObservationStatus? ObservationStatus,
+    DateTimeOffset? ObservationRecordedAtUtc);
+
+public sealed record IncompleteOperationRecord(
+    Guid OperationId,
+    DateTimeOffset CreatedAtUtc,
+    IncompleteOperationStage Stage,
+    IReadOnlyList<RecoveryRecommendedAction> RecommendedActions,
+    string Summary,
     bool RollbackAvailable);
 
 public sealed record OperationPackageDetails(

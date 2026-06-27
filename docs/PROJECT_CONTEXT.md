@@ -983,6 +983,9 @@ Implemented:
 * operation-history persistence with package rebuilding
 * authoritative `mod_data.db` mapping, deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
 * read-only Backups screen foundation with backup verification and backup-folder access
+* controlled live-test selection with a default limit of 3 mods
+* explicit controlled-test Apply confirmation and post-Apply Penumbra UI observation capture
+* incomplete-operation detection with re-verify, continue-verification, rollback, and detail-view recovery actions
 * fixture-based tests
 * self-contained single-file publishing
 * release ZIP generation
@@ -1290,9 +1293,11 @@ The current project and fixtures now prove one authoritative live write target f
 The current app also includes:
 
 * explicit `Validate My Installation` read-only validation
+* `Controlled Test Apply` for tiny explicitly selected live tests
 * guarded rollback from the Backups screen for valid completed operations
 * strict AI proposal import with manual-override precedence
 * privacy-conscious diagnostic export
+* visible incomplete-operation recovery guidance after interruption
 
 The dry-run and Apply format is documented in:
 

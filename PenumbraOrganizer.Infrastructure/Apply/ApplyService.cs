@@ -267,7 +267,7 @@ public sealed class ApplyService : IApplyService
         }
 
         var interim = BuildApplyResult(operation, results, ComputeStatus(results), rollbackAvailable: anyWriteCompleted, null);
-        var verification = await _postApplyVerificationService.VerifyAsync(plan, interim, installation, proposalSnapshot, cancellationToken);
+        var verification = await _postApplyVerificationService.VerifyAsync(plan, interim, cancellationToken);
         var finalStatus = verification.Succeeded
             ? interim.Status
             : anyWriteCompleted

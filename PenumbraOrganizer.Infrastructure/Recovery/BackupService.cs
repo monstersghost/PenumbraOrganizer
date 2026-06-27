@@ -193,7 +193,9 @@ public sealed class BackupService : IBackupService
             _layout.GetOperationDirectory(request.OperationId),
             hasRollbackTransaction,
             RollbackAvailable: false,
-            lastError);
+            lastError,
+            ObservationStatus: null,
+            ObservationRecordedAtUtc: null);
 
     private static void ValidateRequest(BackupRequest request)
     {

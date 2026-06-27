@@ -170,13 +170,27 @@ public interface IRealInstallationValidationService
         CancellationToken cancellationToken);
 }
 
+public interface IControlledLiveTestService
+{
+    Task<ControlledTestSetup> BuildSetupAsync(
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        ControlledTestOptions options,
+        CancellationToken cancellationToken);
+
+    ProposalSnapshot BuildControlledSnapshot(
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        ControlledTestRequest request);
+}
+
 public interface IPostApplyVerificationService
 {
     Task<PostApplyVerificationResult> VerifyAsync(
         DryRunPlan plan,
         ApplyResult applyResult,
-        PenumbraInstallation installation,
-        ProposalSnapshot proposalSnapshot,
         CancellationToken cancellationToken);
 }
 
@@ -200,4 +214,21 @@ public interface IPlanInvalidationService
 public interface IDiagnosticExportService
 {
     Task<DiagnosticExportResult> CreateAsync(DiagnosticExportRequest request, CancellationToken cancellationToken);
+}
+
+public interface IOperationRecoveryService
+{
+    Task<IReadOnlyList<IncompleteOperationRecord>> GetIncompleteOperationsAsync(CancellationToken cancellationToken);
+
+    Task<BackupVerificationResult> ReverifyBackupAsync(Guid operationId, CancellationToken cancellationToken);
+
+    Task<PostApplyVerificationResult> ContinueVerificationAsync(Guid operationId, CancellationToken cancellationToken);
+}
+
+public interface IOperationObservationService
+{
+    Task<BackupOperation> SaveObservationAsync(
+        Guid operationId,
+        PenumbraUiObservationStatus status,
+        CancellationToken cancellationToken);
 }

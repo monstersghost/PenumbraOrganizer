@@ -36,6 +36,8 @@ The first live write path now adds:
 - atomic database replacement for supported virtual-folder changes
 - post-Apply verification
 - guarded rollback availability after Apply
+- controlled live-test selection before the first real Apply
+- post-Apply Penumbra UI observation capture without widening the write target
 
 ## Absolute boundaries
 
@@ -145,6 +147,18 @@ For each file restore:
 Rollback writes must use temporary files, format validation, flushing, atomic replacement where supported, and post-rollback verification.
 
 Partial rollback must be reported clearly. Re-running rollback should be resumable or safely repeatable.
+
+For the first real-installation alpha test, the app now defaults to a controlled path:
+
+- the user explicitly selects the mods
+- the default limit is 3 mods
+- protected, ambiguous, and unsupported rows stay excluded
+- a fresh dry run is required
+- a verified backup is required
+- rollback is prepared before the Apply button is enabled
+- FFXIV and related launcher processes must be closed
+
+If backup preparation, Apply, verification, or rollback is interrupted, the incomplete operation remains visible on the next launch with guided recovery actions instead of being silently cleared.
 
 ## Next rollback milestone
 
