@@ -82,6 +82,34 @@ Application-owned writable data belongs under:
 
 The app should not rely on writing beside its EXE.
 
+## Public repository and alpha release
+
+The public repository is:
+
+`https://github.com/monstersghost/PenumbraOrganizer`
+
+The current public prerelease is:
+
+`v0.1.0-alpha`
+
+The initial public commit is:
+
+`298e7fa Initial public alpha of Penumbra Organizer`
+
+The current public release package is:
+
+`PenumbraOrganizer-v0.1.0-alpha-win-x64.zip`
+
+Verified release package details:
+
+* ZIP size: `71,391,756 bytes`
+* ZIP SHA-256: `ae68aa55f0b7fd78c6b6346b82dcf49656ac6b8efd36daa13a0882f00e9fd500`
+* release EXE launches from the extracted ZIP
+* solution build passes with 0 warnings and 0 errors
+* tests pass: 42/42
+* Apply remains unavailable
+* no live Penumbra writes are implemented
+
 ## Critical distinction between Penumbra state and mod storage
 
 Penumbra's configuration/state directory and the user's physical mod library are different locations.
@@ -922,6 +950,12 @@ A real first milestone exists in the repository root.
 
 Implemented:
 
+* public GitHub repository
+* MIT license
+* public README
+* user README
+* contribution and security documentation
+* issue and pull-request templates
 * solution and project structure
 * Penumbra discovery
 * read-only scanning
@@ -947,6 +981,7 @@ Implemented:
 * self-contained single-file publishing
 * release ZIP generation
 * SHA-256 output
+* public alpha prerelease
 * smoke launch of the published EXE
 
 The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, and a read-only Review Changes foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, dry-run planning, backup, Apply, verification, and rollback remain part of the safe organizer milestone unless separately completed and verified.
@@ -964,6 +999,7 @@ Important existing files include:
 
 * `docs/ARCHITECTURE.md`
 * `docs/AI_EXCHANGE_FORMAT.md`
+* `docs/HANDOFF_ROLLBACK_FOUNDATION.md`
 * `docs/ORGANIZER_SESSION_FORMAT.md`
 * `docs/PENUMBRA_DISCOVERY.md`
 * `docs/SAFETY_AND_ROLLBACK.md`
@@ -1015,7 +1051,7 @@ Important existing files include:
 * `README_FOR_USERS.txt`
 * `THIRD_PARTY_NOTICES.txt`
 * `artifacts/release/package/PenumbraOrganizer.exe`
-* `artifacts/release/PenumbraOrganizer-win-x64.zip`
+* `artifacts/release/PenumbraOrganizer-v0.1.0-alpha-win-x64.zip`
 * `artifacts/release/SHA256SUMS.txt`
 
 ## Supported discovery paths
@@ -1061,6 +1097,10 @@ Unknown structures should remain readable and preserved. They must not be silent
 
 The following are not yet complete:
 
+* rollback transaction model
+* rollback executor
+* rollback conflict detection
+* post-rollback verification
 * backup engine for planned writes
 * verified backup manifests
 * dry-run planner
@@ -1069,15 +1109,12 @@ The following are not yet complete:
 * source-hash validation
 * atomic metadata-write pipeline
 * post-write verification
-* rollback executor
-* rollback conflict detection
 * persistent compatibility history
 * manual detection and folder-selection wizard
-* visual manual organizer workspace
-* in-memory organization command history for undo and redo
 * strategy-aware proposal generation and validation
 * AI inventory export package verification for clean-machine release usage
 * AI proposal GUI import flow and user-facing validation preview
+* mod-to-folder drag-and-drop
 * clean Windows machine validation without an installed development runtime
 
 ## Required operation pipeline
@@ -1240,24 +1277,25 @@ Core operation must remain offline.
 
 ## Immediate next milestone
 
-Focus on the line between a useful scanner and a safe organizer:
+The immediate next milestone is:
 
-1. Correctly distinguish and display `PenumbraStateDirectory` and `ModLibraryRoot`.
-2. Complete the manual discovery and folder-selection wizard.
-3. Implement persistent application data under `%LocalAppData%\PenumbraOrganizer`.
-4. Implement the visual manual organizer workspace.
-5. Implement organization preferences and deterministic proposal generation.
-6. Implement proposal source tracking, manual overrides, and undo/redo.
-7. Implement sanitized AI inventory export with selected organization preferences.
-8. Generate the external AI package and instructions.
-9. Implement strict AI proposal JSON validation and preview.
-10. Implement immutable dry-run planning.
-11. Implement verified metadata backup.
-12. Implement atomic virtual-folder metadata writes.
-13. Implement post-Apply verification.
-14. Implement safe rollback with hash conflict checks.
-15. Expand fixture and integration tests.
-16. Validate the portable EXE on a clean Windows x64 environment.
+`Rollback and verified-backup foundation without enabling live Apply`
+
+The next session must implement and test the recovery subsystem using temporary fixture files only. It must not write to the user's real Penumbra installation.
+
+Use this priority order:
+
+1. Rollback subsystem
+2. Verified backup engine
+3. Immutable dry-run planner
+4. Atomic Apply pipeline
+5. Post-Apply verification
+
+Rollback is the central design constraint for all future writes. It must not depend on display names, the current AI proposal, the current organizer session, a new scan, a workbook, or reconstructing JSON from current state.
+
+The next-session handoff is:
+
+`docs/HANDOFF_ROLLBACK_FOUNDATION.md`
 
 Do not implement physical mod movement.
 

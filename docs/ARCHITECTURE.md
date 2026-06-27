@@ -32,7 +32,7 @@
 - config and metadata parsing
 - filesystem scanning
 - LiteDB access for `mod_data.db`
-- backup, atomic write, CSV/JSON export
+- future backup, rollback, atomic write, CSV/JSON export
 - versioned AI inventory package generation and validation
 - read-only AI proposal validation
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
@@ -56,6 +56,30 @@
 - phase 1 writes only Penumbra virtual-folder metadata
 - manual drag-and-drop changes only the in-memory proposed plan until Review, Backup, Apply, and Verify succeed
 - spreadsheet export is optional advanced reporting, not the primary editor
+- `.pmp` packages are not parsed, extracted, modified, imported, restored, or used as an organizer source
+- collections are not modified during the first write-enabled milestone unless separately proven and approved
+
+## Current alpha status
+
+`v0.1.0-alpha` is a public prerelease at `https://github.com/monstersghost/PenumbraOrganizer`.
+
+Complete foundations in the alpha include:
+
+- public repository, MIT license, public README, user README, contribution/security docs, and issue/PR templates
+- self-contained Windows x64 single-file release package and SHA-256 checksum generation
+- separate `PenumbraStateDirectory` and `ModLibraryRoot`
+- automatic Penumbra discovery and installed Penumbra version detection
+- read-only installed-mod scanning and current virtual-folder inventory
+- recognized mod metadata and Penumbra state data
+- schema-fingerprint and compatibility foundations
+- beginner-first manual organizer foundations with strategy cards, Folder View, All Mods, Suggested, Needs Review, and Changes Only
+- proposed folder create/rename/delete, selected-row actions, explicit all-visible actions, assignment, return-to-current, protect/unprotect, centralized mutation, proposal-source tracking, undo, and redo
+- atomic organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions\last-session.json`
+- stable-scan-ID restoration, organization preference persistence, proposal persistence, organizer-only creator/type labels, and stale-session detection foundation
+- Review Changes screen with reusable proposal validation and statuses `ValidChange`, `Unchanged`, `Protected`, `NeedsReview`, `InvalidPath`, `BlockedProtected`, `MissingMod`, and `StaleScan`
+- sanitized external AI inventory export package with organization preferences
+
+The alpha does not implement live dry run, verified backup, Apply, post-Apply verification, rollback, GUI AI proposal import, drag-and-drop, collection editing, `.pmp` handling, or physical mod movement.
 
 ## PMP scope boundary
 
@@ -189,6 +213,22 @@ Normal flow:
 8. Verify and offer rollback.
 
 This flow must not introduce `.pmp` handling.
+
+## Rollback-first write architecture
+
+The next required milestone is `Rollback and verified-backup foundation without enabling live Apply`. Recovery must be designed before any live writes are enabled.
+
+Priority order:
+
+1. Rollback subsystem
+2. Verified backup engine
+3. Immutable dry-run planner
+4. Atomic Apply pipeline
+5. Post-Apply verification
+
+Rollback must be independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It must use immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
+
+Recommended next-session details are documented in `docs/HANDOFF_ROLLBACK_FOUNDATION.md`.
 
 ## Milestone 1
 
