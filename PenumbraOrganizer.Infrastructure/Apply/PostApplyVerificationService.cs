@@ -8,8 +8,6 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
     public Task<PostApplyVerificationResult> VerifyAsync(
         DryRunPlan plan,
         ApplyResult applyResult,
-        PenumbraInstallation installation,
-        ProposalSnapshot proposalSnapshot,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -32,10 +30,17 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
                 errors.Add($"The applied hash does not match the planned hash for {fileChange.TargetPath}.");
         }
 
+        var targetPath = plan.FileChanges.SingleOrDefault()?.TargetPath;
+        if (string.IsNullOrWhiteSpace(targetPath))
+        {
+            errors.Add("The post-Apply verification plan does not identify an authoritative target.");
+            return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
+        }
+
         PenumbraModDataState state;
         try
         {
-            state = PenumbraVirtualFolderWriter.LoadState(installation);
+            state = PenumbraVirtualFolderWriter.LoadState(targetPath);
         }
         catch (Exception ex)
         {
@@ -43,7 +48,6 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
         }
 
-        var proposalById = proposalSnapshot.Proposals.ToDictionary(proposal => proposal.StableScanId, StringComparer.Ordinal);
         foreach (var entry in plan.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -53,15 +57,9 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
                 continue;
             }
 
-            if (!proposalById.TryGetValue(entry.StableScanId, out var proposal))
-            {
-                errors.Add($"The proposal snapshot no longer contains {entry.StableScanId}.");
-                continue;
-            }
-
             if (entry.RequiresWrite)
             {
-                if (!string.Equals(current.Folder, proposal.ProposedVirtualFolder, StringComparison.Ordinal))
+                if (!string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal))
                     errors.Add($"The applied folder for {entry.StableScanId} does not match the planned folder.");
             }
             else if (entry.Protected)
@@ -82,8 +80,7 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             VerifiedChangedModCount: plan.Entries.Count(entry =>
                 entry.RequiresWrite &&
                 state.Entries.TryGetValue(entry.StableScanId, out var current) &&
-                proposalById.TryGetValue(entry.StableScanId, out var proposal) &&
-                string.Equals(current.Folder, proposal.ProposedVirtualFolder, StringComparison.Ordinal)),
+                string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal)),
             VerifiedProtectedModCount: plan.Entries.Count(entry =>
                 entry.Protected &&
                 state.Entries.TryGetValue(entry.StableScanId, out var current) &&

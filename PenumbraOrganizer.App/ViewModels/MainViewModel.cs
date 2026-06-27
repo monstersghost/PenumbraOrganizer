@@ -11,6 +11,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.App.Commands;
+using PenumbraOrganizer.App.Dialogs;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Infrastructure.Sessions;
@@ -26,7 +27,10 @@ public sealed class MainViewModel : ObservableObject
     private readonly IOrganizerSessionService _organizerSessionService;
     private readonly IDryRunPlanner _dryRunPlanner;
     private readonly IApplyService _applyService;
+    private readonly IControlledLiveTestService _controlledLiveTestService;
     private readonly IRealInstallationValidationService _realInstallationValidationService;
+    private readonly IOperationRecoveryService _operationRecoveryService;
+    private readonly IOperationObservationService _operationObservationService;
     private readonly IAiProposalImportService _aiProposalImportService;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
@@ -52,12 +56,17 @@ public sealed class MainViewModel : ObservableObject
     private string _dryRunStatus = "Create a dry run to preview the exact Penumbra write target and expected result.";
     private string _backupStatus = "Create a verified backup after the dry run is current.";
     private string _applyChecklist = "Readiness checks will appear after a dry run is created.";
+    private string _controlledTestStatus = "Controlled Test Apply is not configured yet.";
+    private string _controlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
+    private string _recoveryStatus = "Incomplete operations will appear here if backup, Apply, verification, or rollback is interrupted.";
     private OrganizerFolderViewModel? _selectedProposedFolder;
     private OrganizerValidationResult? _reviewValidation;
     private DryRunPlan? _currentDryRunPlan;
     private ApplyOperation? _preparedApplyOperation;
     private ApplyResult? _latestApplyResult;
     private RealInstallationValidationResult? _lastRealInstallationValidation;
+    private ControlledTestRequest? _controlledTestRequest;
+    private IReadOnlyList<IncompleteOperationRecord> _incompleteOperations = Array.Empty<IncompleteOperationRecord>();
     private int _changedProposalCount;
     private int _needsReviewCount;
     private int _installedModCount;
@@ -79,7 +88,10 @@ public sealed class MainViewModel : ObservableObject
         IOrganizerSessionService organizerSessionService,
         IDryRunPlanner dryRunPlanner,
         IApplyService applyService,
+        IControlledLiveTestService controlledLiveTestService,
         IRealInstallationValidationService realInstallationValidationService,
+        IOperationRecoveryService operationRecoveryService,
+        IOperationObservationService operationObservationService,
         IDiagnosticExportService diagnosticExportService,
         IOperationHistoryService historyService,
         BackupsViewModel backups,
@@ -95,7 +107,10 @@ public sealed class MainViewModel : ObservableObject
         _organizerSessionService = organizerSessionService;
         _dryRunPlanner = dryRunPlanner;
         _applyService = applyService;
+        _controlledLiveTestService = controlledLiveTestService;
         _realInstallationValidationService = realInstallationValidationService;
+        _operationRecoveryService = operationRecoveryService;
+        _operationObservationService = operationObservationService;
         _diagnosticExportService = diagnosticExportService;
         _historyService = historyService;
         _backups = backups;
@@ -139,13 +154,20 @@ public sealed class MainViewModel : ObservableObject
         ResumeLastSessionCommand = new AsyncRelayCommand(ResumeLastSessionAsync, () => _inventory is not null);
         DiscardSessionCommand = new AsyncRelayCommand(DiscardSessionAsync);
         RefreshReviewCommand = new RelayCommand(_ => RefreshReviewChanges());
+        ConfigureControlledTestCommand = new AsyncRelayCommand(ConfigureControlledTestAsync, () => _installation is not null || _inventory is not null);
+        ClearControlledTestCommand = new RelayCommand(_ => ClearControlledTest(), _ => _controlledTestRequest is not null);
         CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null);
         CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null);
         ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null);
+        ReverifyIncompleteOperationCommand = new AsyncRelayCommand(ReverifyIncompleteOperationAsync, () => _incompleteOperations.Count > 0);
+        ContinueIncompleteVerificationCommand = new AsyncRelayCommand(ContinueIncompleteVerificationAsync, () => _incompleteOperations.Any(operation => operation.RecommendedActions.Contains(RecoveryRecommendedAction.ContinueVerification)));
+        RollbackIncompleteOperationCommand = new AsyncRelayCommand(RollbackIncompleteOperationAsync, () => _incompleteOperations.Any(operation => operation.RecommendedActions.Contains(RecoveryRecommendedAction.RollBack)));
+        ViewIncompleteOperationCommand = new AsyncRelayCommand(ViewIncompleteOperationAsync, () => _incompleteOperations.Count > 0);
         UndoCommand = new RelayCommand(_ => Undo(), _ => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(_ => Redo(), _ => _redoStack.Count > 0);
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
         _ = _backups.RefreshAsync();
+        _ = RefreshRecoveryStatusAsync();
     }
 
     public ICommand DetectCommand { get; }
@@ -172,9 +194,15 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand ResumeLastSessionCommand { get; }
     public AsyncRelayCommand DiscardSessionCommand { get; }
     public RelayCommand RefreshReviewCommand { get; }
+    public AsyncRelayCommand ConfigureControlledTestCommand { get; }
+    public RelayCommand ClearControlledTestCommand { get; }
     public AsyncRelayCommand CreateDryRunCommand { get; }
     public AsyncRelayCommand CreateBackupCommand { get; }
     public AsyncRelayCommand ApplyVirtualFolderChangesCommand { get; }
+    public AsyncRelayCommand ReverifyIncompleteOperationCommand { get; }
+    public AsyncRelayCommand ContinueIncompleteVerificationCommand { get; }
+    public AsyncRelayCommand RollbackIncompleteOperationCommand { get; }
+    public AsyncRelayCommand ViewIncompleteOperationCommand { get; }
     public RelayCommand UndoCommand { get; }
     public RelayCommand RedoCommand { get; }
     public ObservableCollection<ModRowViewModel> Mods { get; }
@@ -336,6 +364,24 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _applyChecklist, value);
     }
 
+    public string ControlledTestStatus
+    {
+        get => _controlledTestStatus;
+        private set => SetProperty(ref _controlledTestStatus, value);
+    }
+
+    public string ControlledTestSelectionSummary
+    {
+        get => _controlledTestSelectionSummary;
+        private set => SetProperty(ref _controlledTestSelectionSummary, value);
+    }
+
+    public string RecoveryStatus
+    {
+        get => _recoveryStatus;
+        private set => SetProperty(ref _recoveryStatus, value);
+    }
+
     public string InstallationValidationStatus
     {
         get => _installationValidationStatus;
@@ -374,6 +420,7 @@ public sealed class MainViewModel : ObservableObject
             var result = await _discoveryService.DiscoverAsync(CancellationToken.None);
             _installation = result.Installations.FirstOrDefault();
             ScanCommand.RaiseCanExecuteChanged();
+            ConfigureControlledTestCommand.RaiseCanExecuteChanged();
 
             if (_installation is null)
             {
@@ -439,6 +486,10 @@ public sealed class MainViewModel : ObservableObject
             ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
             CollectionCount = _inventory.Collections.Count;
             WarningCount = ScanWarnings.Count;
+            _controlledTestRequest = null;
+            ControlledTestStatus = "Controlled Test Apply is not configured yet.";
+            ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
+            ClearControlledTestCommand.RaiseCanExecuteChanged();
             InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
             ResetOrganizerHistory();
             RebuildProposedFolders();
@@ -448,6 +499,7 @@ public sealed class MainViewModel : ObservableObject
             AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
             CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
             ImportAiProposalCommand.RaiseCanExecuteChanged();
+            ConfigureControlledTestCommand.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -577,7 +629,7 @@ public sealed class MainViewModel : ObservableObject
                 return;
 
             ProgressMessage = "Validating the installed Penumbra state.";
-            var snapshot = BuildProposalSnapshot();
+            var snapshot = BuildActiveProposalSnapshot();
             var result = await _realInstallationValidationService.ValidateAsync(
                 _installation,
                 snapshot,
@@ -607,6 +659,63 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Validation failed.";
             AppendLog("Validation failed: " + ex.Message);
         }
+    }
+
+    private async Task ConfigureControlledTestAsync()
+    {
+        try
+        {
+            if (_installation is null)
+                await DetectAsync();
+            if (_installation is null)
+                return;
+
+            if (_inventory is null)
+                await ScanAsync();
+            if (_inventory is null)
+                return;
+
+            var baseSnapshot = BuildBaseProposalSnapshot();
+            var defaultFolder = _controlledTestRequest?.TestFolderName ?? "PenumbraOrganizer Test";
+            var setup = await _controlledLiveTestService.BuildSetupAsync(
+                _installation,
+                _inventory,
+                baseSnapshot,
+                new ControlledTestOptions(defaultFolder),
+                CancellationToken.None);
+
+            var dialog = new ControlledTestDialog(setup)
+            {
+                Owner = Application.Current.MainWindow,
+            };
+            if (dialog.ShowDialog() != true || dialog.Request is null)
+                return;
+
+            _controlledTestRequest = dialog.Request;
+            ControlledTestStatus = $"Controlled Test Apply is active for {_controlledTestRequest.StableScanIds.Count} selected mod(s).";
+            ControlledTestSelectionSummary =
+                $"Test folder: {_controlledTestRequest.TestFolderName}{Environment.NewLine}" +
+                $"Selected mods: {string.Join(", ", Mods.Where(mod => _controlledTestRequest.StableScanIds.Contains(mod.StableScanId, StringComparer.Ordinal)).Select(mod => mod.Name))}";
+            ClearControlledTestCommand.RaiseCanExecuteChanged();
+            InvalidateDryRunState("Controlled Test Apply selection changed. Create a fresh dry run.");
+            await CreateDryRunAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Controlled test configuration failed");
+            ControlledTestStatus = "Controlled Test Apply could not be configured.";
+            ControlledTestSelectionSummary = ex.Message;
+            AppendLog("Controlled test setup failed: " + ex.Message);
+        }
+    }
+
+    private void ClearControlledTest()
+    {
+        _controlledTestRequest = null;
+        ControlledTestStatus = "Controlled Test Apply is not configured yet.";
+        ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
+        ClearControlledTestCommand.RaiseCanExecuteChanged();
+        InvalidateDryRunState("Controlled Test Apply was cleared.");
     }
 
     private async Task CreateDiagnosticPackageAsync()
@@ -1079,13 +1188,13 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             ProgressMessage = "Creating dry run.";
-            var snapshot = BuildProposalSnapshot();
+            var snapshot = BuildActiveProposalSnapshot();
             _currentDryRunPlan = await _dryRunPlanner.CreatePlanAsync(_installation, _inventory, snapshot, CancellationToken.None);
             _preparedApplyOperation = null;
             _latestApplyResult = null;
             DryRunStatus = BuildDryRunStatus(_currentDryRunPlan);
             BackupStatus = _currentDryRunPlan.ApplyPermitted
-                ? "Dry run is current. Create Backup will build a verified backup package and rollback record."
+                ? "Dry run is current. Create Backup will build a verified backup package and rollback record before any live write."
                 : "Dry run found blockers. Fix them before creating a backup package.";
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = BuildApplyUnavailableReason();
@@ -1117,13 +1226,14 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             ProgressMessage = "Creating verified backup.";
-            var snapshot = BuildProposalSnapshot();
+            var snapshot = BuildActiveProposalSnapshot();
             _preparedApplyOperation = await _applyService.PrepareAsync(_currentDryRunPlan, _installation, snapshot, CancellationToken.None);
             BackupStatus = $"Verified backup ready. Operation: {_preparedApplyOperation.OperationId}";
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = BuildApplyUnavailableReason();
             RefreshDryRunCommandState();
             await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
             ProgressMessage = "Verified backup ready.";
             AppendLog($"Prepared apply operation {_preparedApplyOperation.OperationId} with verified backup.");
         }
@@ -1138,6 +1248,7 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Backup preparation failed.";
             AppendLog("Backup preparation failed: " + ex.Message);
             await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
         }
     }
 
@@ -1146,29 +1257,31 @@ public sealed class MainViewModel : ObservableObject
         if (_installation is null || _currentDryRunPlan is null || _preparedApplyOperation is null)
             return;
 
-        if (MessageBox.Show(
-                BuildApplyConfirmationMessage(),
-                "Apply virtual-folder changes",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        var confirmation = new ApplyTestConfirmationDialog(BuildApplyConfirmationMessage())
         {
+            Owner = Application.Current.MainWindow,
+        };
+        if (confirmation.ShowDialog() != true)
+        {
+            BackupStatus = "Controlled Test Apply was cancelled before any live write.";
             return;
         }
 
         try
         {
             ProgressMessage = "Applying virtual-folder changes.";
-            var snapshot = BuildProposalSnapshot();
+            var snapshot = BuildActiveProposalSnapshot();
             _latestApplyResult = await _applyService.ApplyAsync(_currentDryRunPlan, _preparedApplyOperation, _installation, snapshot, CancellationToken.None);
-            BackupStatus = _latestApplyResult.RollbackAvailable
-                ? $"Apply finished with status {_latestApplyResult.Status}. Rollback is now available from Backups."
-                : $"Apply finished with status {_latestApplyResult.Status}.";
+            var details = await _historyService.TryLoadOperationAsync(_preparedApplyOperation.OperationId, CancellationToken.None);
+            BackupStatus = BuildApplyResultSummary(_latestApplyResult, details?.PostApplyVerification);
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = BuildApplyUnavailableReason();
             RefreshDryRunCommandState();
             await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
             ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
             AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
+            await PromptForPenumbraObservationAsync(details);
         }
         catch (Exception ex)
         {
@@ -1180,10 +1293,11 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Apply failed.";
             AppendLog("Apply failed: " + ex.Message);
             await _backups.RefreshAsync();
+            await RefreshRecoveryStatusAsync();
         }
     }
 
-    private ProposalSnapshot BuildProposalSnapshot()
+    private ProposalSnapshot BuildBaseProposalSnapshot()
     {
         if (_inventory is null)
             throw new InvalidOperationException("A scan is required before creating a dry run.");
@@ -1217,6 +1331,15 @@ public sealed class MainViewModel : ObservableObject
             validation);
     }
 
+    private ProposalSnapshot BuildActiveProposalSnapshot()
+    {
+        var baseSnapshot = BuildBaseProposalSnapshot();
+        if (_controlledTestRequest is null || _installation is null || _inventory is null)
+            return baseSnapshot;
+
+        return _controlledLiveTestService.BuildControlledSnapshot(_installation, _inventory, baseSnapshot, _controlledTestRequest);
+    }
+
     private void InvalidateDryRunState(string reason)
     {
         _currentDryRunPlan = null;
@@ -1242,7 +1365,11 @@ public sealed class MainViewModel : ObservableObject
         if (fileChange is null)
             return "No supported Penumbra virtual-folder writes are needed.";
 
+        var controlledSummary = _controlledTestRequest is null
+            ? "Workflow: standard review plan"
+            : $"Workflow: Controlled Test Apply ({_controlledTestRequest.StableScanIds.Count} selected mod(s) -> {_controlledTestRequest.TestFolderName})";
         return
+            $"{controlledSummary}{Environment.NewLine}" +
             $"Authoritative target: {Path.GetFileName(fileChange.TargetPath)}{Environment.NewLine}" +
             $"Record scope: {fileChange.ExactRecordKey}{Environment.NewLine}" +
             $"Affected mods: {plan.Summary.AffectedModCount}{Environment.NewLine}" +
@@ -1265,6 +1392,7 @@ public sealed class MainViewModel : ObservableObject
             ChecklistLine("Backup verified", _preparedApplyOperation is not null),
             ChecklistLine("Rollback prepared", _preparedApplyOperation is not null),
             ChecklistLine("Dry run current", _currentDryRunPlan?.Validation.Status == DryRunPlanValidationStatus.Valid),
+            ChecklistLine("Controlled test selection ready", _controlledTestRequest is not null),
         };
 
         if (_latestApplyResult is not null)
@@ -1283,6 +1411,9 @@ public sealed class MainViewModel : ObservableObject
 
         if (_currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
             return "Your plan is out of date. Create a new dry run before applying changes.";
+
+        if (_controlledTestRequest is null)
+            return "Choose controlled test mods before preparing a live alpha Apply.";
 
         if (_preparedApplyOperation is null)
             return "Create a verified backup package before applying changes.";
@@ -1313,14 +1444,131 @@ public sealed class MainViewModel : ObservableObject
                 "PenumbraOrganizer",
                 "Backups",
                 _preparedApplyOperation.OperationId.ToString("N"));
+        var selectedMods = _controlledTestRequest?.StableScanIds
+            .Select(id => Mods.FirstOrDefault(mod => mod.StableScanId == id))
+            .Where(mod => mod is not null)
+            .Cast<ModRowViewModel>()
+            .ToArray() ?? Array.Empty<ModRowViewModel>();
+        var currentFolders = string.Join(", ", selectedMods.Select(mod => $"{mod.Name}: {mod.CurrentVirtualFolder}"));
+        var proposedFolders = string.Join(", ", selectedMods.Select(mod => $"{mod.Name}: {_controlledTestRequest?.TestFolderName ?? mod.ProposedVirtualFolder}"));
         return
-            $"This will apply {_currentDryRunPlan?.Summary.AffectedModCount ?? 0} planned mod change(s).\n\n" +
-            $"Authoritative target: {target?.TargetPath ?? "Unknown"}\n" +
+            $"Selected mods: {selectedMods.Length}\n" +
+            $"Current folders: {currentFolders}\n" +
+            $"Proposed folders: {proposedFolders}\n\n" +
+            "Authoritative target: mod_data.db / LocalModData.Folder\n" +
+            $"Exact target path: {target?.TargetPath ?? "Unknown"}\n" +
             $"Backup location: {operationFolder}\n" +
-            "Rollback will be available after a confirmed write.\n\n" +
-            "Physical mod files, assets, collections, priorities, and FFXIV game files are not changed.\n\n" +
-            "Close FFXIV and XIVLauncher before continuing.\n\n" +
-            "Apply the planned virtual-folder changes now?";
+            $"Rollback readiness: {(_preparedApplyOperation is null ? "Not prepared" : "Prepared")}\n\n" +
+            "Physical mod files will not move.\n" +
+            "FFXIV must remain closed.\n" +
+            "This is an alpha controlled live test.\n\n" +
+            "Apply the controlled test changes now?";
+    }
+
+    private string BuildApplyResultSummary(ApplyResult applyResult, PostApplyVerificationResult? verification)
+    {
+        var anyWriteCompleted = applyResult.Files.Any(file => file.WriteCompleted);
+        var category = verification switch
+        {
+            { Succeeded: true, Warnings.Count: > 0 } => "Applied with verification warnings",
+            { Succeeded: true } => "Applied and verified",
+            _ when applyResult.Status == ApplyStatus.PartiallyCompleted => "Partially applied",
+            _ when applyResult.Status == ApplyStatus.Failed && anyWriteCompleted => "Failed after partial write",
+            _ when applyResult.Status == ApplyStatus.Failed => "Failed before write",
+            _ => applyResult.Status.ToString(),
+        };
+
+        var rollbackLine = applyResult.RollbackAvailable
+            ? "Rollback available from the Backups screen."
+            : "Rollback is not available because no live write was confirmed.";
+        var verificationLine = verification is null
+            ? "Post-Apply verification is still pending."
+            : verification.Succeeded
+                ? "Selected records were re-read and verified against the plan."
+                : string.Join(" ", verification.Errors.Take(2));
+        return $"{category}. {verificationLine} {rollbackLine}";
+    }
+
+    private async Task PromptForPenumbraObservationAsync(OperationPackageDetails? details)
+    {
+        if (_preparedApplyOperation is null || details?.PostApplyVerification?.Succeeded != true)
+            return;
+
+        var dialog = new PenumbraObservationDialog
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        if (dialog.ShowDialog() != true || dialog.Observation is null)
+            return;
+
+        await _operationObservationService.SaveObservationAsync(_preparedApplyOperation.OperationId, dialog.Observation.Value, CancellationToken.None);
+        await _backups.RefreshAsync();
+        await RefreshRecoveryStatusAsync();
+        AppendLog($"Recorded Penumbra UI observation for {_preparedApplyOperation.OperationId}: {dialog.Observation.Value}.");
+    }
+
+    private async Task RefreshRecoveryStatusAsync()
+    {
+        try
+        {
+            _incompleteOperations = await _operationRecoveryService.GetIncompleteOperationsAsync(CancellationToken.None);
+            RecoveryStatus = _incompleteOperations.Count == 0
+                ? "No incomplete backup, Apply, verification, or rollback operations are currently visible."
+                : $"{_incompleteOperations.Count} incomplete operation(s) detected. Latest: {_incompleteOperations[0].Summary}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to refresh incomplete-operation status");
+            RecoveryStatus = "Incomplete-operation status could not be refreshed.";
+        }
+
+        ReverifyIncompleteOperationCommand.RaiseCanExecuteChanged();
+        ContinueIncompleteVerificationCommand.RaiseCanExecuteChanged();
+        RollbackIncompleteOperationCommand.RaiseCanExecuteChanged();
+        ViewIncompleteOperationCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task ReverifyIncompleteOperationAsync()
+    {
+        var operation = _incompleteOperations.FirstOrDefault(candidate => candidate.RecommendedActions.Contains(RecoveryRecommendedAction.Reverify));
+        if (operation is null)
+            return;
+
+        await _operationRecoveryService.ReverifyBackupAsync(operation.OperationId, CancellationToken.None);
+        await _backups.RefreshAsync();
+        await RefreshRecoveryStatusAsync();
+        AppendLog($"Re-verified incomplete operation {operation.OperationId}.");
+    }
+
+    private async Task ContinueIncompleteVerificationAsync()
+    {
+        var operation = _incompleteOperations.FirstOrDefault(candidate => candidate.RecommendedActions.Contains(RecoveryRecommendedAction.ContinueVerification));
+        if (operation is null)
+            return;
+
+        await _operationRecoveryService.ContinueVerificationAsync(operation.OperationId, CancellationToken.None);
+        await _backups.RefreshAsync();
+        await RefreshRecoveryStatusAsync();
+        AppendLog($"Continued verification for operation {operation.OperationId}.");
+    }
+
+    private async Task RollbackIncompleteOperationAsync()
+    {
+        var operation = _incompleteOperations.FirstOrDefault(candidate => candidate.RecommendedActions.Contains(RecoveryRecommendedAction.RollBack));
+        if (operation is null)
+            return;
+
+        await _backups.RollbackOperationAsync(operation.OperationId);
+        await RefreshRecoveryStatusAsync();
+    }
+
+    private async Task ViewIncompleteOperationAsync()
+    {
+        if (_incompleteOperations.Count == 0)
+            return;
+
+        await _backups.FocusOperationAsync(_incompleteOperations[0].OperationId);
+        AppendLog($"Focused incomplete operation {_incompleteOperations[0].OperationId} in Backups.");
     }
 
     private void DebouncedSaveSession()
@@ -1354,7 +1602,9 @@ public sealed class MainViewModel : ObservableObject
         if (_inventory is null)
             return;
 
-        _reviewValidation = _organizerValidationService.Validate(_inventory, CurrentProposalRows().ToArray(), _organizerFolders.ToArray(), BuildOrganizationPreferences());
+        _reviewValidation = _controlledTestRequest is null
+            ? _organizerValidationService.Validate(_inventory, CurrentProposalRows().ToArray(), _organizerFolders.ToArray(), BuildOrganizationPreferences())
+            : BuildActiveProposalSnapshot().ValidationResult;
         ReviewRows.Clear();
         foreach (var row in FilterReviewRows(_reviewValidation.Rows))
             ReviewRows.Add(row);

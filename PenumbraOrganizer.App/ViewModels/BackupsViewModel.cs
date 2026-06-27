@@ -18,7 +18,7 @@ public sealed class BackupsViewModel : ObservableObject
     private string _statusMessage = "Backup history will appear here.";
     private string _selectionSummary = "Select an operation to view its summary and affected files.";
     private string _selectedOperationFolder = string.Empty;
-    private string _selectedBackupAvailability = "Rollback remains hidden in the public alpha UI.";
+    private string _selectedBackupAvailability = "Rollback details will appear after you select an operation.";
 
     public BackupsViewModel(
         IOperationHistoryService historyService,
@@ -108,6 +108,18 @@ public sealed class BackupsViewModel : ObservableObject
             _logger.LogError(ex, "Failed to refresh backup history");
             StatusMessage = "Backup history could not be loaded.";
         }
+    }
+
+    public async Task FocusOperationAsync(Guid operationId)
+    {
+        await RefreshAsync();
+        SelectedOperation = Operations.FirstOrDefault(operation => operation.OperationId == operationId) ?? Operations.FirstOrDefault();
+    }
+
+    public async Task RollbackOperationAsync(Guid operationId)
+    {
+        await FocusOperationAsync(operationId);
+        await RollbackSelectedAsync();
     }
 
     private async Task VerifySelectedBackupAsync()
@@ -202,7 +214,7 @@ public sealed class BackupsViewModel : ObservableObject
         {
             SelectionSummary = "Select an operation to view its summary and affected files.";
             SelectedOperationFolder = string.Empty;
-            SelectedBackupAvailability = "Rollback remains hidden in the public alpha UI.";
+            SelectedBackupAvailability = "Rollback details will appear after you select an operation.";
             return;
         }
 
@@ -213,7 +225,7 @@ public sealed class BackupsViewModel : ObservableObject
             {
                 SelectionSummary = "The selected backup package could not be loaded.";
                 SelectedOperationFolder = string.Empty;
-                SelectedBackupAvailability = "Rollback remains hidden in the public alpha UI.";
+                SelectedBackupAvailability = "Rollback details are unavailable for the selected operation.";
                 return;
             }
 
@@ -234,7 +246,8 @@ public sealed class BackupsViewModel : ObservableObject
                 $"Affected files: {details.Operation.AffectedFileCount}\n" +
                 $"Conflicts: {details.Operation.ConflictCount}\n" +
                 $"Failures: {details.Operation.FailureCount}\n" +
-                $"Penumbra version: {details.Operation.PenumbraVersion ?? "Unknown"}";
+                $"Penumbra version: {details.Operation.PenumbraVersion ?? "Unknown"}\n" +
+                $"Penumbra observation: {details.Operation.ObservationStatus?.ToString() ?? "Not recorded"}";
 
             if (details.Manifest is not null)
             {
@@ -247,7 +260,7 @@ public sealed class BackupsViewModel : ObservableObject
             _logger.LogError(ex, "Failed to load backup operation {OperationId}", selectedOperation.OperationId);
             SelectionSummary = "The selected backup package could not be read.";
             SelectedOperationFolder = string.Empty;
-            SelectedBackupAvailability = "Rollback remains hidden in the public alpha UI.";
+            SelectedBackupAvailability = "Rollback details are unavailable for the selected operation.";
         }
     }
 }

@@ -217,6 +217,15 @@ Normal flow:
 
 This flow must not introduce `.pmp` handling.
 
+For the first real-installation live test, the app now provides a dedicated `Controlled Test Apply` path on top of the same planner and recovery backend:
+
+- the user explicitly selects a tiny live-test set
+- the default limit is 3 mods
+- protected, ambiguous, and unsupported candidates stay unavailable
+- unselected proposals are excluded from the controlled dry run
+- the default test folder is `PenumbraOrganizer Test`
+- the final write target remains only `mod_data.db` `LocalModData.Folder`
+
 ## Rollback-first write architecture
 
 The rollback and verified-backup foundation is implemented, and the first guarded Apply path now sits on top of it.
@@ -238,8 +247,17 @@ The current recovery slice includes:
 - guarded Apply executor that writes only `LocalModData.Folder`
 - post-Apply verification and rollback availability tracking
 - privacy-conscious diagnostic export
+- post-Apply Penumbra UI observation capture
+- incomplete-operation detection for interrupted backup, Apply, verification, and rollback work
 
 Rollback remains independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
+
+If the app closes or crashes mid-operation, the next launch keeps the operation visible and offers narrow recovery actions instead of hiding it:
+
+- `Re-verify`
+- `Continue verification`
+- `Roll back`
+- `View details`
 
 The package layout and schema details are documented in `docs/BACKUP_AND_ROLLBACK_FORMAT.md`.
 

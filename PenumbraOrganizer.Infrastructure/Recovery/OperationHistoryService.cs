@@ -135,5 +135,7 @@ public sealed class OperationHistoryService : IOperationHistoryService
             operation.FailureCount,
             operation.OperationFolder,
             operation.HasRollbackTransaction,
-            operation.RollbackAvailable);
+            operation.RollbackAvailable,
+            operation.ObservationStatus,
+            operation.ObservationRecordedAtUtc);
 }

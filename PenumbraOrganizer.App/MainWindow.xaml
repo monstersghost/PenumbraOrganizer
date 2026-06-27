@@ -88,6 +88,19 @@
 
                     <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
                         <StackPanel>
+                            <TextBlock Text="Recovery" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,10,0,0" Text="{Binding RecoveryStatus}" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify" MinWidth="110" Height="30" Margin="0,0,8,8" />
+                                <Button Command="{Binding ContinueIncompleteVerificationCommand}" Content="Continue Verification" MinWidth="155" Height="30" Margin="0,0,8,8" />
+                                <Button Command="{Binding RollbackIncompleteOperationCommand}" Content="Roll Back" MinWidth="110" Height="30" Margin="0,0,8,8" />
+                                <Button Command="{Binding ViewIncompleteOperationCommand}" Content="View Details" MinWidth="110" Height="30" Margin="0,0,8,8" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
+                        <StackPanel>
                             <TextBlock Text="AI Export" FontSize="18" FontWeight="SemiBold" />
                             <TextBlock Margin="0,10,0,0"
                                        Text="The AI cannot inspect your inventory unless you upload the exported package. Copying the prompt alone is not enough."
@@ -460,9 +473,11 @@
                                         <ComboBoxItem Content="Unchanged" />
                                     </ComboBox>
                                     <Button Command="{Binding RefreshReviewCommand}" Content="Refresh Review" MinWidth="120" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding ConfigureControlledTestCommand}" Content="Choose Test Mods" MinWidth="145" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Test" MinWidth="110" Height="30" Margin="12,0,0,0" />
                                     <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="30" Margin="12,0,0,0" />
                                     <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Virtual-Folder Changes" MinWidth="220" Height="30" Margin="12,0,0,0" />
+                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Controlled Test Apply" MinWidth="180" Height="30" Margin="12,0,0,0" />
                                 </StackPanel>
                                 <Grid Margin="0,12,0,0">
                                     <Grid.ColumnDefinitions>
@@ -485,6 +500,13 @@
                                         </StackPanel>
                                     </Border>
                                 </Grid>
+                                <Border Margin="0,12,0,0" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="Controlled Test Workflow" FontWeight="SemiBold" />
+                                        <TextBlock Margin="0,8,0,0" Text="{Binding ControlledTestStatus}" TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,8,0,0" Text="{Binding ControlledTestSelectionSummary}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 

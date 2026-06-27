@@ -147,7 +147,7 @@ The Review Changes screen now exposes:
 * `Validate My Installation`
 * `Create Dry Run`
 * `Create Backup`
-* `Apply Virtual-Folder Changes`
+* `Controlled Test Apply`
 
 `Validate My Installation` is explicitly user-authorized and read-only unless the user separately chooses to create a verified backup later. It:
 
@@ -164,6 +164,26 @@ The guarded apply path is intentionally narrow:
 * no collection editing
 * no `.pmp` handling
 * no option-group, enabled-state, or priority edits
+
+The first real-installation live test now uses a controlled selection layer before dry-run creation:
+
+* the user explicitly chooses the mods
+* the default limit is 3 mods
+* the default test folder is `PenumbraOrganizer Test`
+* protected, ambiguous, and unsupported rows are excluded
+* unselected proposals are reset to their current folders in the controlled snapshot
+
+Before any live write, the confirmation modal must state:
+
+* selected mod count
+* current folders
+* proposed folders
+* authoritative target `mod_data.db / LocalModData.Folder`
+* verified backup location
+* rollback readiness
+* that physical mod files will not move
+* that FFXIV must be closed
+* that the workflow is an alpha test
 
 The Backups screen now exposes guarded rollback only for operations with:
 

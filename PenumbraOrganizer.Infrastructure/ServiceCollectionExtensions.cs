@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPlanInvalidationService, PlanInvalidationService>();
         services.AddSingleton<IDryRunValidationService, DryRunValidationService>();
         services.AddSingleton<IDryRunPlanner, DryRunPlanner>();
+        services.AddSingleton<IControlledLiveTestService, ControlledLiveTestService>();
         services.AddSingleton<IWritePermissionPreflightService, WritePermissionPreflightService>();
         services.AddSingleton<IRealInstallationValidationService, RealInstallationValidationService>();
         services.AddSingleton<IPostApplyVerificationService, PostApplyVerificationService>();
@@ -39,6 +40,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRollbackVerificationService, RollbackVerificationService>();
         services.AddSingleton<IBackupService, BackupService>();
         services.AddSingleton<IRollbackService, RollbackService>();
+        services.AddSingleton<IOperationRecoveryService, OperationRecoveryService>();
+        services.AddSingleton<IOperationObservationService, OperationObservationService>();
         services.AddSingleton<IApplyService, ApplyService>();
         services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
         return services;

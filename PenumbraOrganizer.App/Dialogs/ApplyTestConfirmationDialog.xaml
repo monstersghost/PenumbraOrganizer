@@ -1,0 +1,45 @@
+<Window x:Class="PenumbraOrganizer.App.Dialogs.ApplyTestConfirmationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Confirm Controlled Test Apply"
+        Height="520"
+        Width="760"
+        MinHeight="480"
+        MinWidth="700"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="Confirm Controlled Test Apply" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Margin="0,8,0,0"
+                       Text="Review the exact live-write scope below. This alpha test updates only Penumbra's authoritative virtual-folder database entry for the selected mods."
+                       TextWrapping="Wrap" />
+        </StackPanel>
+
+        <TextBox Grid.Row="1"
+                 Margin="0,16,0,16"
+                 Text="{Binding ConfirmationText}"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto" />
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel"
+                    Width="120"
+                    Height="34"
+                    Margin="0,0,10,0"
+                    Click="Cancel_Click" />
+            <Button Content="Apply Test Changes"
+                    Width="170"
+                    Height="34"
+                    Click="Apply_Click" />
+        </StackPanel>
+    </Grid>
+</Window>

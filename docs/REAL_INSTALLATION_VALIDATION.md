@@ -45,3 +45,15 @@ The validation summary reports:
 * write permission status
 * running-process blockers
 * whether the installation currently appears safe for Apply
+
+The current UI now also reports:
+
+* Penumbra state directory
+* mod-library root
+* installed Penumbra version
+* writable target status
+* backup readiness
+* rollback readiness
+* whether Apply is safe right now or only ready for backup preparation
+
+Beginner mode keeps raw hashes out of this screen. Advanced details may still show exact record keys and target paths for controlled-test candidates.

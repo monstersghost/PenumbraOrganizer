@@ -6,17 +6,72 @@ public sealed record RealInstallationValidationOptions(
     bool Authorized,
     bool CreateVerifiedBackup);
 
+public sealed record ControlledTestOptions(
+    string TestFolderName,
+    int MaximumSelectedModCount = 3);
+
+public sealed record ControlledTestRequest(
+    string TestFolderName,
+    IReadOnlyList<string> StableScanIds,
+    int MaximumSelectedModCount = 3);
+
+public enum ControlledTestCandidateStatus
+{
+    Eligible,
+    Protected,
+    Ambiguous,
+    Unsupported,
+}
+
+public sealed record ControlledTestCandidate(
+    string StableScanId,
+    string ModName,
+    string CurrentVirtualFolder,
+    string CurrentProposedFolder,
+    string ProposedTestFolder,
+    string PhysicalDirectory,
+    string TargetPath,
+    string RecordKey,
+    ControlledTestCandidateStatus Status,
+    string StatusMessage,
+    bool CanSelect);
+
+public sealed record ControlledTestSetup(
+    ControlledTestOptions Options,
+    IReadOnlyList<ControlledTestCandidate> Candidates,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings);
+
 public sealed record ValidationMappedRecord(
     string StableScanId,
     string ModName,
     string CurrentVirtualFolder,
     string ProposedVirtualFolder,
+    string PhysicalDirectory,
     string TargetPath,
     string RecordKey,
     bool Protected,
     OrganizerRowStatus ValidationStatus,
     bool RequiresWrite,
     IReadOnlyList<string> Warnings);
+
+public sealed record RealInstallationValidationReport(
+    string PenumbraStateDirectory,
+    string ModLibraryRoot,
+    string InstalledPenumbraVersion,
+    int ModsScanned,
+    int ProposedChanges,
+    int MappedRecords,
+    int MissingRecords,
+    int AmbiguousRecords,
+    int ProtectedMods,
+    int UnsupportedRecords,
+    int UnsupportedStructures,
+    string WritableTargetStatus,
+    string GameOrLauncherStatus,
+    string BackupReadiness,
+    string RollbackReadiness,
+    bool ApplyCurrentlySafe);
 
 public sealed record RealInstallationValidationResult(
     PenumbraInstallation Installation,
@@ -25,6 +80,7 @@ public sealed record RealInstallationValidationResult(
     DryRunPlan Plan,
     WritePermissionPreflightResult Preflight,
     IReadOnlyList<ValidationMappedRecord> Records,
+    RealInstallationValidationReport Report,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings,
     bool BackupCreated,
@@ -85,6 +141,14 @@ public sealed record DiagnosticExportResult(
     string ExportFolder,
     string ZipPath,
     IReadOnlyList<string> IncludedItems);
+
+public enum PenumbraUiObservationStatus
+{
+    NotCheckedYet,
+    AppearedImmediately,
+    AppearedAfterReloadOrRestart,
+    DidNotAppear,
+}
 
 public sealed class DiagnosticSummaryDocument
 {
