@@ -46,6 +46,8 @@ The first live write path now adds:
 - no `.pmp` packages are handled
 - no collections are modified
 - no `organization.json` writes are performed in this milestone
+  Confirmed source of truth: `mod_data.db` -> `LocalModData` -> `Folder`
+  Current inference boundary: `organization.json` appears to persist presentation or tree-state data, not the authoritative mod-to-folder mapping
 - scanning remains read-only
 - in-memory proposals do not write to Penumbra
 - protected items are immutable
@@ -150,8 +152,9 @@ The rollback foundation milestone is complete and the first guarded Apply founda
 
 Remaining blockers before wider public Apply exposure are:
 
-- proving whether `mod_filesystem\organization.json` must also be written
+- proving whether `mod_filesystem\organization.json` is ever required for immediate Penumbra UI consistency instead of remaining read-only
 - deciding whether Penumbra rebuilds any derived folder-tree presentation automatically
+- expanding real-installation validation coverage without widening automated test scope
 - expanding safe UI beyond the narrow `LocalModData.Folder` path
 - deliberate public-release validation beyond fixture-only automation
 

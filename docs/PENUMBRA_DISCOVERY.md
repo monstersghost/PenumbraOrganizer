@@ -43,3 +43,19 @@ Selections are validated structurally:
 ## Unsupported paths
 
 Paths that look like Wine or compatibility-layer Linux layouts are reported as unsupported in version 1. They may be inventoried later, but the app does not write to them in milestone 1.
+
+## Real-installation validation
+
+The app now includes an explicit `Validate My Installation` workflow.
+
+This mode is user-authorized and does not run during automated tests. When triggered from the GUI it may:
+
+- detect Penumbra state paths
+- read installed Penumbra version
+- rescan `mod_data.db`
+- resolve installed mods and authoritative `LocalModData` records
+- build a fresh dry run from the current proposal snapshot
+- run exact-target permission and running-process checks
+- report whether the installation currently appears safe for guarded Apply
+
+This mode does not Apply automatically.

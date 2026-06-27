@@ -2,6 +2,7 @@ namespace PenumbraOrganizer.App.ViewModels;
 
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Windows;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.App.Commands;
 using PenumbraOrganizer.Core.Interfaces;
@@ -11,6 +12,7 @@ public sealed class BackupsViewModel : ObservableObject
 {
     private readonly IOperationHistoryService _historyService;
     private readonly IBackupVerificationService _backupVerificationService;
+    private readonly IRollbackService _rollbackService;
     private readonly ILogger<BackupsViewModel> _logger;
     private BackupOperationRowViewModel? _selectedOperation;
     private string _statusMessage = "Backup history will appear here.";
@@ -21,10 +23,12 @@ public sealed class BackupsViewModel : ObservableObject
     public BackupsViewModel(
         IOperationHistoryService historyService,
         IBackupVerificationService backupVerificationService,
+        IRollbackService rollbackService,
         ILogger<BackupsViewModel> logger)
     {
         _historyService = historyService;
         _backupVerificationService = backupVerificationService;
+        _rollbackService = rollbackService;
         _logger = logger;
 
         Operations = new ObservableCollection<BackupOperationRowViewModel>();
@@ -32,6 +36,7 @@ public sealed class BackupsViewModel : ObservableObject
         RefreshCommand = new AsyncRelayCommand(RefreshAsync);
         VerifyBackupCommand = new AsyncRelayCommand(VerifySelectedBackupAsync, () => SelectedOperation is not null);
         OpenBackupFolderCommand = new AsyncRelayCommand(OpenSelectedFolderAsync, () => SelectedOperation is not null);
+        RollbackCommand = new AsyncRelayCommand(RollbackSelectedAsync, CanRollbackSelected);
     }
 
     public ObservableCollection<BackupOperationRowViewModel> Operations { get; }
@@ -39,6 +44,7 @@ public sealed class BackupsViewModel : ObservableObject
     public AsyncRelayCommand RefreshCommand { get; }
     public AsyncRelayCommand VerifyBackupCommand { get; }
     public AsyncRelayCommand OpenBackupFolderCommand { get; }
+    public AsyncRelayCommand RollbackCommand { get; }
 
     public BackupOperationRowViewModel? SelectedOperation
     {
@@ -50,6 +56,7 @@ public sealed class BackupsViewModel : ObservableObject
 
             VerifyBackupCommand.RaiseCanExecuteChanged();
             OpenBackupFolderCommand.RaiseCanExecuteChanged();
+            RollbackCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedOperationAsync(value);
         }
     }
@@ -122,6 +129,57 @@ public sealed class BackupsViewModel : ObservableObject
         }
     }
 
+    private bool CanRollbackSelected()
+        => SelectedOperation is not null &&
+           SelectedOperation.RollbackAvailable &&
+           string.Equals(SelectedOperation.BackupVerified, "Yes", StringComparison.Ordinal);
+
+    private async Task RollbackSelectedAsync()
+    {
+        if (SelectedOperation is null)
+            return;
+
+        var details = await _historyService.TryLoadOperationAsync(SelectedOperation.OperationId, CancellationToken.None);
+        if (details is null || !details.Operation.RollbackAvailable || details.RollbackTransaction is null)
+        {
+            StatusMessage = "Rollback is not available for the selected operation.";
+            return;
+        }
+
+        var summary =
+            $"Roll back {details.Operation.AffectedModCount ?? details.Operation.AffectedFileCount} affected mod change(s)?\n\n" +
+            "This restores Penumbra virtual-folder state only. Physical mod files are not moved.\n\n" +
+            $"Backup verified: {(details.Operation.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No")}\n" +
+            $"Current rollback status: {details.Operation.RollbackStatus}";
+        if (MessageBox.Show(
+                summary,
+                "Roll Back Changes",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Checking current hashes and restoring eligible files.";
+            var result = await _rollbackService.ExecuteAsync(SelectedOperation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+            await RefreshAsync();
+            StatusMessage =
+                $"Rollback finished with status {result.Status}. " +
+                $"Restored: {result.Files.Count(file => file.Status == RollbackFileStatus.Restored)}, " +
+                $"Already restored: {result.Files.Count(file => file.Status == RollbackFileStatus.AlreadyRestored)}, " +
+                $"Skipped: {result.Files.Count(file => file.Status == RollbackFileStatus.Skipped)}, " +
+                $"Conflicts: {result.Files.Count(file => file.Status == RollbackFileStatus.Conflict)}, " +
+                $"Failures: {result.FailureCount}.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to roll back operation {OperationId}", SelectedOperation.OperationId);
+            StatusMessage = "Rollback failed before completion.";
+        }
+    }
+
     private Task OpenSelectedFolderAsync()
     {
         if (SelectedOperation is null)
@@ -163,8 +221,8 @@ public sealed class BackupsViewModel : ObservableObject
             SelectedBackupAvailability = details.RollbackTransaction is null
                 ? "Rollback is not yet available for this operation."
                 : details.Operation.RollbackAvailable
-                    ? "Rollback data is available for this operation. The Backups screen stays read-only in this build."
-                    : "A rollback transaction exists, but rollback remains hidden until Apply finishes successfully.";
+                    ? "Rollback is available. The app will verify current hashes and skip conflicts instead of overwriting them."
+                    : "A rollback transaction exists, but rollback stays disabled until Apply finishes successfully.";
             SelectionSummary =
                 $"Operation ID: {details.Operation.OperationId}\n" +
                 $"Created: {details.Operation.CreatedAtUtc:u}\n" +
@@ -212,6 +270,7 @@ public sealed class BackupOperationRowViewModel
     public string RollbackStatus => _entry.HasRollbackTransaction ? _entry.RollbackStatus.ToString() : "Not available";
     public int Conflicts => _entry.ConflictCount;
     public string OperationFolder => _entry.OperationFolder;
+    public bool RollbackAvailable => _entry.RollbackAvailable;
 }
 
 public sealed class BackupAffectedFileViewModel

@@ -1,0 +1,439 @@
+namespace PenumbraOrganizer.Tests.Integration;
+
+using System.Security.Cryptography;
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
+using PenumbraOrganizer.Core.Interfaces;
+using PenumbraOrganizer.Core.Models;
+using PenumbraOrganizer.Core.Services;
+using PenumbraOrganizer.Infrastructure.Apply;
+using PenumbraOrganizer.Infrastructure.Diagnostics;
+using PenumbraOrganizer.Infrastructure.Exports;
+using PenumbraOrganizer.Infrastructure.Recovery;
+using PenumbraOrganizer.Infrastructure.Scanning;
+using PenumbraOrganizer.Infrastructure.Sessions;
+using PenumbraOrganizer.Tests.Fixtures;
+
+public sealed class ValidationAndImportTests
+{
+    [Fact]
+    public async Task OrganizationJson_IsIgnoredForAuthoritativeMapping_AndNoWriteTargetsPointToIt()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""{"Folders":[{"Name":"Stale/Presentation","Identifier":"Mapped Mod"}]}""");
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        context.Inventory!.Mods.Single().CurrentVirtualFolder.Should().Be("Current/FromDb");
+        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RealValidation_RequiresExplicitAuthorization()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Read Only", """{"FileVersion":3,"Name":"Read Only","Author":"Author"}""");
+        context.Fixture.WriteModData(("Read Only", "Current/Folder"));
+
+        var act = () => context.RealValidationService.ValidateAsync(
+            context.Installation,
+            proposalSnapshot: null,
+            new RealInstallationValidationOptions(Authorized: false, CreateVerifiedBackup: false),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*explicit user authorization*");
+    }
+
+    [Fact]
+    public async Task RealValidation_ReadOnlyMode_MakesNoWrites_ToPenumbraState()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Validation Mod", """{"FileVersion":3,"Name":"Validation Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Validation Mod", "Current/Folder"));
+        await context.ScanAsync();
+
+        var beforeHash = HashFile(context.Fixture.ModDataDbPath);
+        var snapshot = context.BuildSnapshot(("Validation Mod", "Target/Folder"));
+        var result = await context.RealValidationService.ValidateAsync(
+            context.Installation,
+            snapshot,
+            new RealInstallationValidationOptions(Authorized: true, CreateVerifiedBackup: false),
+            CancellationToken.None);
+
+        result.Plan.FileChanges.Should().ContainSingle();
+        HashFile(context.Fixture.ModDataDbPath).Should().Be(beforeHash);
+        Directory.Exists(context.BackupsRoot).Should().BeTrue();
+        Directory.EnumerateDirectories(context.BackupsRoot).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RealValidation_CanOptionallyCreateVerifiedBackup()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Backup Mod", """{"FileVersion":3,"Name":"Backup Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Backup Mod", "Current/Folder"));
+        await context.ScanAsync();
+
+        var snapshot = context.BuildSnapshot(("Backup Mod", "Target/Folder"));
+        var result = await context.RealValidationService.ValidateAsync(
+            context.Installation,
+            snapshot,
+            new RealInstallationValidationOptions(Authorized: true, CreateVerifiedBackup: true),
+            CancellationToken.None);
+
+        result.BackupCreated.Should().BeTrue();
+        result.BackupOperationId.Should().NotBeNull();
+        var details = await context.HistoryService.TryLoadOperationAsync(result.BackupOperationId!.Value, CancellationToken.None);
+        details.Should().NotBeNull();
+        details!.Operation.VerificationStatus.Should().Be(OperationVerificationStatus.Verified);
+    }
+
+    [Fact]
+    public async Task Preflight_BlocksRunningProcesses_AndLowDiskSpace()
+    {
+        using var context = await ValidationContext.CreateAsync(processes: ["ffxiv_dx11"], freeSpaceBytes: 1);
+        context.Fixture.CreateMod("Blocked Mod", """{"FileVersion":3,"Name":"Blocked Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Blocked Mod", "Current/Folder"));
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Blocked Mod", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var preflight = await context.PreflightService.CheckAsync(plan, CancellationToken.None);
+
+        preflight.Succeeded.Should().BeFalse();
+        preflight.BlockingProcesses.Should().Contain("ffxiv_dx11");
+        preflight.Errors.Should().Contain(error => error.Contains("Not enough free disk space", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task AiImport_ImportsValidRows_AndPreservesManualOverrides()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Creator A"}""");
+        context.Fixture.CreateMod("Beta", """{"FileVersion":3,"Name":"Beta","Author":"Creator B"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"), ("Beta", "Current/Beta"));
+        await context.ScanAsync();
+
+        var proposals = context.BuildSnapshot(("Alpha", "Current/Alpha"), ("Beta", "Manual/Keep")).Proposals.ToArray();
+        proposals.Single(proposal => proposal.StableScanId == "Beta").Source = OrganizerProposalSource.Manual;
+
+        var inventoryPath = WriteInventoryExport(context.RootPath, context.Inventory!, "export-123");
+        var proposalPath = WriteProposal(context.RootPath, "export-123",
+        [
+            new AiProposalRow
+            {
+                ScanId = "Alpha",
+                Protected = false,
+                CurrentVirtualFolder = "Current/Alpha",
+                ProposedVirtualFolder = "Imported/Alpha",
+                ProposedType = "TypeA",
+                ProposedCreator = "Creator A",
+                Action = "move",
+                Confidence = "high",
+                Reason = "Move alpha.",
+            },
+            new AiProposalRow
+            {
+                ScanId = "Beta",
+                Protected = false,
+                CurrentVirtualFolder = "Current/Beta",
+                ProposedVirtualFolder = "Imported/Beta",
+                ProposedType = "TypeB",
+                ProposedCreator = "Creator B",
+                Action = "move",
+                Confidence = "medium",
+                Reason = "Move beta.",
+            },
+        ]);
+
+        var result = await context.ImportService.ImportAsync(proposalPath, inventoryPath, proposals, CancellationToken.None);
+
+        result.ImportedCount.Should().Be(1);
+        result.ManualOverrideCount.Should().Be(1);
+        result.Errors.Should().BeEmpty();
+        result.ImportedRows.Single().StableScanId.Should().Be("Alpha");
+        result.Decisions.Should().Contain(decision => decision.ScanId == "Beta" && decision.Decision == AiImportDecisionKind.ManualOverride);
+    }
+
+    [Fact]
+    public async Task AiImport_WrongExportId_IsRejected()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Creator"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"));
+        await context.ScanAsync();
+
+        var inventoryPath = WriteInventoryExport(context.RootPath, context.Inventory!, "export-expected");
+        var proposalPath = WriteProposal(context.RootPath, "export-actual",
+        [
+            new AiProposalRow
+            {
+                ScanId = "Alpha",
+                Protected = false,
+                CurrentVirtualFolder = "Current/Alpha",
+                ProposedVirtualFolder = "Imported/Alpha",
+                ProposedType = "TypeA",
+                ProposedCreator = "Creator",
+                Action = "move",
+                Confidence = "high",
+                Reason = "Move alpha.",
+            },
+        ]);
+
+        var result = await context.ImportService.ImportAsync(proposalPath, inventoryPath, context.BuildSnapshot(("Alpha", "Current/Alpha")).Proposals, CancellationToken.None);
+
+        result.Errors.Should().Contain(issue => issue.Code == "SourceExportIdMismatch");
+        result.RejectedCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task DiagnosticExport_RedactsAbsolutePaths_AndOmitsStateDatabase()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Creator"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"));
+        await context.ScanAsync();
+        var summary = await context.Diagnostics.CreateAsync(
+            new DiagnosticExportRequest(
+                "test-version",
+                context.Installation,
+                context.Inventory,
+                ReviewValidation: null,
+                DryRunPlan: null,
+                ApplyOperation: null,
+                ApplyResult: null,
+                RealInstallationValidation: null,
+                Operations: Array.Empty<OperationHistoryEntry>(),
+                ActivityLog: $"Log path {context.Fixture.ModDataDbPath} under {context.Fixture.ModRoot}"),
+            CancellationToken.None);
+
+        File.Exists(summary.ZipPath).Should().BeTrue();
+        var combined = string.Join(
+            "\n",
+            System.IO.Compression.ZipFile.OpenRead(summary.ZipPath).Entries.Select(entry =>
+            {
+                using var reader = new StreamReader(entry.Open());
+                return reader.ReadToEnd();
+            }));
+
+        combined.Should().NotContain(context.Fixture.ModDataDbPath.Replace('\\', '/'));
+        combined.Should().NotContain(context.Fixture.ModRoot.Replace('\\', '/'));
+        combined.Should().Contain("[penumbra-state]");
+        combined.Should().Contain("[mod-library]");
+        combined.Should().NotContain("mod_data.db");
+    }
+
+    [Fact]
+    public void AppManifest_RemainsAsInvoker_WithoutElevation()
+    {
+        var manifestPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "PenumbraOrganizer.App", "app.manifest"));
+        var manifest = File.ReadAllText(manifestPath);
+
+        manifest.Should().Contain("asInvoker");
+        manifest.Should().NotContain("requireAdministrator");
+    }
+
+    private static string WriteInventoryExport(string rootPath, ScanInventory inventory, string sourceExportId)
+    {
+        var path = Path.Combine(rootPath, "Penumbra_Mod_Inventory.json");
+        var payload = new AiInventoryExport
+        {
+            SourceExportId = sourceExportId,
+            GeneratedAtUtc = inventory.ScannedAtUtc,
+            InstalledPenumbraVersion = inventory.Installation.InstalledVersion,
+            OrganizationPreferences = new AiOrganizationPreferences
+            {
+                Strategy = OrganizationStrategy.PreserveAndClean.ToString(),
+                UseTypeFolders = false,
+                UseCreatorFolders = false,
+                FolderOrder = Array.Empty<string>(),
+                FixedRootFolder = null,
+                PreserveMeaningfulExistingFolders = true,
+                FlattenTemporarySourceFolders = true,
+                NormalizeCreatorAliases = true,
+                UnknownCreatorBehavior = UnknownCreatorBehavior.PreserveCurrent.ToString(),
+                UnknownTypeBehavior = UnknownTypeBehavior.PreserveCurrent.ToString(),
+                UncertainClassificationBehavior = UncertainClassificationBehavior.Review.ToString(),
+                PreserveCurrentFolderWhenUncertain = true,
+                CustomPattern = null,
+            },
+            Mods = inventory.Mods.Select(mod => new AiInventoryMod
+            {
+                ScanId = mod.StableScanId,
+                ProtectedRow = mod.Protected,
+                CurrentVirtualFolder = mod.CurrentVirtualFolder,
+                Name = mod.Name,
+                Author = mod.Author,
+            }).ToArray(),
+        };
+
+        File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        return path;
+    }
+
+    private static string WriteProposal(string rootPath, string sourceExportId, IReadOnlyList<AiProposalRow> rows)
+    {
+        var path = Path.Combine(rootPath, "Penumbra_AI_Proposal.json");
+        var payload = new AiProposalDocument
+        {
+            FormatVersion = AiExchangeFormat.CurrentFormatVersion,
+            SourceExportId = sourceExportId,
+            Summary = new AiProposalSummary
+            {
+                TotalRowsReceived = rows.Count,
+                TotalRowsReturned = rows.Count,
+                ProtectedRows = rows.Count(row => row.Protected),
+                ChangedRows = rows.Count(row => !string.Equals(row.CurrentVirtualFolder, row.ProposedVirtualFolder, StringComparison.Ordinal)),
+                UnchangedRows = rows.Count(row => string.Equals(row.CurrentVirtualFolder, row.ProposedVirtualFolder, StringComparison.Ordinal)),
+                ReviewRows = rows.Count(row => string.Equals(row.Action, "review", StringComparison.Ordinal)),
+            },
+            Proposals = rows,
+        };
+
+        File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        return path;
+    }
+
+    private static string HashFile(string path)
+        => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private sealed class ValidationContext : IDisposable
+    {
+        private ValidationContext(TemporaryPenumbraFixture fixture, IReadOnlyList<string> processes, long? freeSpaceBytes)
+        {
+            Fixture = fixture;
+            RootPath = fixture.RootPath;
+            BackupsRoot = Path.Combine(RootPath, "LocalAppData", "PenumbraOrganizer", "Backups");
+
+            Installation = new PenumbraInstallation(
+                fixture.PenumbraJsonPath,
+                fixture.PenumbraConfigPath,
+                fixture.ModRoot,
+                fixture.PluginAssemblyPath,
+                fixture.PluginManifestPath,
+                "1.6.1.10",
+                DiscoveryConfidence.High,
+                Array.Empty<DiscoveryEvidence>(),
+                Array.Empty<string>());
+
+            var protectionService = new ProtectionService();
+            ScanService = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, protectionService);
+            ProposalValidationService = new OrganizerProposalValidationService();
+            Writer = new PenumbraVirtualFolderWriter();
+            ValidationService = new DryRunValidationService(new PlanInvalidationService(Writer));
+            Planner = new DryRunPlanner(Writer, ValidationService);
+            PreflightService = new WritePermissionPreflightService(
+                BackupsRoot,
+                () => processes,
+                _ => freeSpaceBytes ?? long.MaxValue);
+            HistoryService = new OperationHistoryService(BackupsRoot);
+            var backupVerification = new BackupVerificationService(BackupsRoot, HistoryService);
+            var rollbackVerification = new RollbackVerificationService(BackupsRoot, HistoryService);
+            var backupService = new BackupService(BackupsRoot, backupVerification, HistoryService);
+            var rollbackService = new RollbackService(BackupsRoot, rollbackVerification, HistoryService);
+            var applyService = new ApplyService(ValidationService, PreflightService, backupService, rollbackService, new PostApplyVerificationService(), HistoryService, BackupsRoot);
+            RealValidationService = new RealInstallationValidationService(ScanService, Planner, PreflightService, applyService);
+            ImportService = new AiProposalImportService(new AiProposalValidationService());
+            Diagnostics = new DiagnosticExportService();
+        }
+
+        public TemporaryPenumbraFixture Fixture { get; }
+        public string RootPath { get; }
+        public string BackupsRoot { get; }
+        public PenumbraInstallation Installation { get; }
+        public IPenumbraScanService ScanService { get; }
+        public IOrganizerProposalValidationService ProposalValidationService { get; }
+        public PenumbraVirtualFolderWriter Writer { get; }
+        public IDryRunValidationService ValidationService { get; }
+        public IDryRunPlanner Planner { get; }
+        public IWritePermissionPreflightService PreflightService { get; }
+        public OperationHistoryService HistoryService { get; }
+        public IRealInstallationValidationService RealValidationService { get; }
+        public IAiProposalImportService ImportService { get; }
+        public IDiagnosticExportService Diagnostics { get; }
+        public ScanInventory? Inventory { get; private set; }
+
+        public static Task<ValidationContext> CreateAsync(IReadOnlyList<string>? processes = null, long? freeSpaceBytes = null)
+        {
+            var fixture = new TemporaryPenumbraFixture();
+            fixture.WriteMainConfig();
+            fixture.WritePluginManifest();
+            return Task.FromResult(new ValidationContext(fixture, processes ?? Array.Empty<string>(), freeSpaceBytes));
+        }
+
+        public async Task ScanAsync()
+        {
+            Inventory = await ScanService.ScanAsync(Installation, null, CancellationToken.None);
+        }
+
+        public ProposalSnapshot BuildSnapshot(params (string StableScanId, string ProposedFolder)[] changes)
+        {
+            var proposals = Inventory!.Mods
+                .OrderBy(mod => mod.StableScanId, StringComparer.Ordinal)
+                .Select(mod =>
+                {
+                    var changed = changes.FirstOrDefault(change => change.StableScanId == mod.StableScanId);
+                    return new OrganizerModProposal
+                    {
+                        StableScanId = mod.StableScanId,
+                        Name = mod.Name,
+                        CurrentVirtualFolder = mod.CurrentVirtualFolder,
+                        ProposedVirtualFolder = string.IsNullOrWhiteSpace(changed.ProposedFolder) ? mod.CurrentVirtualFolder : changed.ProposedFolder,
+                        OriginalCreator = mod.Author,
+                        OrganizerCreatorLabel = string.IsNullOrWhiteSpace(mod.Author) ? "Unknown creator" : mod.Author,
+                        OrganizerTypeLabel = "Unknown type",
+                        Protected = mod.Protected,
+                        OriginalProtected = mod.Protected,
+                        Source = OrganizerProposalSource.Manual,
+                    };
+                })
+                .ToArray();
+
+            var folders = proposals
+                .Select(proposal => proposal.ProposedVirtualFolder)
+                .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(folder => new OrganizerFolder(folder, true, false))
+                .ToArray();
+            var preferences = OrganizationPreferences.DefaultManual;
+            var validation = ProposalValidationService.Validate(Inventory!, proposals, folders, preferences);
+            var session = new OrganizerSessionDocument
+            {
+                ScanIdentity = OrganizerSessionService.BuildScanIdentity(Inventory!),
+                ScanTimestampUtc = Inventory!.ScannedAtUtc,
+                InstallationIdentity = OrganizerSessionService.BuildInstallationIdentity(Installation),
+                InstalledPenumbraVersion = Installation.InstalledVersion,
+                OrganizationPreferences = preferences,
+                ProposedFolders = folders.Select(folder => new OrganizerSessionFolder(folder.Path, folder.ManuallyCreated, folder.Protected)).ToArray(),
+                Mods = proposals.Select(proposal => new OrganizerSessionMod(
+                    proposal.StableScanId,
+                    proposal.CurrentVirtualFolder,
+                    proposal.ProposedVirtualFolder,
+                    proposal.Protected,
+                    proposal.OrganizerCreatorLabel,
+                    proposal.OrganizerTypeLabel,
+                    proposal.Source,
+                    proposal.NeedsReview)).ToArray(),
+            };
+
+            return new ProposalSnapshot(
+                OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
+                OrganizerSessionService.BuildSessionIdentity(session),
+                preferences,
+                proposals,
+                folders,
+                validation);
+        }
+
+        public void Dispose()
+        {
+            Fixture.Dispose();
+        }
+    }
+}

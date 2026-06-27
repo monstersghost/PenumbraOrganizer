@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -25,6 +26,10 @@ public sealed class MainViewModel : ObservableObject
     private readonly IOrganizerSessionService _organizerSessionService;
     private readonly IDryRunPlanner _dryRunPlanner;
     private readonly IApplyService _applyService;
+    private readonly IRealInstallationValidationService _realInstallationValidationService;
+    private readonly IAiProposalImportService _aiProposalImportService;
+    private readonly IDiagnosticExportService _diagnosticExportService;
+    private readonly IOperationHistoryService _historyService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
@@ -52,23 +57,31 @@ public sealed class MainViewModel : ObservableObject
     private DryRunPlan? _currentDryRunPlan;
     private ApplyOperation? _preparedApplyOperation;
     private ApplyResult? _latestApplyResult;
+    private RealInstallationValidationResult? _lastRealInstallationValidation;
     private int _changedProposalCount;
     private int _needsReviewCount;
     private int _installedModCount;
     private int _protectedModCount;
     private int _collectionCount;
     private int _warningCount;
+    private string _installationValidationStatus = "Real-installation validation has not been run yet.";
+    private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
+    private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
         IPenumbraScanService scanService,
         IPenumbraCompatibilityService compatibilityService,
         IInventoryExportService inventoryExportService,
+        IAiProposalImportService aiProposalImportService,
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
         IDryRunPlanner dryRunPlanner,
         IApplyService applyService,
+        IRealInstallationValidationService realInstallationValidationService,
+        IDiagnosticExportService diagnosticExportService,
+        IOperationHistoryService historyService,
         BackupsViewModel backups,
         ILogger<MainViewModel> logger)
     {
@@ -76,11 +89,15 @@ public sealed class MainViewModel : ObservableObject
         _scanService = scanService;
         _compatibilityService = compatibilityService;
         _inventoryExportService = inventoryExportService;
+        _aiProposalImportService = aiProposalImportService;
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
         _dryRunPlanner = dryRunPlanner;
         _applyService = applyService;
+        _realInstallationValidationService = realInstallationValidationService;
+        _diagnosticExportService = diagnosticExportService;
+        _historyService = historyService;
         _backups = backups;
         _logger = logger;
 
@@ -101,10 +118,13 @@ public sealed class MainViewModel : ObservableObject
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null);
         CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
+        ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
         OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
         CopyMasterPromptCommand = new AsyncRelayCommand(CopyMasterPromptAsync, () => _lastExport is not null);
         CopyInventoryFilePathCommand = new AsyncRelayCommand(CopyInventoryFilePathAsync, () => _lastExport is not null);
         CopyCompleteAiRequestCommand = new AsyncRelayCommand(CopyCompleteAiRequestAsync, () => _lastExport is not null);
+        ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
+        CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
         CreateProposedFolderCommand = new RelayCommand(_ => CreateProposedFolder(), _ => CanCreateProposedFolder());
         AssignSelectedToSelectedFolderCommand = new RelayCommand(_ => AssignSelectedToSelectedFolder(), _ => SelectedProposedFolder is not null && SelectedOrganizerMods.Count > 0);
@@ -131,10 +151,13 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
+    public AsyncRelayCommand ImportAiProposalCommand { get; }
     public AsyncRelayCommand OpenExportFolderCommand { get; }
     public AsyncRelayCommand CopyMasterPromptCommand { get; }
     public AsyncRelayCommand CopyInventoryFilePathCommand { get; }
     public AsyncRelayCommand CopyCompleteAiRequestCommand { get; }
+    public AsyncRelayCommand ValidateInstallationCommand { get; }
+    public AsyncRelayCommand CreateDiagnosticPackageCommand { get; }
     public RelayCommand SelectStrategyCommand { get; }
     public RelayCommand CreateProposedFolderCommand { get; }
     public RelayCommand AssignSelectedToSelectedFolderCommand { get; }
@@ -313,6 +336,24 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _applyChecklist, value);
     }
 
+    public string InstallationValidationStatus
+    {
+        get => _installationValidationStatus;
+        private set => SetProperty(ref _installationValidationStatus, value);
+    }
+
+    public string AiImportStatus
+    {
+        get => _aiImportStatus;
+        private set => SetProperty(ref _aiImportStatus, value);
+    }
+
+    public string DiagnosticStatus
+    {
+        get => _diagnosticStatus;
+        private set => SetProperty(ref _diagnosticStatus, value);
+    }
+
     public int ReviewTotal => _reviewValidation?.Summary.TotalMods ?? 0;
     public int ReviewChanged => _reviewValidation?.Summary.Changed ?? 0;
     public int ReviewUnchanged => _reviewValidation?.Summary.Unchanged ?? 0;
@@ -406,6 +447,7 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
             AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
             CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
+            ImportAiProposalCommand.RaiseCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -424,11 +466,13 @@ public sealed class MainViewModel : ObservableObject
         {
             ProgressMessage = "Creating AI review package";
             _lastExport = await _inventoryExportService.CreateAiReviewPackageAsync(_inventory, CancellationToken.None, BuildOrganizationPreferences());
+            ImportAiProposalCommand.RaiseCanExecuteChanged();
             OpenExportFolderCommand.RaiseCanExecuteChanged();
             CopyMasterPromptCommand.RaiseCanExecuteChanged();
             CopyInventoryFilePathCommand.RaiseCanExecuteChanged();
             CopyCompleteAiRequestCommand.RaiseCanExecuteChanged();
             AppendLog($"Created AI review package at {_lastExport.ExportFolder}");
+            AiImportStatus = "AI review package ready. Import a Penumbra_AI_Proposal.json file to merge validated suggestions into this session.";
             ProgressMessage = "AI review package created.";
 
             var dialog = new ExportPackageDialog(_lastExport, this)
@@ -447,6 +491,168 @@ public sealed class MainViewModel : ObservableObject
                 "Export failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+        }
+    }
+
+    private async Task ImportAiProposalAsync()
+    {
+        if (_inventory is null || _lastExport is null)
+            return;
+
+        var dialog = new OpenFileDialog
+        {
+            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
+            Title = "Import Penumbra_AI_Proposal.json",
+            FileName = "Penumbra_AI_Proposal.json",
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
+            return;
+
+        try
+        {
+            ProgressMessage = "Importing AI proposal.";
+            var import = await _aiProposalImportService.ImportAsync(
+                dialog.FileName,
+                _lastExport.InventoryPath,
+                CurrentProposalRows().ToArray(),
+                CancellationToken.None);
+
+            if (import.Errors.Count > 0 && import.ImportedRows.Count == 0)
+            {
+                AiImportStatus = import.Summary;
+                ProgressMessage = "AI proposal import blocked.";
+                AppendLog("AI proposal import blocked: " + string.Join(" | ", import.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase)));
+                MessageBox.Show(import.Summary, "AI proposal blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            foreach (var imported in import.ImportedRows)
+            {
+                var row = Mods.FirstOrDefault(candidate => candidate.StableScanId == imported.StableScanId);
+                if (row is null)
+                    continue;
+
+                row.Proposal.ProposedVirtualFolder = imported.ProposedVirtualFolder;
+                row.Proposal.OrganizerCreatorLabel = imported.OrganizerCreatorLabel;
+                row.Proposal.OrganizerTypeLabel = imported.OrganizerTypeLabel;
+                row.Proposal.Protected = imported.Protected;
+                row.Proposal.Source = imported.Source;
+                row.Proposal.NeedsReview = imported.NeedsReview;
+
+                if (!_organizerFolders.Any(folder => folder.Path.Equals(imported.ProposedVirtualFolder, StringComparison.OrdinalIgnoreCase)))
+                    _organizerFolders.Add(new OrganizerFolder(imported.ProposedVirtualFolder, true, false));
+            }
+
+            InvalidateDryRunState("Imported AI suggestions changed the proposal snapshot.");
+            RefreshRowsFromProposals();
+            RefreshOrganizerViews();
+            RefreshReviewChanges();
+            AiImportStatus = import.Summary;
+            ProgressMessage = "AI proposal imported.";
+            AppendLog(import.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "AI proposal import failed");
+            AiImportStatus = "AI proposal import failed.";
+            ProgressMessage = "AI proposal import failed.";
+            AppendLog("AI proposal import failed: " + ex.Message);
+            MessageBox.Show(ex.Message, "AI proposal import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private async Task ValidateInstallationAsync()
+    {
+        try
+        {
+            if (_installation is null)
+                await DetectAsync();
+            if (_installation is null)
+                return;
+
+            if (_inventory is null)
+                await ScanAsync();
+            if (_inventory is null)
+                return;
+
+            ProgressMessage = "Validating the installed Penumbra state.";
+            var snapshot = BuildProposalSnapshot();
+            var result = await _realInstallationValidationService.ValidateAsync(
+                _installation,
+                snapshot,
+                new RealInstallationValidationOptions(Authorized: true, CreateVerifiedBackup: false),
+                CancellationToken.None);
+
+            _lastRealInstallationValidation = result;
+            _currentDryRunPlan = result.Plan;
+            _preparedApplyOperation = null;
+            _latestApplyResult = null;
+            InstallationValidationStatus = result.Summary;
+            DryRunStatus = BuildDryRunStatus(result.Plan);
+            BackupStatus = result.Preflight.Succeeded
+                ? "Validation completed. Create Backup remains optional and must still be triggered explicitly."
+                : "Validation found blockers. Fix them before creating a backup or applying changes.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            await _backups.RefreshAsync();
+            ProgressMessage = "Real-installation validation finished.";
+            AppendLog("Validation summary: " + result.Summary);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Real-installation validation failed");
+            InstallationValidationStatus = "Real-installation validation failed.";
+            ProgressMessage = "Validation failed.";
+            AppendLog("Validation failed: " + ex.Message);
+        }
+    }
+
+    private async Task CreateDiagnosticPackageAsync()
+    {
+        var confirmation =
+            "The diagnostic package will include:\n" +
+            "- app version\n" +
+            "- Windows version\n" +
+            "- Penumbra version\n" +
+            "- redacted state and mod-library paths\n" +
+            "- validation summaries\n" +
+            "- operation summaries\n" +
+            "- sanitized logs\n\n" +
+            "It will not include mod assets, live databases, backups, or credentials.\n\n" +
+            "Create the diagnostic package now?";
+        if (MessageBox.Show(confirmation, "Create Diagnostic Package", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
+            return;
+
+        try
+        {
+            ProgressMessage = "Creating diagnostic package.";
+            var operations = await _historyService.GetOperationsAsync(CancellationToken.None);
+            var result = await _diagnosticExportService.CreateAsync(
+                new DiagnosticExportRequest(
+                    typeof(MainViewModel).Assembly.GetName().Version?.ToString() ?? "dev",
+                    _installation,
+                    _inventory,
+                    _reviewValidation,
+                    _currentDryRunPlan,
+                    _preparedApplyOperation,
+                    _latestApplyResult,
+                    _lastRealInstallationValidation,
+                    operations,
+                    ActivityLog),
+                CancellationToken.None);
+
+            DiagnosticStatus = $"Diagnostic package created at {result.ZipPath}";
+            ProgressMessage = "Diagnostic package created.";
+            AppendLog($"Created diagnostic package at {result.ZipPath}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Diagnostic export failed");
+            DiagnosticStatus = "Diagnostic export failed.";
+            ProgressMessage = "Diagnostic export failed.";
+            AppendLog("Diagnostic export failed: " + ex.Message);
         }
     }
 
@@ -941,7 +1147,7 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         if (MessageBox.Show(
-                "Apply will only update the authoritative Penumbra virtual-folder mapping in mod_data.db. Physical mod folders, assets, collections, and game files will not be changed.\n\nClose FFXIV and XIVLauncher before continuing.\n\nApply the planned virtual-folder changes now?",
+                BuildApplyConfirmationMessage(),
                 "Apply virtual-folder changes",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning) != MessageBoxResult.OK)
@@ -1045,14 +1251,19 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildApplyChecklist()
     {
+        var preflight = _preparedApplyOperation?.Preflight ?? _lastRealInstallationValidation?.Preflight;
+        var changedEntries = _currentDryRunPlan?.Entries.Where(entry => entry.ValidationStatus == OrganizerRowStatus.ValidChange).ToArray() ?? Array.Empty<DryRunPlanEntry>();
         var checklist = new List<string>
         {
             ChecklistLine("Proposals valid", _reviewValidation is not null && _reviewValidation.Errors.Count == 0),
             ChecklistLine("Protected mods unchanged", _reviewValidation is not null && _reviewValidation.Rows.All(row => row.Status != OrganizerRowStatus.BlockedProtected)),
             ChecklistLine("Penumbra version unchanged", _currentDryRunPlan?.Validation.InvalidationReasons.Contains(PlanInvalidationReason.PenumbraVersionChanged) != true),
-            ChecklistLine("Source files unchanged", _currentDryRunPlan?.Validation.InvalidationReasons.Contains(PlanInvalidationReason.SourceFileHashChanged) != true),
-            ChecklistLine("Write permission available", _preparedApplyOperation?.Preflight.Succeeded == true),
+            ChecklistLine("Source state unchanged", _currentDryRunPlan?.Validation.InvalidationReasons.Contains(PlanInvalidationReason.SourceFileHashChanged) != true),
+            ChecklistLine("All target records mapped", changedEntries.All(entry => entry.RequiresWrite)),
+            ChecklistLine("Permissions available", preflight?.Succeeded == true),
+            ChecklistLine("Game closed", preflight?.BlockingProcesses.Count == 0),
             ChecklistLine("Backup verified", _preparedApplyOperation is not null),
+            ChecklistLine("Rollback prepared", _preparedApplyOperation is not null),
             ChecklistLine("Dry run current", _currentDryRunPlan?.Validation.Status == DryRunPlanValidationStatus.Valid),
         };
 
@@ -1076,6 +1287,9 @@ public sealed class MainViewModel : ObservableObject
         if (_preparedApplyOperation is null)
             return "Create a verified backup package before applying changes.";
 
+        if (_preparedApplyOperation.Preflight.BlockingProcesses.Count > 0)
+            return $"Apply is blocked while these processes are running: {string.Join(", ", _preparedApplyOperation.Preflight.BlockingProcesses)}";
+
         if (_latestApplyResult is not null)
             return _latestApplyResult.RollbackAvailable
                 ? "Apply finished. Rollback is available from the Backups screen."
@@ -1088,6 +1302,26 @@ public sealed class MainViewModel : ObservableObject
 
     private static string ChecklistLine(string label, bool passed)
         => $"{(passed ? "[x]" : "[ ]")} {label}";
+
+    private string BuildApplyConfirmationMessage()
+    {
+        var target = _currentDryRunPlan?.FileChanges.SingleOrDefault();
+        var operationFolder = _preparedApplyOperation is null
+            ? "Backup not prepared"
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PenumbraOrganizer",
+                "Backups",
+                _preparedApplyOperation.OperationId.ToString("N"));
+        return
+            $"This will apply {_currentDryRunPlan?.Summary.AffectedModCount ?? 0} planned mod change(s).\n\n" +
+            $"Authoritative target: {target?.TargetPath ?? "Unknown"}\n" +
+            $"Backup location: {operationFolder}\n" +
+            "Rollback will be available after a confirmed write.\n\n" +
+            "Physical mod files, assets, collections, priorities, and FFXIV game files are not changed.\n\n" +
+            "Close FFXIV and XIVLauncher before continuing.\n\n" +
+            "Apply the planned virtual-folder changes now?";
+    }
 
     private void DebouncedSaveSession()
     {

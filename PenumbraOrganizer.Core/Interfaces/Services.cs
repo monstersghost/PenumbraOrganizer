@@ -33,6 +33,15 @@ public interface IAiProposalValidationService
     AiProposalValidationResult Validate(AiInventoryExport inventory, AiProposalDocument proposal);
 }
 
+public interface IAiProposalImportService
+{
+    Task<AiProposalImportResult> ImportAsync(
+        string proposalPath,
+        string inventoryPath,
+        IReadOnlyList<OrganizerModProposal> currentProposals,
+        CancellationToken cancellationToken);
+}
+
 public interface IOrganizerMutationService
 {
     OrganizerMutationResult AssignToFolder(IList<OrganizerModProposal> mods, IList<OrganizerFolder> folders, IReadOnlyList<string> stableScanIds, string proposedFolder);
@@ -152,6 +161,15 @@ public interface IApplyService
         CancellationToken cancellationToken);
 }
 
+public interface IRealInstallationValidationService
+{
+    Task<RealInstallationValidationResult> ValidateAsync(
+        PenumbraInstallation installation,
+        ProposalSnapshot? proposalSnapshot,
+        RealInstallationValidationOptions options,
+        CancellationToken cancellationToken);
+}
+
 public interface IPostApplyVerificationService
 {
     Task<PostApplyVerificationResult> VerifyAsync(
@@ -177,4 +195,9 @@ public interface IPlanInvalidationService
         ScanInventory inventory,
         ProposalSnapshot proposalSnapshot,
         CancellationToken cancellationToken);
+}
+
+public interface IDiagnosticExportService
+{
+    Task<DiagnosticExportResult> CreateAsync(DiagnosticExportRequest request, CancellationToken cancellationToken);
 }

@@ -20,21 +20,34 @@ public sealed class WritePermissionPreflightService : IWritePermissionPreflightS
 
     private readonly RecoveryStorageLayout _layout;
     private readonly Func<IReadOnlyList<string>> _processProvider;
+    private readonly Func<IReadOnlyList<string>, long?> _freeSpaceProvider;
 
     public WritePermissionPreflightService()
-        : this(new RecoveryStorageLayout(), GetBlockingProcesses)
+        : this(new RecoveryStorageLayout(), GetBlockingProcesses, GetAvailableBytes)
     {
     }
 
     public WritePermissionPreflightService(string backupsRoot)
-        : this(new RecoveryStorageLayout(backupsRoot), GetBlockingProcesses)
+        : this(new RecoveryStorageLayout(backupsRoot), GetBlockingProcesses, GetAvailableBytes)
     {
     }
 
-    internal WritePermissionPreflightService(RecoveryStorageLayout layout, Func<IReadOnlyList<string>> processProvider)
+    public WritePermissionPreflightService(
+        string backupsRoot,
+        Func<IReadOnlyList<string>> processProvider,
+        Func<IReadOnlyList<string>, long?> freeSpaceProvider)
+        : this(new RecoveryStorageLayout(backupsRoot), processProvider, freeSpaceProvider)
+    {
+    }
+
+    internal WritePermissionPreflightService(
+        RecoveryStorageLayout layout,
+        Func<IReadOnlyList<string>> processProvider,
+        Func<IReadOnlyList<string>, long?> freeSpaceProvider)
     {
         _layout = layout;
         _processProvider = processProvider;
+        _freeSpaceProvider = freeSpaceProvider;
     }
 
     public Task<WritePermissionPreflightResult> CheckAsync(
@@ -91,9 +104,7 @@ public sealed class WritePermissionPreflightService : IWritePermissionPreflightS
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            availableBytes = driveRoots
-                .Select(root => new DriveInfo(root!))
-                .Min(drive => drive.AvailableFreeSpace);
+            availableBytes = _freeSpaceProvider(driveRoots!);
 
             if (availableBytes < requiredBytes)
                 errors.Add($"Not enough free disk space for backup and temporary output. Required {requiredBytes} bytes but only {availableBytes} bytes are available.");
@@ -210,5 +221,15 @@ public sealed class WritePermissionPreflightService : IWritePermissionPreflightS
         {
             return Array.Empty<string>();
         }
+    }
+
+    private static long? GetAvailableBytes(IReadOnlyList<string> roots)
+    {
+        if (roots.Count == 0)
+            return null;
+
+        return roots
+            .Select(root => new DriveInfo(root))
+            .Min(drive => drive.AvailableFreeSpace);
     }
 }

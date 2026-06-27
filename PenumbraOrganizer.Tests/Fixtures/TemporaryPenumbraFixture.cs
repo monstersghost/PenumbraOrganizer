@@ -16,6 +16,7 @@ public sealed class TemporaryPenumbraFixture : IDisposable
         Directory.CreateDirectory(PluginConfigsPath);
         Directory.CreateDirectory(PenumbraConfigPath);
         Directory.CreateDirectory(Path.Combine(PenumbraConfigPath, "collections"));
+        Directory.CreateDirectory(Path.Combine(PenumbraConfigPath, "mod_filesystem"));
         Directory.CreateDirectory(InstalledPluginsPath);
         Directory.CreateDirectory(ModRoot);
     }
@@ -29,6 +30,7 @@ public sealed class TemporaryPenumbraFixture : IDisposable
 
     public string PenumbraJsonPath => Path.Combine(PluginConfigsPath, "Penumbra.json");
     public string ModDataDbPath => Path.Combine(PenumbraConfigPath, "mod_data.db");
+    public string OrganizationJsonPath => Path.Combine(PenumbraConfigPath, "mod_filesystem", "organization.json");
     public string PluginManifestPath => Path.Combine(InstalledPluginsPath, "Penumbra.json");
     public string PluginAssemblyPath => Path.Combine(InstalledPluginsPath, "Penumbra.dll");
 
@@ -92,6 +94,12 @@ public sealed class TemporaryPenumbraFixture : IDisposable
     {
         var path = Path.Combine(PenumbraConfigPath, "collections", fileName);
         File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(payload));
+    }
+
+    public void WriteOrganizationJson(string json)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(OrganizationJsonPath)!);
+        File.WriteAllText(OrganizationJsonPath, json);
     }
 
     public void Dispose()

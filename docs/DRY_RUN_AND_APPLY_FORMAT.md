@@ -11,7 +11,19 @@ The first write-enabled milestone updates only one proven Penumbra structure:
 
 In the current project and fixtures, `_id` matches the installed top-level physical mod directory name. Penumbra Organizer uses that value as the stable mapping between an installed mod and its authoritative virtual-folder entry.
 
-`mod_filesystem\organization.json` is currently treated as presentation data, not a proven source of truth for writable folder mapping. The app does not write it in this milestone.
+Confirmed behavior from the current scanner, fixtures, and upstream Penumbra source:
+
+* Penumbra Organizer reads the current virtual folder from `mod_data.db`, collection `LocalModData`, field `Folder`.
+* Penumbra's `LocalModDatabase.Data.Update(Mod mod)` and `ApplyToMod(Mod mod)` map `mod.Path.Folder` to that same `Folder` value.
+* Penumbra's `ModFileSystemSaver.CreateDataNodes()` rebuilds non-empty folder nodes from `mod.Path.Folder`.
+
+Current inference boundary:
+
+* `mod_filesystem\organization.json` is not used by this project's scanner or planner.
+* It appears to persist presentation or file-system tree state beyond the authoritative mod-to-folder mapping.
+* It is still not proven safe or necessary to write for the first guarded Apply path.
+
+Because of that boundary, the app continues not to write `mod_filesystem\organization.json` in this milestone.
 
 ## Dry-run plan
 
@@ -132,9 +144,18 @@ Rollback becomes available only when Apply completed enough live writes to resto
 
 The Review Changes screen now exposes:
 
+* `Validate My Installation`
 * `Create Dry Run`
 * `Create Backup`
 * `Apply Virtual-Folder Changes`
+
+`Validate My Installation` is explicitly user-authorized and read-only unless the user separately chooses to create a verified backup later. It:
+
+* rescans the installation
+* remaps authoritative records
+* creates a fresh dry run
+* runs exact-target permission checks
+* reports whether the installation currently appears safe for Apply
 
 The guarded apply path is intentionally narrow:
 
@@ -144,4 +165,10 @@ The guarded apply path is intentionally narrow:
 * no `.pmp` handling
 * no option-group, enabled-state, or priority edits
 
-The Backups screen remains read-only and shows rollback availability without exposing force restore.
+The Backups screen now exposes guarded rollback only for operations with:
+
+* a completed or partially completed Apply
+* a verified backup
+* a persisted rollback transaction
+
+Rollback verifies current hashes first, skips conflicts by default, and never moves physical mod files.

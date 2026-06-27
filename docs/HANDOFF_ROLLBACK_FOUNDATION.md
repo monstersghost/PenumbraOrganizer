@@ -82,9 +82,15 @@ The app now includes a read-only `Backups` tab that can:
 
 The UI now exposes guarded `Create Dry Run`, `Create Backup`, and `Apply Virtual-Folder Changes` actions in Review Changes.
 
+The UI now also exposes:
+
+* `Validate My Installation`
+* guarded `Roll Back Changes` for valid restorable operations
+* strict AI proposal import
+* diagnostic export
+
 The UI still does not expose:
 
-* public rollback execution
 * force restore
 * any broader write target than `mod_data.db` `LocalModData.Folder`
 
@@ -92,9 +98,9 @@ The UI still does not expose:
 
 The main remaining blockers before wider safe public Apply exposure are:
 
-* proving whether `mod_filesystem\organization.json` must also be updated
+* proving whether `mod_filesystem\organization.json` is ever required for immediate Penumbra UI consistency
 * deciding whether Penumbra rebuilds any derived folder-tree presentation automatically
 * deliberate public-release validation of the guarded Apply UI path
-* guarded public rollback execution only after end-to-end validation
+* broader real-installation validation beyond explicit user authorization
 
 These milestones must continue to avoid physical mod movement, collection editing, `.pmp` handling, and real-installation test access.

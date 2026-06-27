@@ -5,6 +5,7 @@ using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Apply;
 using PenumbraOrganizer.Infrastructure.Compatibility;
+using PenumbraOrganizer.Infrastructure.Diagnostics;
 using PenumbraOrganizer.Infrastructure.Discovery;
 using PenumbraOrganizer.Infrastructure.Exports;
 using PenumbraOrganizer.Infrastructure.Recovery;
@@ -25,9 +26,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDryRunValidationService, DryRunValidationService>();
         services.AddSingleton<IDryRunPlanner, DryRunPlanner>();
         services.AddSingleton<IWritePermissionPreflightService, WritePermissionPreflightService>();
+        services.AddSingleton<IRealInstallationValidationService, RealInstallationValidationService>();
         services.AddSingleton<IPostApplyVerificationService, PostApplyVerificationService>();
         services.AddSingleton<IInventoryExportService, InventoryExportService>();
         services.AddSingleton<IAiProposalValidationService, AiProposalValidationService>();
+        services.AddSingleton<IAiProposalImportService, AiProposalImportService>();
         services.AddSingleton<IOrganizerMutationService, OrganizerMutationService>();
         services.AddSingleton<IOrganizerProposalValidationService, OrganizerProposalValidationService>();
         services.AddSingleton<IOrganizerSessionService, OrganizerSessionService>();
@@ -37,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBackupService, BackupService>();
         services.AddSingleton<IRollbackService, RollbackService>();
         services.AddSingleton<IApplyService, ApplyService>();
+        services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
         return services;
     }
 }
