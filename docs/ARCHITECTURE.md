@@ -98,7 +98,9 @@ A future read-only "Inspect uninstalled package" feature may support `.pmp`, but
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_data.db`
   stores the authoritative per-mod virtual-folder mapping used by the first write-enabled milestone
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_filesystem\organization.json`
-  is currently treated as presentation data only and is not written until its role is proven by fixtures or authoritative structure inspection
+  is currently treated as presentation or tree-state persistence only
+  Confirmed: the authoritative mod-to-folder mapping is still `LocalModData.Folder`
+  Current inference: Penumbra can rebuild non-empty folder nodes from `mod.Path.Folder`, but immediate UI consistency requirements for stale `organization.json` are not yet proven
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\collections\*.json`
   stores collection state and enabled information
 - installed plugin manifests and assemblies under `%AppData%\XIVLauncher\installedPlugins\Penumbra`
@@ -195,7 +197,7 @@ Imported AI proposals must validate that proposed paths conform to the selected 
 
 The version 1 inventory and proposal contracts are documented in `docs/AI_EXCHANGE_FORMAT.md`. Inventory exports use explicit domain models, globally unique `sourceExportId` values, sanitized path-like fields, strict package validation, and byte-identical ZIP/standalone files.
 
-The read-only proposal validator accepts the original `AiInventoryExport` plus an imported `AiProposalDocument` and returns structured errors, warnings, accepted proposals, rejected proposals, and a summary. It does not apply changes or modify live Penumbra state.
+The read-only proposal validator accepts the original `AiInventoryExport` plus an imported `AiProposalDocument` and returns structured errors, warnings, accepted proposals, rejected proposals, and a summary. Global validation failures now block the entire import. Successful imported rows merge into the same in-memory proposal model used by manual editing, while manual overrides keep precedence.
 
 ## Review model
 
@@ -208,9 +210,10 @@ Normal flow:
 3. Select an organization strategy or start manually.
 4. Generate proposals manually, deterministically, or through external AI.
 5. Review exact virtual-folder changes.
-6. Create and verify a backup.
-7. Apply supported virtual-folder metadata changes.
-8. Verify and offer rollback.
+6. Validate the real installation if the user explicitly requests it.
+7. Create and verify a backup.
+8. Apply supported virtual-folder metadata changes.
+9. Verify and offer rollback.
 
 This flow must not introduce `.pmp` handling.
 
@@ -231,8 +234,10 @@ The current recovery slice includes:
 - immutable dry-run planner and plan invalidation service
 - exact expected-result generation for `mod_data.db`
 - write-permission preflight and `asInvoker` execution level
+- user-authorized real-installation validation workflow
 - guarded Apply executor that writes only `LocalModData.Folder`
 - post-Apply verification and rollback availability tracking
+- privacy-conscious diagnostic export
 
 Rollback remains independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
 

@@ -28,8 +28,10 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button Command="{Binding DetectCommand}" Content="Find Penumbra" MinWidth="120" Height="34" Margin="0,0,10,0" />
                     <Button Command="{Binding ScanCommand}" Content="Scan My Mods" MinWidth="120" Height="34" Margin="0,0,10,0" />
+                    <Button Command="{Binding ValidateInstallationCommand}" Content="Validate My Installation" MinWidth="170" Height="34" Margin="0,0,10,0" />
                     <Button Command="{Binding SaveSessionCommand}" Content="Save Session" MinWidth="110" Height="34" Margin="0,0,10,0" />
                     <Button Command="{Binding ResumeLastSessionCommand}" Content="Resume Last Session" MinWidth="145" Height="34" Margin="0,0,10,0" />
+                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" Margin="0,0,10,0" />
                     <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Create AI Review Package" MinWidth="170" Height="34" />
                 </StackPanel>
             </Grid>
@@ -79,17 +81,33 @@
 
                     <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
                         <StackPanel>
+                            <TextBlock Text="Validation" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,10,0,0" Text="{Binding InstallationValidationStatus}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
+                        <StackPanel>
                             <TextBlock Text="AI Export" FontSize="18" FontWeight="SemiBold" />
                             <TextBlock Margin="0,10,0,0"
                                        Text="The AI cannot inspect your inventory unless you upload the exported package. Copying the prompt alone is not enough."
                                        Foreground="#FF8A3B12"
                                        TextWrapping="Wrap" />
                             <WrapPanel Margin="0,12,0,0">
+                                <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI Proposal" MinWidth="135" Height="32" Margin="0,0,8,8" />
                                 <Button Command="{Binding OpenExportFolderCommand}" Content="Open Export Folder" MinWidth="135" Height="32" Margin="0,0,8,8" />
                                 <Button Command="{Binding CopyMasterPromptCommand}" Content="Copy Master Prompt" MinWidth="135" Height="32" Margin="0,0,8,8" />
                                 <Button Command="{Binding CopyInventoryFilePathCommand}" Content="Copy Inventory File Path" MinWidth="150" Height="32" Margin="0,0,8,8" />
                                 <Button Command="{Binding CopyCompleteAiRequestCommand}" Content="Copy Complete AI Request" MinWidth="165" Height="32" Margin="0,0,8,8" />
                             </WrapPanel>
+                            <TextBlock Margin="0,10,0,0" Text="{Binding AiImportStatus}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Diagnostics" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock Margin="0,10,0,0" Text="{Binding DiagnosticStatus}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
@@ -511,12 +529,13 @@
                             <StackPanel>
                                 <TextBlock Text="Backups" FontSize="18" FontWeight="SemiBold" />
                                 <TextBlock Margin="0,10,0,0"
-                                           Text="This screen is read-only in the public alpha. It lists verified backup operations and their rollback foundation data without exposing live rollback actions."
+                                           Text="This screen lists backup operations and guarded rollback availability. Rollback only restores Penumbra virtual-folder state and skips conflicts by default."
                                            Foreground="#FF4A5568"
                                            TextWrapping="Wrap" />
                                 <WrapPanel Margin="0,12,0,0">
                                     <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh Backups" MinWidth="130" Height="30" Margin="0,0,8,8" />
                                     <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="30" Margin="0,0,8,8" />
+                                    <Button Command="{Binding Backups.RollbackCommand}" Content="Roll Back Changes" MinWidth="145" Height="30" Margin="0,0,8,8" />
                                     <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="30" Margin="0,0,8,8" />
                                 </WrapPanel>
                                 <TextBlock Margin="0,8,0,0" Text="{Binding Backups.StatusMessage}" Foreground="#FF245C9A" TextWrapping="Wrap" />

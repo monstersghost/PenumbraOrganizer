@@ -1285,7 +1285,14 @@ The current project and fixtures now prove one authoritative live write target f
 
 `_id` matches the installed top-level physical mod directory name and is the stable mapping used by the scanner and dry-run/apply pipeline.
 
-`mod_filesystem\organization.json` is currently treated as a derived or presentation structure. It is not written until its role is proven safely.
+`mod_filesystem\organization.json` is currently treated as a derived or presentation structure. Upstream Penumbra source confirms that `LocalModData.Folder` populates `mod.Path.Folder`, and Penumbra can rebuild non-empty folder nodes from that value. Immediate UI behavior for stale `organization.json` is still not proven, so the app continues not to write it.
+
+The current app also includes:
+
+* explicit `Validate My Installation` read-only validation
+* guarded rollback from the Backups screen for valid completed operations
+* strict AI proposal import with manual-override precedence
+* privacy-conscious diagnostic export
 
 The dry-run and Apply format is documented in:
 
