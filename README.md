@@ -151,6 +151,7 @@ Documentation:
 * [Safety and rollback](docs/SAFETY_AND_ROLLBACK.md)
 * [Compatibility model](docs/COMPATIBILITY_MODEL.md)
 * [Organizer session format](docs/ORGANIZER_SESSION_FORMAT.md)
+* [Rollback foundation handoff](docs/HANDOFF_ROLLBACK_FOUNDATION.md)
 
 ## Disclaimer
 
