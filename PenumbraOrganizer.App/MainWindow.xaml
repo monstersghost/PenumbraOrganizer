@@ -7,659 +7,938 @@
         mc:Ignorable="d"
         Title="Penumbra Organizer"
         Height="860"
-        Width="1320"
-        MinHeight="700"
-        MinWidth="1100"
-        WindowStartupLocation="CenterScreen">
-    <DockPanel Background="#FFF5F6F8">
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="0,0,0,1" Padding="20,16">
+        Width="1380"
+        MinHeight="740"
+        MinWidth="1180"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFF4F6F8">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#FFD9DFE7"
+                BorderThickness="0,0,0,1"
+                Padding="24,18">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+
                 <StackPanel>
-                    <TextBlock Text="Penumbra Organizer" FontSize="26" FontWeight="SemiBold" Foreground="#FF1B2430" />
-                    <TextBlock Margin="0,4,0,0"
-                               Text="Unofficial third-party organizer for Penumbra virtual folders. It never edits Final Fantasy XIV game files."
-                               Foreground="#FF4A5568"
+                    <TextBlock Text="Penumbra Organizer"
+                               FontSize="28"
+                               FontWeight="SemiBold"
+                               Foreground="#FF1C2633" />
+                    <TextBlock Margin="0,6,0,0"
+                               Text="Portable organizer for Penumbra virtual folders. Physical mod files stay exactly where they are."
+                               Foreground="#FF556171"
                                TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Command="{Binding DetectCommand}" Content="Find Penumbra" MinWidth="120" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding ScanCommand}" Content="Scan My Mods" MinWidth="120" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding ValidateInstallationCommand}" Content="Validate My Installation" MinWidth="170" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding SaveSessionCommand}" Content="Save Session" MinWidth="110" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding ResumeLastSessionCommand}" Content="Resume Last Session" MinWidth="145" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" Margin="0,0,10,0" />
-                    <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Create AI Review Package" MinWidth="170" Height="34" />
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Button Command="{Binding DetectCommand}"
+                            Content="Find Penumbra"
+                            MinWidth="125"
+                            Height="36"
+                            Margin="0,0,10,0" />
+                    <Button Command="{Binding ScanCommand}"
+                            Content="Scan My Mods"
+                            MinWidth="130"
+                            Height="36" />
                 </StackPanel>
             </Grid>
         </Border>
 
-        <Grid Margin="20">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="16" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16">
-                        <StackPanel>
-                            <TextBlock Text="Home" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding DetectionSummary}" TextWrapping="Wrap" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding ProgressMessage}" FontWeight="Medium" Foreground="#FF245C9A" TextWrapping="Wrap" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding CompatibilitySummary}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Library Snapshot" FontSize="18" FontWeight="SemiBold" />
-                            <UniformGrid Margin="0,12,0,0" Columns="2">
-                                <StackPanel Margin="0,0,0,12">
-                                    <TextBlock Text="Installed mods" Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding InstalledModCount}" FontSize="22" FontWeight="SemiBold" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,12">
-                                    <TextBlock Text="Protected mods" Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding ProtectedModCount}" FontSize="22" FontWeight="SemiBold" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,12">
-                                    <TextBlock Text="Collections" Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding CollectionCount}" FontSize="22" FontWeight="SemiBold" />
-                                </StackPanel>
-                                <StackPanel Margin="0,0,0,12">
-                                    <TextBlock Text="Warnings" Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding WarningCount}" FontSize="22" FontWeight="SemiBold" />
-                                </StackPanel>
-                            </UniformGrid>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Validation" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding InstallationValidationStatus}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Recovery" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding RecoveryStatus}" TextWrapping="Wrap" />
-                            <WrapPanel Margin="0,12,0,0">
-                                <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify" MinWidth="110" Height="30" Margin="0,0,8,8" />
-                                <Button Command="{Binding ContinueIncompleteVerificationCommand}" Content="Continue Verification" MinWidth="155" Height="30" Margin="0,0,8,8" />
-                                <Button Command="{Binding RollbackIncompleteOperationCommand}" Content="Roll Back" MinWidth="110" Height="30" Margin="0,0,8,8" />
-                                <Button Command="{Binding ViewIncompleteOperationCommand}" Content="View Details" MinWidth="110" Height="30" Margin="0,0,8,8" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="AI Export" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Margin="0,10,0,0"
-                                       Text="The AI cannot inspect your inventory unless you upload the exported package. Copying the prompt alone is not enough."
-                                       Foreground="#FF8A3B12"
-                                       TextWrapping="Wrap" />
-                            <WrapPanel Margin="0,12,0,0">
-                                <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI Proposal" MinWidth="135" Height="32" Margin="0,0,8,8" />
-                                <Button Command="{Binding OpenExportFolderCommand}" Content="Open Export Folder" MinWidth="135" Height="32" Margin="0,0,8,8" />
-                                <Button Command="{Binding CopyMasterPromptCommand}" Content="Copy Master Prompt" MinWidth="135" Height="32" Margin="0,0,8,8" />
-                                <Button Command="{Binding CopyInventoryFilePathCommand}" Content="Copy Inventory File Path" MinWidth="150" Height="32" Margin="0,0,8,8" />
-                                <Button Command="{Binding CopyCompleteAiRequestCommand}" Content="Copy Complete AI Request" MinWidth="165" Height="32" Margin="0,0,8,8" />
-                            </WrapPanel>
-                            <TextBlock Margin="0,10,0,0" Text="{Binding AiImportStatus}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Diagnostics" FontSize="18" FontWeight="SemiBold" />
-                            <TextBlock Margin="0,10,0,0" Text="{Binding DiagnosticStatus}" TextWrapping="Wrap" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="16" Margin="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Scan Warnings" FontSize="18" FontWeight="SemiBold" />
-                            <ListBox ItemsSource="{Binding ScanWarnings}" Margin="0,12,0,0" MinHeight="180" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-
-            <TabControl Grid.Column="2">
-                <TabItem Header="Organize">
-                    <DockPanel Margin="12">
-                        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="How would you like your mods organized?" FontSize="18" FontWeight="SemiBold" />
-                                <UniformGrid Columns="4" Margin="0,12,0,0">
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Start Manually" Margin="0,0,8,8" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="Start Manually" FontWeight="SemiBold" />
-                                            <TextBlock Text="Current layout → your folders" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator" Margin="0,0,8,8" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="By creator" FontWeight="SemiBold" />
-                                            <TextBlock Text="Bizu Mods" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By mod type" Margin="0,0,8,8" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="By mod type" FontWeight="SemiBold" />
-                                            <TextBlock Text="Clothing" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By type and creator" Margin="0,0,8,8" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="By type and creator" FontWeight="SemiBold" />
-                                            <TextBlock Text="Clothing/Bizu Mods" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Margin="0,0,8,0" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="By creator and type" FontWeight="SemiBold" />
-                                            <TextBlock Text="Bizu Mods/Clothing" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Margin="0,0,8,0" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="Keep my current layout" FontWeight="SemiBold" />
-                                            <TextBlock Text="Clean temporary wrappers" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Margin="0,0,8,0" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="Custom" FontWeight="SemiBold" />
-                                            <TextBlock Text="My Mods/{Creator}" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button Command="{Binding CreateAiReviewPackageCommand}" Margin="0,0,8,0" Padding="10" HorizontalContentAlignment="Stretch">
-                                        <StackPanel>
-                                            <TextBlock Text="External AI review" FontWeight="SemiBold" />
-                                            <TextBlock Text="Optional package" Foreground="#FF5B6572" />
-                                        </StackPanel>
-                                    </Button>
-                                </UniformGrid>
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <TextBlock Text="Selected: " Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding SelectedStrategy}" FontWeight="SemiBold" />
-                                    <TextBlock Text="    Changed: " Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding ChangedProposalCount}" FontWeight="SemiBold" />
-                                    <TextBlock Text="    Needs review: " Foreground="#FF5B6572" />
-                                    <TextBlock Text="{Binding NeedsReviewCount}" FontWeight="SemiBold" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <TabControl>
-                            <TabItem Header="Folder View">
-                                <Grid Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="330" />
-                                        <ColumnDefinition Width="12" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <DockPanel Background="White">
-                                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                                         Height="30"
-                                                         VerticalContentAlignment="Center"
-                                                         Padding="8,4" />
-                                                <Button Grid.Column="1"
-                                                        Command="{Binding CreateProposedFolderCommand}"
-                                                        Content="New Folder"
-                                                        MinWidth="92"
-                                                        Height="30"
-                                                        Margin="8,0,0,0" />
-                                            </Grid>
-                                            <WrapPanel Margin="0,10,0,0">
-                                                <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="120" Height="30" Margin="0,0,8,8" />
-                                                <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="120" Height="30" Margin="0,0,8,8" />
-                                                <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="138" Height="30" Margin="0,0,8,8" />
-                                            </WrapPanel>
-                                            <Grid Margin="0,2,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox Text="{Binding RenameFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                                         Height="30"
-                                                         VerticalContentAlignment="Center"
-                                                         Padding="8,4" />
-                                                <Button Grid.Column="1"
-                                                        Command="{Binding RenameFolderCommand}"
-                                                        Content="Rename"
-                                                        MinWidth="82"
-                                                        Height="30"
-                                                        Margin="8,0,0,0" />
-                                            </Grid>
-                                        </StackPanel>
-
-                                        <DataGrid ItemsSource="{Binding ProposedFolders}"
-                                                  SelectedItem="{Binding SelectedProposedFolder}"
-                                                  AutoGenerateColumns="False"
-                                                  IsReadOnly="True"
-                                                  CanUserAddRows="False"
-                                                  EnableRowVirtualization="True">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Proposed Folder" Binding="{Binding DisplayName}" Width="*" />
-                                                <DataGridTextColumn Header="Mods" Binding="{Binding DirectModCount}" Width="58" />
-                                                <DataGridTextColumn Header="Inside" Binding="{Binding DescendantModCount}" Width="58" />
-                                                <DataGridCheckBoxColumn Header="Locked" Binding="{Binding Protected}" Width="64" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
-                                    </DockPanel>
-
-                                    <DockPanel Grid.Column="2" Background="White">
-                                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                            <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected Mods" MinWidth="145" Height="30" Margin="0,0,8,8" />
-                                            <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected to Current" MinWidth="175" Height="30" Margin="0,0,8,8" />
-                                            <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected Mods" MinWidth="150" Height="30" Margin="0,0,8,8" />
-                                            <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="135" Height="30" Margin="0,0,8,8" />
-                                            <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign All Visible Mods" MinWidth="160" Height="30" Margin="0,0,8,8" />
-                                        </WrapPanel>
-
-                                        <DataGrid ItemsSource="{Binding SelectedFolderMods}"
-                                                  behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                                  AutoGenerateColumns="False"
-                                                  IsReadOnly="False"
-                                                  CanUserAddRows="False"
-                                                  SelectionMode="Extended"
-                                                  SelectionUnit="FullRow"
-                                                  EnableRowVirtualization="True">
-                                            <DataGrid.Columns>
-                                                <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                                <DataGridTextColumn Header="Creator" Binding="{Binding EffectiveCreator}" Width="*" />
-                                                <DataGridTextColumn Header="Current Penumbra Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.5*" IsReadOnly="True" />
-                                                <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" />
-                                                <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="130" IsReadOnly="True" />
-                                                <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="90" />
-                                            </DataGrid.Columns>
-                                        </DataGrid>
-                                    </DockPanel>
-                                </Grid>
-                            </TabItem>
-
-                            <TabItem Header="All Mods">
-                                <DataGrid Margin="0,12,0,0"
-                                          ItemsSource="{Binding FilteredMods}"
-                                          behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="False"
-                                          CanUserAddRows="False"
-                                          SelectionMode="Extended"
-                                          SelectionUnit="FullRow"
-                                          EnableRowVirtualization="True">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Creator" Binding="{Binding EffectiveCreator}" Width="*" />
-                                        <DataGridTextColumn Header="Type" Binding="{Binding DetectedType}" Width="*" />
-                                        <DataGridTextColumn Header="Current Penumbra Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.5*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" />
-                                        <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="130" IsReadOnly="True" />
-                                        <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="90" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </TabItem>
-
-                            <TabItem Header="Suggested">
-                                <DockPanel Margin="0,12,0,0">
-                                    <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,10">
-                                        <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Keep Selected Where They Are" MinWidth="190" Height="30" Margin="0,0,8,8" />
-                                        <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected Mods" MinWidth="145" Height="30" Margin="0,0,8,8" />
-                                        <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return All Visible Mods" MinWidth="160" Height="30" Margin="0,0,8,8" />
-                                    </WrapPanel>
-                                    <DataGrid ItemsSource="{Binding FilteredMods}"
-                                              behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                              AutoGenerateColumns="False"
-                                              IsReadOnly="False"
-                                              CanUserAddRows="False"
-                                              EnableRowVirtualization="True">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                            <DataGridTextColumn Header="Likely Creator" Binding="{Binding EffectiveCreator}" Width="*" />
-                                            <DataGridTextColumn Header="Likely Type" Binding="{Binding DetectedType}" Width="*" />
-                                            <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.7*" />
-                                            <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="130" IsReadOnly="True" />
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </DockPanel>
-                            </TabItem>
-
-                            <TabItem Header="Needs Review">
-                                <DataGrid Margin="0,12,0,0"
-                                          ItemsSource="{Binding FilteredMods}"
-                                          behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="False"
-                                          CanUserAddRows="False"
-                                          EnableRowVirtualization="True">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Current Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.5*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Likely Creator" Binding="{Binding EffectiveCreator}" Width="*" />
-                                        <DataGridTextColumn Header="Likely Type" Binding="{Binding DetectedType}" Width="*" />
-                                        <DataGridTextColumn Header="Proposed Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.7*" />
-                                        <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="90" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </TabItem>
-
-                            <TabItem Header="Changes Only">
-                                <DataGrid Margin="0,12,0,0"
-                                          ItemsSource="{Binding ChangedMods}"
-                                          behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="False"
-                                          CanUserAddRows="False"
-                                          EnableRowVirtualization="True">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Current Penumbra Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.7*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.7*" />
-                                        <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="140" IsReadOnly="True" />
-                                        <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="90" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </TabItem>
-                        </TabControl>
-                    </DockPanel>
-                </TabItem>
-
-                <TabItem Header="Installed Mods">
-                    <DockPanel Margin="12">
-                        <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="240" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock VerticalAlignment="Center"
-                                       Text="Edit Proposed Penumbra folder to prepare a manual organization plan. No files are changed during scan."
-                                       Foreground="#FF4A5568" />
-                            <TextBox Grid.Column="1"
-                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="30"
-                                     VerticalContentAlignment="Center"
-                                     Padding="8,4"
-                                     ToolTip="Search by name, author, folder or physical directory." />
-                        </Grid>
-                        <DataGrid ItemsSource="{Binding FilteredMods}"
-                                  behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="False"
-                                  CanUserAddRows="False"
-                                  CanUserDeleteRows="False"
-                                  SelectionMode="Extended"
-                                  SelectionUnit="FullRow"
-                                  EnableRowVirtualization="True"
-                                  GridLinesVisibility="Horizontal"
-                                  HeadersVisibility="Column">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Author" Binding="{Binding Author}" Width="*" IsReadOnly="True" />
-                                <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="90" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Current Penumbra Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.6*" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.8*" />
-                                <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="130" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Signals" Binding="{Binding ContentSignalSummary}" Width="1.4*" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Collections" Binding="{Binding CollectionCount}" Width="90" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Warnings" Binding="{Binding WarningSummary}" Width="1.2*" IsReadOnly="True" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </DockPanel>
-                </TabItem>
-
-                <TabItem Header="Review Changes">
-                    <DockPanel Margin="12">
-                        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14" Margin="0,0,0,12">
-                            <StackPanel>
-                                <TextBlock Text="Review Changes" FontSize="18" FontWeight="SemiBold" />
-                                <UniformGrid Columns="7" Margin="0,12,0,0">
-                                    <StackPanel>
-                                        <TextBlock Text="Total mods" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewTotal}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Changed" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewChanged}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Unchanged" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewUnchanged}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Protected" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewProtected}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Needs Review" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewNeedsReview}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Invalid" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewInvalid}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                    <StackPanel>
-                                        <TextBlock Text="Warnings" Foreground="#FF5B6572" />
-                                        <TextBlock Text="{Binding ReviewWarnings}" FontSize="20" FontWeight="SemiBold" />
-                                    </StackPanel>
-                                </UniformGrid>
-                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                    <TextBlock Text="Filter" VerticalAlignment="Center" Margin="0,0,8,0" />
-                                    <ComboBox SelectedValue="{Binding ReviewFilter, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Content" Width="150">
-                                        <ComboBoxItem Content="All" />
-                                        <ComboBoxItem Content="Changes only" />
-                                        <ComboBoxItem Content="Invalid only" />
-                                        <ComboBoxItem Content="Needs Review" />
-                                        <ComboBoxItem Content="Protected" />
-                                        <ComboBoxItem Content="Manual" />
-                                        <ComboBoxItem Content="Deterministic" />
-                                        <ComboBoxItem Content="Imported AI" />
-                                        <ComboBoxItem Content="Unchanged" />
-                                    </ComboBox>
-                                    <Button Command="{Binding RefreshReviewCommand}" Content="Refresh Review" MinWidth="120" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding ConfigureControlledTestCommand}" Content="Choose Test Mods" MinWidth="145" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Test" MinWidth="110" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="30" Margin="12,0,0,0" />
-                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Controlled Test Apply" MinWidth="180" Height="30" Margin="12,0,0,0" />
-                                </StackPanel>
-                                <Grid Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1.15*" />
-                                        <ColumnDefinition Width="12" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
-                                        <StackPanel>
-                                            <TextBlock Text="Dry Run" FontWeight="SemiBold" />
-                                            <TextBlock Margin="0,8,0,0" Text="{Binding DryRunStatus}" TextWrapping="Wrap" />
-                                            <TextBlock Margin="0,12,0,0" Text="Backup and Apply" FontWeight="SemiBold" />
-                                            <TextBlock Margin="0,8,0,0" Text="{Binding BackupStatus}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Grid.Column="2" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
-                                        <StackPanel>
-                                            <TextBlock Text="Readiness Checklist" FontWeight="SemiBold" />
-                                            <TextBlock Margin="0,8,0,0" Text="{Binding ApplyChecklist}" TextWrapping="Wrap" />
-                                        </StackPanel>
-                                    </Border>
-                                </Grid>
-                                <Border Margin="0,12,0,0" Background="#FFF8FAFC" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="12">
-                                    <StackPanel>
-                                        <TextBlock Text="Controlled Test Workflow" FontWeight="SemiBold" />
-                                        <TextBlock Margin="0,8,0,0" Text="{Binding ControlledTestStatus}" TextWrapping="Wrap" />
-                                        <TextBlock Margin="0,8,0,0" Text="{Binding ControlledTestSelectionSummary}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-
-                        <Border DockPanel.Dock="Bottom" Background="#FFFFFBEB" BorderBrush="#FFF2D47A" BorderThickness="1" Padding="12" Margin="0,12,0,0">
-                            <StackPanel>
-                                <TextBlock Text="Why Apply is unavailable" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding ApplyUnavailableReason}" Margin="0,6,0,0" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-
-                        <DataGrid ItemsSource="{Binding ReviewRows}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  CanUserAddRows="False"
-                                  EnableRowVirtualization="True">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Mod" Binding="{Binding ModName}" Width="2*" />
-                                <DataGridTextColumn Header="Current Penumbra Folder" Binding="{Binding CurrentVirtualFolder}" Width="1.7*" />
-                                <DataGridTextColumn Header="Proposed Penumbra Folder" Binding="{Binding ProposedVirtualFolder}" Width="1.7*" />
-                                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="130" />
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="140" />
-                                <DataGridTextColumn Header="Explanation" Binding="{Binding Message}" Width="2*" />
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </DockPanel>
-                </TabItem>
-
-                <TabItem Header="Backups">
-                    <Grid Margin="12">
+        <TabControl Grid.Row="1"
+                    Margin="20"
+                    IsEnabled="{Binding IsNotBusy}">
+            <TabItem Header="Home / Scan">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="14">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="12" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.5*" />
-                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="18" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Row="0" Grid.ColumnSpan="3" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14">
+                        <Border Grid.Row="0"
+                                Grid.Column="0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
                             <StackPanel>
-                                <TextBlock Text="Backups" FontSize="18" FontWeight="SemiBold" />
-                                <TextBlock Margin="0,10,0,0"
-                                           Text="This screen lists backup operations and guarded rollback availability. Rollback only restores Penumbra virtual-folder state and skips conflicts by default."
-                                           Foreground="#FF4A5568"
+                                <TextBlock Text="Ready to Scan"
+                                           FontSize="22"
+                                           FontWeight="SemiBold"
+                                           Foreground="#FF1C2633" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="{Binding DetectionSummary}"
+                                           FontSize="16"
                                            TextWrapping="Wrap" />
-                                <WrapPanel Margin="0,12,0,0">
-                                    <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh Backups" MinWidth="130" Height="30" Margin="0,0,8,8" />
-                                    <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="30" Margin="0,0,8,8" />
-                                    <Button Command="{Binding Backups.RollbackCommand}" Content="Roll Back Changes" MinWidth="145" Height="30" Margin="0,0,8,8" />
-                                    <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="30" Margin="0,0,8,8" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="{Binding CompatibilitySummary}"
+                                           Foreground="#FF556171"
+                                           TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,18,0,0">
+                                    <Button Command="{Binding ScanCommand}"
+                                            Content="Scan My Mods"
+                                            MinWidth="150"
+                                            Height="40"
+                                            Margin="0,0,10,10"
+                                            FontWeight="SemiBold" />
+                                    <Button Command="{Binding DetectCommand}"
+                                            Content="Find Penumbra Again"
+                                            MinWidth="150"
+                                            Height="40"
+                                            Margin="0,0,10,10" />
                                 </WrapPanel>
-                                <TextBlock Margin="0,8,0,0" Text="{Binding Backups.StatusMessage}" Foreground="#FF245C9A" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
-                        <DataGrid Grid.Row="2"
-                                  ItemsSource="{Binding Backups.Operations}"
-                                  SelectedItem="{Binding Backups.SelectedOperation}"
-                                  AutoGenerateColumns="False"
-                                  IsReadOnly="True"
-                                  CanUserAddRows="False"
-                                  EnableRowVirtualization="True">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding CreatedAtUtc}" Width="1.2*" />
-                                <DataGridTextColumn Header="Status" Binding="{Binding BackupStatus}" Width="*" />
-                                <DataGridTextColumn Header="Apply" Binding="{Binding ApplyStatus}" Width="*" />
-                                <DataGridTextColumn Header="Affected Items" Binding="{Binding AffectedItems}" Width="110" />
-                                <DataGridTextColumn Header="Backup Verified" Binding="{Binding BackupVerified}" Width="120" />
-                                <DataGridTextColumn Header="Rollback Status" Binding="{Binding RollbackStatus}" Width="1.2*" />
-                                <DataGridTextColumn Header="Conflicts" Binding="{Binding Conflicts}" Width="90" />
-                            </DataGrid.Columns>
-                        </DataGrid>
+                        <Border Grid.Row="0"
+                                Grid.Column="2"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="20">
+                            <StackPanel>
+                                <TextBlock Text="Detected Paths"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="Penumbra state directory"
+                                           Foreground="#FF556171" />
+                                <TextBlock Text="{Binding PenumbraStateDirectory}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="Mod library root"
+                                           Foreground="#FF556171" />
+                                <TextBlock Text="{Binding ModLibraryRoot}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="Installed Penumbra version"
+                                           Foreground="#FF556171" />
+                                <TextBlock Text="{Binding InstalledPenumbraVersion}" />
+                            </StackPanel>
+                        </Border>
 
-                        <Border Grid.Row="2" Grid.Column="2" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14">
-                            <DockPanel>
-                                <Border DockPanel.Dock="Top" Background="#FFFFFBEB" BorderBrush="#FFF2D47A" BorderThickness="1" Padding="10" Margin="0,0,0,12">
-                                    <TextBlock Text="{Binding Backups.SelectedBackupAvailability}" TextWrapping="Wrap" />
-                                </Border>
+                        <Border Grid.Row="1"
+                                Grid.ColumnSpan="3"
+                                Margin="0,18,0,0"
+                                Background="#FFFDF6E7"
+                                BorderBrush="#FFE9D5A1"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18"
+                                Visibility="{Binding InstallationMissing, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Automatic detection did not find Penumbra."
+                                           FontWeight="SemiBold"
+                                           Foreground="#FF7A5312" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Text="Choose your Penumbra.json file manually if XIVLauncher is stored somewhere unusual."
+                                           TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,14,0,0">
+                                    <Button Command="{Binding ChoosePenumbraConfigCommand}"
+                                            Content="Choose Penumbra.json"
+                                            MinWidth="180"
+                                            Height="36"
+                                            Margin="0,0,10,0" />
+                                    <TextBlock VerticalAlignment="Center"
+                                               Text="{Binding ManualConfigPath}"
+                                               Foreground="#FF556171"
+                                               TextWrapping="Wrap" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
 
-                                <TextBlock DockPanel.Dock="Top" Text="Affected Files" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                <ListView DockPanel.Dock="Bottom" ItemsSource="{Binding Backups.AffectedFiles}" Height="260">
-                                    <ListView.View>
-                                        <GridView>
-                                            <GridViewColumn Header="Target Path" Width="240" DisplayMemberBinding="{Binding TargetPath}" />
-                                            <GridViewColumn Header="Package Path" Width="170" DisplayMemberBinding="{Binding RelativeBackupPath}" />
-                                            <GridViewColumn Header="Type" Width="80" DisplayMemberBinding="{Binding Classification}" />
-                                            <GridViewColumn Header="JSON" Width="90" DisplayMemberBinding="{Binding JsonStatus}" />
-                                        </GridView>
-                                    </ListView.View>
-                                </ListView>
+                        <Grid Grid.Row="2"
+                              Grid.ColumnSpan="3"
+                              Margin="0,18,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
+                            <Border Grid.Column="0"
+                                    Background="White"
+                                    BorderBrush="#FFD9DFE7"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="18">
                                 <StackPanel>
-                                    <TextBlock Text="Summary" FontWeight="SemiBold" />
-                                    <TextBox Margin="0,8,0,12"
-                                             Text="{Binding Backups.SelectionSummary}"
-                                             IsReadOnly="True"
-                                             TextWrapping="Wrap"
-                                             AcceptsReturn="True"
-                                             MinHeight="180"
-                                             VerticalScrollBarVisibility="Auto" />
-                                    <TextBlock Text="Operation Folder" FontWeight="SemiBold" />
-                                    <TextBox Margin="0,8,0,0"
-                                             Text="{Binding Backups.SelectedOperationFolder}"
-                                             IsReadOnly="True"
-                                             TextWrapping="Wrap"
-                                             AcceptsReturn="True"
-                                             MinHeight="60" />
+                                    <TextBlock Text="Installed mods"
+                                               Foreground="#FF556171" />
+                                    <TextBlock Text="{Binding InstalledModCount}"
+                                               FontSize="28"
+                                               FontWeight="SemiBold" />
                                 </StackPanel>
-                            </DockPanel>
+                            </Border>
+
+                            <Border Grid.Column="2"
+                                    Background="White"
+                                    BorderBrush="#FFD9DFE7"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="18">
+                                <StackPanel>
+                                    <TextBlock Text="Protected mods"
+                                               Foreground="#FF556171" />
+                                    <TextBlock Text="{Binding ProtectedModCount}"
+                                               FontSize="28"
+                                               FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Grid.Column="4"
+                                    Background="White"
+                                    BorderBrush="#FFD9DFE7"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="18">
+                                <StackPanel>
+                                    <TextBlock Text="Collections / warnings"
+                                               Foreground="#FF556171" />
+                                    <TextBlock FontSize="28"
+                                               FontWeight="SemiBold">
+                                        <Run Text="{Binding CollectionCount}" />
+                                        <Run Text=" / " />
+                                        <Run Text="{Binding WarningCount}" />
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Grid.Row="3"
+                                Grid.ColumnSpan="3"
+                                Margin="0,18,0,0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Scan Warnings"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <ListBox Grid.Row="1"
+                                         Margin="0,12,0,0"
+                                         ItemsSource="{Binding ScanWarnings}"
+                                         MinHeight="220" />
+                            </Grid>
                         </Border>
                     </Grid>
-                </TabItem>
+                </ScrollViewer>
+            </TabItem>
 
-                <TabItem Header="Folder Tree">
-                    <DataGrid Margin="12"
-                              ItemsSource="{Binding FolderTree}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              CanUserAddRows="False">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Folder" Binding="{Binding Path}" Width="2*" />
-                            <DataGridTextColumn Header="Direct Mods" Binding="{Binding DirectModCount}" Width="120" />
-                            <DataGridTextColumn Header="Descendants" Binding="{Binding DescendantModCount}" Width="120" />
-                            <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="100" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </TabItem>
+            <TabItem Header="Organize">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                <TabItem Header="Collections">
-                    <DataGrid Margin="12"
-                              ItemsSource="{Binding Collections}"
-                              AutoGenerateColumns="False"
-                              IsReadOnly="True"
-                              CanUserAddRows="False">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Collection" Binding="{Binding Name}" Width="2*" />
-                            <DataGridTextColumn Header="File" Binding="{Binding FilePath}" Width="3*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </TabItem>
+                    <Border Grid.Row="0"
+                            Background="White"
+                            BorderBrush="#FFD9DFE7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18">
+                        <StackPanel>
+                            <TextBlock Text="Choose how to organize your mods"
+                                       FontSize="20"
+                                       FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,14,0,0">
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Start Manually" Content="Start manually" MinWidth="140" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator" Content="By creator" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By mod type" Content="By mod type" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By type and creator" Content="Type then creator" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Creator then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve and clean" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export inventory for AI" MinWidth="160" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI proposal" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                            </WrapPanel>
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
+                                       Foreground="#FF556171" />
+                        </StackPanel>
+                    </Border>
 
-                <TabItem Header="Logs">
-                    <TextBox Margin="12"
-                             Text="{Binding ActivityLog}"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             AcceptsReturn="True"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto" />
-                </TabItem>
-            </TabControl>
-        </Grid>
-    </DockPanel>
+                    <Border Grid.Row="1"
+                            Margin="0,16,0,0"
+                            Background="White"
+                            BorderBrush="#FFD9DFE7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="34"
+                                     Padding="10,6"
+                                     VerticalContentAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding SetOrganizeFilterCommand}"
+                                    CommandParameter="All Mods"
+                                    Content="All Mods"
+                                    MinWidth="90"
+                                    Height="34"
+                                    Margin="10,0,0,0" />
+                            <Button Grid.Column="2"
+                                    Command="{Binding SetOrganizeFilterCommand}"
+                                    CommandParameter="Changed"
+                                    Content="Changed"
+                                    MinWidth="90"
+                                    Height="34"
+                                    Margin="10,0,0,0" />
+                            <Button Grid.Column="3"
+                                    Command="{Binding SetOrganizeFilterCommand}"
+                                    CommandParameter="Needs Review"
+                                    Content="Needs Review"
+                                    MinWidth="110"
+                                    Height="34"
+                                    Margin="10,0,0,0" />
+                            <TextBlock Grid.Column="4"
+                                       Margin="16,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#FF556171">
+                                <Run Text="{Binding ChangedProposalCount}" />
+                                <Run Text=" changed, " />
+                                <Run Text="{Binding NeedsReviewCount}" />
+                                <Run Text=" need review" />
+                            </TextBlock>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="2"
+                          Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="330" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="330" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Current folder tree"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <DataGrid Grid.Row="1"
+                                          Margin="0,12,0,0"
+                                          ItemsSource="{Binding FolderTree}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          CanUserAddRows="False"
+                                          HeadersVisibility="Column"
+                                          SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Current folder" Binding="{Binding Path}" Width="*" />
+                                        <DataGridTextColumn Header="Mods" Binding="{Binding DirectModCount}" Width="70" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Proposed folder tree"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+
+                                <Grid Grid.Row="1"
+                                      Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged}"
+                                             Height="32"
+                                             Padding="8,4"
+                                             VerticalContentAlignment="Center" />
+                                    <Button Grid.Column="1"
+                                            Command="{Binding CreateProposedFolderCommand}"
+                                            Content="Create Folder"
+                                            MinWidth="110"
+                                            Height="32"
+                                            Margin="10,0,0,0" />
+                                </Grid>
+
+                                <Grid Grid.Row="2"
+                                      Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding RenameFolderName, UpdateSourceTrigger=PropertyChanged}"
+                                             Height="32"
+                                             Padding="8,4"
+                                             VerticalContentAlignment="Center" />
+                                    <Button Grid.Column="1"
+                                            Command="{Binding RenameFolderCommand}"
+                                            Content="Rename"
+                                            MinWidth="90"
+                                            Height="32"
+                                            Margin="10,0,0,0" />
+                                </Grid>
+
+                                <DataGrid Grid.Row="3"
+                                          Margin="0,12,0,0"
+                                          ItemsSource="{Binding ProposedFolders}"
+                                          SelectedItem="{Binding SelectedProposedFolder}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          CanUserAddRows="False"
+                                          HeadersVisibility="Column"
+                                          SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Proposed folder" Binding="{Binding DisplayName}" Width="*" />
+                                        <DataGridTextColumn Header="Direct" Binding="{Binding DirectModCount}" Width="70" />
+                                        <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <WrapPanel Grid.Row="4"
+                                           Margin="0,12,0,0">
+                                    <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
+                                    <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                                    <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="4"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Text="Mods"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+
+                                <DataGrid Grid.Row="1"
+                                          Margin="0,12,0,0"
+                                          ItemsSource="{Binding FilteredMods}"
+                                          AutoGenerateColumns="False"
+                                          CanUserAddRows="False"
+                                          SelectionMode="Extended"
+                                          behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="Current folder" Binding="{Binding CurrentVirtualFolder}" Width="1.4*" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="Proposed folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" />
+                                        <DataGridTextColumn Header="Creator" Binding="{Binding EffectiveCreator, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" />
+                                        <DataGridTextColumn Header="Type" Binding="{Binding DetectedType, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" />
+                                        <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="95" />
+                                        <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <WrapPanel Grid.Row="2"
+                                           Margin="0,12,0,0">
+                                    <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Review Changes">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Background="White"
+                            BorderBrush="#FFD9DFE7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Review the proposed changes"
+                                           FontSize="20"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,10,0,0"
+                                           FontSize="16"
+                                           TextWrapping="Wrap">
+                                    <Run Text="{Binding ReviewChanged}" />
+                                    <Run Text=" mods will change, " />
+                                    <Run Text="{Binding ReviewProtected}" />
+                                    <Run Text=" protected mods will remain unchanged, " />
+                                    <Run Text="{Binding ReviewInvalid}" />
+                                    <Run Text=" invalid changes." />
+                                </TextBlock>
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="{Binding ApplyUnavailableReason}"
+                                           Foreground="#FF556171"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Command="{Binding BackupAndApplyCommand}"
+                                    Content="Backup and Apply"
+                                    MinWidth="170"
+                                    Height="42"
+                                    VerticalAlignment="Top"
+                                    FontWeight="SemiBold" />
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1"
+                          Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="18" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="Readiness"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="{Binding ApplyChecklist}"
+                                           FontFamily="Consolas"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="Latest result"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="{Binding DryRunStatus}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="{Binding BackupStatus}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="2"
+                            Margin="0,16,0,0"
+                            Background="White"
+                            BorderBrush="#FFD9DFE7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Filter"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,10,0" />
+                                <ComboBox Width="180"
+                                          SelectedValue="{Binding ReviewFilter}"
+                                          SelectedValuePath="Content">
+                                    <ComboBoxItem Content="All" />
+                                    <ComboBoxItem Content="Changes only" />
+                                    <ComboBoxItem Content="Needs Review" />
+                                    <ComboBoxItem Content="Protected" />
+                                    <ComboBoxItem Content="Invalid only" />
+                                    <ComboBoxItem Content="Imported AI" />
+                                    <ComboBoxItem Content="Manual" />
+                                    <ComboBoxItem Content="Deterministic" />
+                                    <ComboBoxItem Content="Unchanged" />
+                                </ComboBox>
+                                <Button Command="{Binding RefreshReviewCommand}"
+                                        Content="Refresh"
+                                        MinWidth="90"
+                                        Height="32"
+                                        Margin="10,0,0,0" />
+                            </StackPanel>
+
+                            <DataGrid Grid.Row="1"
+                                      Margin="0,12,0,0"
+                                      ItemsSource="{Binding ReviewRows}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Mod" Binding="{Binding ModName}" Width="2*" />
+                                    <DataGridTextColumn Header="Current folder" Binding="{Binding CurrentVirtualFolder}" Width="1.5*" />
+                                    <DataGridTextColumn Header="New folder" Binding="{Binding ProposedVirtualFolder}" Width="1.5*" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                                    <DataGridTextColumn Header="Proposal source" Binding="{Binding Source}" Width="130" />
+                                    <DataGridTextColumn Header="Notes" Binding="{Binding Message}" Width="2*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Backups">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Background="White"
+                            BorderBrush="#FFD9DFE7"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="18">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Restore a previous backup"
+                                           FontSize="20"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="{Binding Backups.StatusMessage}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Text="{Binding RecoveryStatus}"
+                                           Foreground="#FF556171"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <WrapPanel Grid.Column="1"
+                                       VerticalAlignment="Top">
+                                <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh" MinWidth="90" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding Backups.RollbackCommand}" Content="Restore Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="34" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="1"
+                          Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="14" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <DataGrid ItemsSource="{Binding Backups.Operations}"
+                                      SelectedItem="{Binding Backups.SelectedOperation}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding CreatedAtUtc}" Width="1.3*" />
+                                    <DataGridTextColumn Header="Changed mods" Binding="{Binding AffectedItems}" Width="90" />
+                                    <DataGridTextColumn Header="Apply result" Binding="{Binding ApplyStatus}" Width="110" />
+                                    <DataGridTextColumn Header="Backup" Binding="{Binding BackupVerified}" Width="80" />
+                                    <DataGridTextColumn Header="Rollback" Binding="{Binding RollbackStatus}" Width="140" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Selected backup"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="1"
+                                           Margin="0,12,0,0"
+                                           Text="{Binding Backups.SelectionSummary}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2"
+                                           Margin="0,12,0,0"
+                                           Text="{Binding Backups.SelectedBackupAvailability}"
+                                           Foreground="#FF556171"
+                                           TextWrapping="Wrap" />
+                                <DataGrid Grid.Row="3"
+                                          Margin="0,12,0,0"
+                                          ItemsSource="{Binding Backups.AffectedFiles}"
+                                          AutoGenerateColumns="False"
+                                          IsReadOnly="True"
+                                          CanUserAddRows="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Target" Binding="{Binding TargetPath}" Width="2*" />
+                                        <DataGridTextColumn Header="Backup file" Binding="{Binding RelativeBackupPath}" Width="1.2*" />
+                                        <DataGridTextColumn Header="Type" Binding="{Binding Classification}" Width="90" />
+                                        <DataGridTextColumn Header="JSON" Binding="{Binding JsonStatus}" Width="90" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Settings">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="14">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="Settings"
+                                           FontSize="20"
+                                           FontWeight="SemiBold" />
+                                <CheckBox Margin="0,14,0,0"
+                                          IsChecked="{Binding ShowAdvancedTools}"
+                                          Content="Show advanced tools and diagnostics" />
+                                <WrapPanel Margin="0,14,0,0">
+                                    <Button Command="{Binding SaveSessionCommand}" Content="Save Session" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ResumeLastSessionCommand}" Content="Resume Last Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding DiscardSessionCommand}" Content="Reset Saved Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="1"
+                                Margin="0,16,0,0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <StackPanel>
+                                <TextBlock Text="AI Proposal Import"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="{Binding AiImportStatus}"
+                                           TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export Inventory Package" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ImportAiProposalCommand}" Content="Import Proposal JSON" MinWidth="155" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding OpenExportFolderCommand}" Content="Open Export Folder" MinWidth="145" Height="34" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="2"
+                                Margin="0,16,0,0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18"
+                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <TextBlock Text="Advanced tools"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Margin="0,12,0,0"
+                                           Text="{Binding InstallationValidationStatus}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="{Binding ControlledTestStatus}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="{Binding ControlledTestSelectionSummary}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="{Binding DiagnosticStatus}"
+                                           TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,14,0,0">
+                                    <Button Command="{Binding ValidateInstallationCommand}" Content="Validate My Installation" MinWidth="160" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Prepared Changes" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ConfigureControlledTestCommand}" Content="Controlled Test Apply" MinWidth="160" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Controlled Test" MinWidth="160" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,4,0,0">
+                                    <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ContinueIncompleteVerificationCommand}" Content="Continue Verification" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding RollbackIncompleteOperationCommand}" Content="Roll Back Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ViewIncompleteOperationCommand}" Content="Focus Incomplete Backup" MinWidth="170" Height="34" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Row="3"
+                                Margin="0,16,0,0"
+                                Background="White"
+                                BorderBrush="#FFD9DFE7"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="18">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="Activity log"
+                                           FontSize="18"
+                                           FontWeight="SemiBold" />
+                                <TextBox Grid.Row="1"
+                                         Margin="0,12,0,0"
+                                         Text="{Binding ActivityLog}"
+                                         IsReadOnly="True"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         HorizontalScrollBarVisibility="Auto"
+                                         MinHeight="220" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+
+        <Border Grid.Row="2"
+                Background="White"
+                BorderBrush="#FFD9DFE7"
+                BorderThickness="1,1,1,0"
+                Padding="18,10">
+            <TextBlock Text="{Binding ProgressMessage}"
+                       Foreground="#FF245C9A"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <Border Background="#99FFFFFF"
+                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Border Width="360"
+                    Padding="22"
+                    Background="White"
+                    BorderBrush="#FFD9DFE7"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock Text="Working..."
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Margin="0,12,0,0"
+                               Text="{Binding ProgressMessage}"
+                               TextWrapping="Wrap"
+                               TextAlignment="Center" />
+                    <ProgressBar Margin="0,18,0,0"
+                                 IsIndeterminate="True"
+                                 Height="8" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
 </Window>

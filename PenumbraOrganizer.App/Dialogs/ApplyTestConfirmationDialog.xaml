@@ -1,7 +1,7 @@
 <Window x:Class="PenumbraOrganizer.App.Dialogs.ApplyTestConfirmationDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Confirm Controlled Test Apply"
+        Title="{Binding DialogTitle}"
         Height="520"
         Width="760"
         MinHeight="480"
@@ -16,9 +16,9 @@
         </Grid.RowDefinitions>
 
         <StackPanel>
-            <TextBlock Text="Confirm Controlled Test Apply" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Heading}" FontSize="22" FontWeight="SemiBold" />
             <TextBlock Margin="0,8,0,0"
-                       Text="Review the exact live-write scope below. This alpha test updates only Penumbra's authoritative virtual-folder database entry for the selected mods."
+                       Text="{Binding Description}"
                        TextWrapping="Wrap" />
         </StackPanel>
 
@@ -36,7 +36,7 @@
                     Height="34"
                     Margin="0,0,10,0"
                     Click="Cancel_Click" />
-            <Button Content="Apply Test Changes"
+            <Button Content="{Binding ConfirmButtonText}"
                     Width="170"
                     Height="34"
                     Click="Apply_Click" />
