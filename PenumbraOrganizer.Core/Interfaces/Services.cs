@@ -102,3 +102,79 @@ public interface IOperationHistoryService
     Task<OperationHistoryEntry> RefreshOperationAsync(Guid operationId, CancellationToken cancellationToken);
     Task<IReadOnlyList<OperationHistoryEntry>> RebuildIndexAsync(CancellationToken cancellationToken);
 }
+
+public interface IDryRunPlanner
+{
+    Task<DryRunPlan> CreatePlanAsync(
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}
+
+public interface IDryRunValidationService
+{
+    Task<DryRunValidationResult> ValidateAsync(
+        DryRunPlan plan,
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}
+
+public interface IPenumbraVirtualFolderWriter
+{
+    Task<IReadOnlyList<DryRunSourceFileSnapshot>> CaptureSourceFilesAsync(PenumbraInstallation installation, CancellationToken cancellationToken);
+    Task<IReadOnlyList<SchemaFingerprint>> CaptureSchemaFingerprintsAsync(PenumbraInstallation installation, CancellationToken cancellationToken);
+    Task<IReadOnlyList<DryRunPlanEntry>> MapPlanEntriesAsync(
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+    Task<IReadOnlyList<DryRunFileChange>> BuildExpectedFileChangesAsync(
+        PenumbraInstallation installation,
+        IReadOnlyList<DryRunPlanEntry> planEntries,
+        CancellationToken cancellationToken);
+}
+
+public interface IApplyService
+{
+    Task<ApplyOperation> PrepareAsync(
+        DryRunPlan plan,
+        PenumbraInstallation installation,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+    Task<ApplyResult> ApplyAsync(
+        DryRunPlan plan,
+        ApplyOperation operation,
+        PenumbraInstallation installation,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}
+
+public interface IPostApplyVerificationService
+{
+    Task<PostApplyVerificationResult> VerifyAsync(
+        DryRunPlan plan,
+        ApplyResult applyResult,
+        PenumbraInstallation installation,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}
+
+public interface IWritePermissionPreflightService
+{
+    Task<WritePermissionPreflightResult> CheckAsync(
+        DryRunPlan plan,
+        CancellationToken cancellationToken);
+}
+
+public interface IPlanInvalidationService
+{
+    Task<IReadOnlyList<PlanInvalidationReason>> GetInvalidationReasonsAsync(
+        DryRunPlan plan,
+        PenumbraInstallation installation,
+        ScanInventory inventory,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}

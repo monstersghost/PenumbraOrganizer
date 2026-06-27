@@ -23,6 +23,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
+    private readonly IDryRunPlanner _dryRunPlanner;
+    private readonly IApplyService _applyService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
@@ -41,9 +43,15 @@ public sealed class MainViewModel : ObservableObject
     private string _newFolderName = string.Empty;
     private string _renameFolderName = string.Empty;
     private string _reviewFilter = "All";
-    private string _applyUnavailableReason = "Apply is not available in this build.";
+    private string _applyUnavailableReason = "Create a dry run before applying changes.";
+    private string _dryRunStatus = "Create a dry run to preview the exact Penumbra write target and expected result.";
+    private string _backupStatus = "Create a verified backup after the dry run is current.";
+    private string _applyChecklist = "Readiness checks will appear after a dry run is created.";
     private OrganizerFolderViewModel? _selectedProposedFolder;
     private OrganizerValidationResult? _reviewValidation;
+    private DryRunPlan? _currentDryRunPlan;
+    private ApplyOperation? _preparedApplyOperation;
+    private ApplyResult? _latestApplyResult;
     private int _changedProposalCount;
     private int _needsReviewCount;
     private int _installedModCount;
@@ -59,6 +67,8 @@ public sealed class MainViewModel : ObservableObject
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
+        IDryRunPlanner dryRunPlanner,
+        IApplyService applyService,
         BackupsViewModel backups,
         ILogger<MainViewModel> logger)
     {
@@ -69,6 +79,8 @@ public sealed class MainViewModel : ObservableObject
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
+        _dryRunPlanner = dryRunPlanner;
+        _applyService = applyService;
         _backups = backups;
         _logger = logger;
 
@@ -107,6 +119,9 @@ public sealed class MainViewModel : ObservableObject
         ResumeLastSessionCommand = new AsyncRelayCommand(ResumeLastSessionAsync, () => _inventory is not null);
         DiscardSessionCommand = new AsyncRelayCommand(DiscardSessionAsync);
         RefreshReviewCommand = new RelayCommand(_ => RefreshReviewChanges());
+        CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null);
+        CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null);
+        ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null);
         UndoCommand = new RelayCommand(_ => Undo(), _ => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(_ => Redo(), _ => _redoStack.Count > 0);
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
@@ -134,6 +149,9 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand ResumeLastSessionCommand { get; }
     public AsyncRelayCommand DiscardSessionCommand { get; }
     public RelayCommand RefreshReviewCommand { get; }
+    public AsyncRelayCommand CreateDryRunCommand { get; }
+    public AsyncRelayCommand CreateBackupCommand { get; }
+    public AsyncRelayCommand ApplyVirtualFolderChangesCommand { get; }
     public RelayCommand UndoCommand { get; }
     public RelayCommand RedoCommand { get; }
     public ObservableCollection<ModRowViewModel> Mods { get; }
@@ -277,6 +295,24 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _applyUnavailableReason, value);
     }
 
+    public string DryRunStatus
+    {
+        get => _dryRunStatus;
+        private set => SetProperty(ref _dryRunStatus, value);
+    }
+
+    public string BackupStatus
+    {
+        get => _backupStatus;
+        private set => SetProperty(ref _backupStatus, value);
+    }
+
+    public string ApplyChecklist
+    {
+        get => _applyChecklist;
+        private set => SetProperty(ref _applyChecklist, value);
+    }
+
     public int ReviewTotal => _reviewValidation?.Summary.TotalMods ?? 0;
     public int ReviewChanged => _reviewValidation?.Summary.Changed ?? 0;
     public int ReviewUnchanged => _reviewValidation?.Summary.Unchanged ?? 0;
@@ -362,6 +398,7 @@ public sealed class MainViewModel : ObservableObject
             ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
             CollectionCount = _inventory.Collections.Count;
             WarningCount = ScanWarnings.Count;
+            InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
             ResetOrganizerHistory();
             RebuildProposedFolders();
             RefreshOrganizerViews();
@@ -495,6 +532,7 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         SelectedStrategy = strategy;
+        InvalidateDryRunState("Organization strategy changed.");
         AppendLog($"Selected organization strategy: {strategy}.");
     }
 
@@ -603,6 +641,8 @@ public sealed class MainViewModel : ObservableObject
         if (!result.Succeeded)
             return;
 
+        InvalidateDryRunState("Organizer proposals changed.");
+
         if (pushHistory && result.HistoryEntry is not null)
         {
             _undoStack.Push(result.HistoryEntry);
@@ -622,6 +662,7 @@ public sealed class MainViewModel : ObservableObject
         var action = _undoStack.Pop();
         _organizerMutationService.ApplyUndo(CurrentProposalRows(), _organizerFolders, action);
         _redoStack.Push(action);
+        InvalidateDryRunState("Organizer proposals changed after Undo.");
         AppendLog("Undo: " + action.Description + ".");
         RefreshRowsFromProposals();
         RefreshOrganizerViews();
@@ -636,6 +677,7 @@ public sealed class MainViewModel : ObservableObject
         var action = _redoStack.Pop();
         _organizerMutationService.ApplyRedo(CurrentProposalRows(), _organizerFolders, action);
         _undoStack.Push(action);
+        InvalidateDryRunState("Organizer proposals changed after Redo.");
         AppendLog("Redo: " + action.Description + ".");
         RefreshRowsFromProposals();
         RefreshOrganizerViews();
@@ -818,9 +860,234 @@ public sealed class MainViewModel : ObservableObject
         foreach (var folder in session.ProposedFolders)
             _organizerFolders.Add(new OrganizerFolder(folder.Path, folder.ManuallyCreated, folder.Protected));
 
+        InvalidateDryRunState("A saved organizer session was restored.");
         RefreshRowsFromProposals();
         RefreshOrganizerViews();
     }
+
+    private async Task CreateDryRunAsync()
+    {
+        if (_installation is null || _inventory is null)
+            return;
+
+        try
+        {
+            ProgressMessage = "Creating dry run.";
+            var snapshot = BuildProposalSnapshot();
+            _currentDryRunPlan = await _dryRunPlanner.CreatePlanAsync(_installation, _inventory, snapshot, CancellationToken.None);
+            _preparedApplyOperation = null;
+            _latestApplyResult = null;
+            DryRunStatus = BuildDryRunStatus(_currentDryRunPlan);
+            BackupStatus = _currentDryRunPlan.ApplyPermitted
+                ? "Dry run is current. Create Backup will build a verified backup package and rollback record."
+                : "Dry run found blockers. Fix them before creating a backup package.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            ProgressMessage = "Dry run created.";
+            AppendLog($"Created dry run {_currentDryRunPlan.PlanId} with {_currentDryRunPlan.Summary.WriteOperationCount} writable target(s).");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Dry run creation failed");
+            _currentDryRunPlan = null;
+            _preparedApplyOperation = null;
+            _latestApplyResult = null;
+            DryRunStatus = "Dry run creation failed.";
+            BackupStatus = "Create Backup is unavailable until a valid dry run exists.";
+            ApplyChecklist = "Dry run failed. Review the error and rescan if needed.";
+            ApplyUnavailableReason = ex.Message;
+            RefreshDryRunCommandState();
+            ProgressMessage = "Dry run failed.";
+            AppendLog("Dry run failed: " + ex.Message);
+        }
+    }
+
+    private async Task CreateBackupAsync()
+    {
+        if (_installation is null || _currentDryRunPlan is null)
+            return;
+
+        try
+        {
+            ProgressMessage = "Creating verified backup.";
+            var snapshot = BuildProposalSnapshot();
+            _preparedApplyOperation = await _applyService.PrepareAsync(_currentDryRunPlan, _installation, snapshot, CancellationToken.None);
+            BackupStatus = $"Verified backup ready. Operation: {_preparedApplyOperation.OperationId}";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            await _backups.RefreshAsync();
+            ProgressMessage = "Verified backup ready.";
+            AppendLog($"Prepared apply operation {_preparedApplyOperation.OperationId} with verified backup.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Backup preparation failed");
+            _preparedApplyOperation = null;
+            BackupStatus = "Backup preparation failed.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = ex.Message;
+            RefreshDryRunCommandState();
+            ProgressMessage = "Backup preparation failed.";
+            AppendLog("Backup preparation failed: " + ex.Message);
+            await _backups.RefreshAsync();
+        }
+    }
+
+    private async Task ApplyVirtualFolderChangesAsync()
+    {
+        if (_installation is null || _currentDryRunPlan is null || _preparedApplyOperation is null)
+            return;
+
+        if (MessageBox.Show(
+                "Apply will only update the authoritative Penumbra virtual-folder mapping in mod_data.db. Physical mod folders, assets, collections, and game files will not be changed.\n\nClose FFXIV and XIVLauncher before continuing.\n\nApply the planned virtual-folder changes now?",
+                "Apply virtual-folder changes",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            ProgressMessage = "Applying virtual-folder changes.";
+            var snapshot = BuildProposalSnapshot();
+            _latestApplyResult = await _applyService.ApplyAsync(_currentDryRunPlan, _preparedApplyOperation, _installation, snapshot, CancellationToken.None);
+            BackupStatus = _latestApplyResult.RollbackAvailable
+                ? $"Apply finished with status {_latestApplyResult.Status}. Rollback is now available from Backups."
+                : $"Apply finished with status {_latestApplyResult.Status}.";
+            ApplyChecklist = BuildApplyChecklist();
+            ApplyUnavailableReason = BuildApplyUnavailableReason();
+            RefreshDryRunCommandState();
+            await _backups.RefreshAsync();
+            ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
+            AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Apply failed");
+            BackupStatus = "Apply failed before any live Penumbra write could be confirmed.";
+            ApplyUnavailableReason = ex.Message;
+            ApplyChecklist = BuildApplyChecklist();
+            RefreshDryRunCommandState();
+            ProgressMessage = "Apply failed.";
+            AppendLog("Apply failed: " + ex.Message);
+            await _backups.RefreshAsync();
+        }
+    }
+
+    private ProposalSnapshot BuildProposalSnapshot()
+    {
+        if (_inventory is null)
+            throw new InvalidOperationException("A scan is required before creating a dry run.");
+
+        var preferences = BuildOrganizationPreferences();
+        var proposals = CurrentProposalRows()
+            .Select(proposal => new OrganizerModProposal
+            {
+                StableScanId = proposal.StableScanId,
+                Name = proposal.Name,
+                CurrentVirtualFolder = proposal.CurrentVirtualFolder,
+                ProposedVirtualFolder = proposal.ProposedVirtualFolder,
+                OriginalCreator = proposal.OriginalCreator,
+                OrganizerCreatorLabel = proposal.OrganizerCreatorLabel,
+                OrganizerTypeLabel = proposal.OrganizerTypeLabel,
+                Protected = proposal.Protected,
+                OriginalProtected = proposal.OriginalProtected,
+                Source = proposal.Source,
+                NeedsReview = proposal.NeedsReview,
+            })
+            .ToArray();
+        var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
+        var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
+        var session = BuildSessionDocument();
+        return new ProposalSnapshot(
+            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
+            OrganizerSessionService.BuildSessionIdentity(session),
+            preferences,
+            proposals,
+            folders,
+            validation);
+    }
+
+    private void InvalidateDryRunState(string reason)
+    {
+        _currentDryRunPlan = null;
+        _preparedApplyOperation = null;
+        _latestApplyResult = null;
+        DryRunStatus = "Your plan is out of date. Create a new dry run before applying changes.";
+        BackupStatus = reason;
+        ApplyChecklist = "Create a new dry run before creating a backup or applying changes.";
+        ApplyUnavailableReason = BuildApplyUnavailableReason();
+        RefreshDryRunCommandState();
+    }
+
+    private void RefreshDryRunCommandState()
+    {
+        CreateDryRunCommand.RaiseCanExecuteChanged();
+        CreateBackupCommand.RaiseCanExecuteChanged();
+        ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
+    }
+
+    private string BuildDryRunStatus(DryRunPlan plan)
+    {
+        var fileChange = plan.FileChanges.SingleOrDefault();
+        if (fileChange is null)
+            return "No supported Penumbra virtual-folder writes are needed.";
+
+        return
+            $"Authoritative target: {Path.GetFileName(fileChange.TargetPath)}{Environment.NewLine}" +
+            $"Record scope: {fileChange.ExactRecordKey}{Environment.NewLine}" +
+            $"Affected mods: {plan.Summary.AffectedModCount}{Environment.NewLine}" +
+            $"Plan status: {plan.Validation.Status}";
+    }
+
+    private string BuildApplyChecklist()
+    {
+        var checklist = new List<string>
+        {
+            ChecklistLine("Proposals valid", _reviewValidation is not null && _reviewValidation.Errors.Count == 0),
+            ChecklistLine("Protected mods unchanged", _reviewValidation is not null && _reviewValidation.Rows.All(row => row.Status != OrganizerRowStatus.BlockedProtected)),
+            ChecklistLine("Penumbra version unchanged", _currentDryRunPlan?.Validation.InvalidationReasons.Contains(PlanInvalidationReason.PenumbraVersionChanged) != true),
+            ChecklistLine("Source files unchanged", _currentDryRunPlan?.Validation.InvalidationReasons.Contains(PlanInvalidationReason.SourceFileHashChanged) != true),
+            ChecklistLine("Write permission available", _preparedApplyOperation?.Preflight.Succeeded == true),
+            ChecklistLine("Backup verified", _preparedApplyOperation is not null),
+            ChecklistLine("Dry run current", _currentDryRunPlan?.Validation.Status == DryRunPlanValidationStatus.Valid),
+        };
+
+        if (_latestApplyResult is not null)
+            checklist.Add($"Latest apply result: {_latestApplyResult.Status}");
+
+        return string.Join(Environment.NewLine, checklist);
+    }
+
+    private string BuildApplyUnavailableReason()
+    {
+        if (_reviewValidation is null)
+            return "Scan your mods and review proposals before creating a dry run.";
+
+        if (_currentDryRunPlan is null)
+            return "Your plan is out of date. Create a new dry run before applying changes.";
+
+        if (_currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
+            return "Your plan is out of date. Create a new dry run before applying changes.";
+
+        if (_preparedApplyOperation is null)
+            return "Create a verified backup package before applying changes.";
+
+        if (_latestApplyResult is not null)
+            return _latestApplyResult.RollbackAvailable
+                ? "Apply finished. Rollback is available from the Backups screen."
+                : $"Apply finished with status {_latestApplyResult.Status}.";
+
+        return _preparedApplyOperation.Preflight.Succeeded
+            ? "Apply is enabled only for supported virtual-folder changes in mod_data.db."
+            : string.Join(Environment.NewLine, _preparedApplyOperation.Preflight.Errors);
+    }
+
+    private static string ChecklistLine(string label, bool passed)
+        => $"{(passed ? "[x]" : "[ ]")} {label}";
 
     private void DebouncedSaveSession()
     {
@@ -858,9 +1125,24 @@ public sealed class MainViewModel : ObservableObject
         foreach (var row in FilterReviewRows(_reviewValidation.Rows))
             ReviewRows.Add(row);
 
-        var blockers = _reviewValidation.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        ApplyUnavailableReason = "Apply is not available in this build." +
-                                 (blockers.Length == 0 ? string.Empty : Environment.NewLine + string.Join(Environment.NewLine, blockers.Select(blocker => "- " + blocker)));
+        if (_currentDryRunPlan is not null)
+        {
+            var blockers = _reviewValidation.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            _currentDryRunPlan = _currentDryRunPlan with
+            {
+                Validation = _currentDryRunPlan.Validation with
+                {
+                    Status = blockers.Length == 0 ? _currentDryRunPlan.Validation.Status : DryRunPlanValidationStatus.Invalid,
+                    Errors = _currentDryRunPlan.Validation.Errors.Concat(blockers).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    ApplyPermitted = blockers.Length == 0 && _currentDryRunPlan.Validation.ApplyPermitted,
+                },
+                ApplyPermitted = blockers.Length == 0 && _currentDryRunPlan.ApplyPermitted,
+            };
+        }
+
+        ApplyChecklist = BuildApplyChecklist();
+        ApplyUnavailableReason = BuildApplyUnavailableReason();
+        RefreshDryRunCommandState();
         RaisePropertyChanged(nameof(ReviewTotal));
         RaisePropertyChanged(nameof(ReviewChanged));
         RaisePropertyChanged(nameof(ReviewUnchanged));

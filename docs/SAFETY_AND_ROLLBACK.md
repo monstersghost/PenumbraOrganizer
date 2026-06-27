@@ -9,7 +9,13 @@ The organizer is read-only until:
 - dry-run validation passes
 - a verified backup completes
 
-The current `v0.1.0-alpha` build remains read-only for live Penumbra state. It can scan, create in-memory proposals, save organizer sessions, export sanitized AI inventory packages, and show Review Changes. It does not apply changes to Penumbra.
+The current repository now includes a guarded Apply foundation for one proven target:
+
+- `mod_data.db`
+- `LocalModData`
+- `Folder`
+
+Physical mod folders, collections, option groups, priorities, enabled states, `.pmp` files, plugin binaries, and FFXIV files remain outside this write path.
 
 The recovery foundation is now implemented for future Apply integration:
 
@@ -22,6 +28,15 @@ The recovery foundation is now implemented for future Apply integration:
 
 This foundation remains fixture-tested and does not expose live Apply or public rollback execution in the current alpha UI.
 
+The first live write path now adds:
+
+- immutable dry-run planning
+- exact expected-result generation for `mod_data.db`
+- verified-backup integration before Apply
+- atomic database replacement for supported virtual-folder changes
+- post-Apply verification
+- guarded rollback availability after Apply
+
 ## Absolute boundaries
 
 - no FFXIV game files are modified
@@ -30,6 +45,7 @@ This foundation remains fixture-tested and does not expose live Apply or public 
 - no mod assets are rewritten
 - no `.pmp` packages are handled
 - no collections are modified
+- no `organization.json` writes are performed in this milestone
 - scanning remains read-only
 - in-memory proposals do not write to Penumbra
 - protected items are immutable
@@ -89,6 +105,8 @@ The current package format is documented in:
 
 Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current AI proposal, current organizer session, current display names, or a new live scan.
 
+Rollback is available only after a prepared Apply operation completes enough verified live writes to restore safely.
+
 Rollback records must include:
 
 - operation ID
@@ -128,8 +146,13 @@ Partial rollback must be reported clearly. Re-running rollback should be resumab
 
 ## Next rollback milestone
 
-The rollback foundation milestone is complete. The next write milestone is:
+The rollback foundation milestone is complete and the first guarded Apply foundation is now implemented for `mod_data.db`.
 
-`Immutable dry-run planning and atomic Apply pipeline without enabling public Apply`
+Remaining blockers before wider public Apply exposure are:
+
+- proving whether `mod_filesystem\organization.json` must also be written
+- deciding whether Penumbra rebuilds any derived folder-tree presentation automatically
+- expanding safe UI beyond the narrow `LocalModData.Folder` path
+- deliberate public-release validation beyond fixture-only automation
 
 Future write milestones must continue using temporary fixtures for automated verification and must not access the user's real Penumbra installation during development tests.

@@ -32,6 +32,12 @@ internal sealed class RecoveryStorageLayout
     public string GetManifestPath(Guid operationId)
         => Path.Combine(GetOperationDirectory(operationId), "manifest.json");
 
+    public string GetPlanPath(Guid operationId)
+        => Path.Combine(GetOperationDirectory(operationId), "plan.json");
+
+    public string GetApplyPath(Guid operationId)
+        => Path.Combine(GetOperationDirectory(operationId), "apply.json");
+
     public string GetRollbackPath(Guid operationId)
         => Path.Combine(GetOperationDirectory(operationId), "rollback.json");
 

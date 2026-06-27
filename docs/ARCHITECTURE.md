@@ -79,7 +79,7 @@ Complete foundations in the alpha include:
 - Review Changes screen with reusable proposal validation and statuses `ValidChange`, `Unchanged`, `Protected`, `NeedsReview`, `InvalidPath`, `BlockedProtected`, `MissingMod`, and `StaleScan`
 - sanitized external AI inventory export package with organization preferences
 
-The alpha does not implement live dry run, verified backup, Apply, post-Apply verification, rollback, GUI AI proposal import, drag-and-drop, collection editing, `.pmp` handling, or physical mod movement.
+The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. GUI AI proposal import, drag-and-drop, collection editing, `.pmp` handling, and physical mod movement remain out of scope.
 
 ## PMP scope boundary
 
@@ -96,9 +96,9 @@ A future read-only "Inspect uninstalled package" feature may support `.pmp`, but
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra.json`
   carries Penumbra's configured `ModDirectory`
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_data.db`
-  stores current virtual folders and local mod metadata
+  stores the authoritative per-mod virtual-folder mapping used by the first write-enabled milestone
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_filesystem\organization.json`
-  stores virtual folder tree presentation
+  is currently treated as presentation data only and is not written until its role is proven by fixtures or authoritative structure inspection
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\collections\*.json`
   stores collection state and enabled information
 - installed plugin manifests and assemblies under `%AppData%\XIVLauncher\installedPlugins\Penumbra`
@@ -216,7 +216,7 @@ This flow must not introduce `.pmp` handling.
 
 ## Rollback-first write architecture
 
-The rollback and verified-backup foundation is now implemented without enabling live Apply.
+The rollback and verified-backup foundation is implemented, and the first guarded Apply path now sits on top of it.
 
 The current recovery slice includes:
 
@@ -228,17 +228,26 @@ The current recovery slice includes:
 - backup and rollback verification services
 - operation-history rebuilding from operation packages
 - read-only `Backups` UI foundation
+- immutable dry-run planner and plan invalidation service
+- exact expected-result generation for `mod_data.db`
+- write-permission preflight and `asInvoker` execution level
+- guarded Apply executor that writes only `LocalModData.Folder`
+- post-Apply verification and rollback availability tracking
 
 Rollback remains independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
 
 The package layout and schema details are documented in `docs/BACKUP_AND_ROLLBACK_FORMAT.md`.
 
-The next required write milestone is:
+The currently proven authoritative write target is:
 
-1. immutable dry-run planner
-2. atomic Apply pipeline
-3. post-Apply verification
-4. guarded public rollback execution only after end-to-end validation
+* file: `mod_data.db`
+* collection: `LocalModData`
+* key: `_id`
+* field: `Folder`
+
+The top-level physical mod directory name is the stable `_id` used to map an installed mod to its authoritative virtual-folder record.
+
+The next required write milestone is no longer generic Apply plumbing. It is proving or deliberately declining any additional Penumbra structures, especially `mod_filesystem\organization.json`, before widening live writes.
 
 ## Milestone 1
 

@@ -1,5 +1,6 @@
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
+using PenumbraOrganizer.Infrastructure.Apply;
 
 namespace PenumbraOrganizer.Infrastructure.Recovery;
 
@@ -33,15 +34,21 @@ public sealed class OperationHistoryService : IOperationHistoryService
 
         var operation = await AtomicJsonFileStore.ReadRequiredAsync<BackupOperation>(operationPath, cancellationToken);
         var manifest = await AtomicJsonFileStore.ReadAsync<BackupManifest>(_layout.GetManifestPath(operationId), cancellationToken);
+        var plan = await AtomicJsonFileStore.ReadAsync<DryRunPlan>(_layout.GetPlanPath(operationId), cancellationToken);
+        var apply = await AtomicJsonFileStore.ReadAsync<ApplyPackageDocument>(_layout.GetApplyPath(operationId), cancellationToken);
         var rollback = await AtomicJsonFileStore.ReadAsync<RollbackTransaction>(_layout.GetRollbackPath(operationId), cancellationToken);
         var verification = await AtomicJsonFileStore.ReadAsync<OperationVerificationDocument>(_layout.GetVerificationPath(operationId), cancellationToken);
 
         return new OperationPackageDetails(
             operation,
             manifest,
+            plan,
+            apply?.Operation,
+            apply?.Result,
             rollback,
             verification?.BackupVerification,
-            verification?.RollbackVerification);
+            verification?.RollbackVerification,
+            verification?.PostApplyVerification);
     }
 
     public async Task<OperationHistoryEntry> RefreshOperationAsync(Guid operationId, CancellationToken cancellationToken)
@@ -118,6 +125,7 @@ public sealed class OperationHistoryService : IOperationHistoryService
             operation.OperationId,
             operation.CreatedAtUtc,
             operation.BackupStatus,
+            operation.ApplyStatus,
             operation.RollbackStatus,
             operation.AffectedFileCount,
             operation.AffectedModCount,
@@ -126,5 +134,6 @@ public sealed class OperationHistoryService : IOperationHistoryService
             operation.ConflictCount,
             operation.FailureCount,
             operation.OperationFolder,
-            operation.HasRollbackTransaction);
+            operation.HasRollbackTransaction,
+            operation.RollbackAvailable);
 }

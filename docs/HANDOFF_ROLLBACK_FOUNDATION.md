@@ -10,13 +10,13 @@
 ## Current build state
 
 * Build result: solution build passes with 0 warnings and 0 errors.
-* Test count: 75/75 tests pass.
-* Apply status: Apply remains unavailable and clearly disabled in the app.
-* Live write status: no live Penumbra write path is exposed in the public alpha UI.
+* Test count: 92/92 tests pass.
+* Apply status: guarded Apply is implemented only for supported `mod_data.db` virtual-folder writes.
+* Live write status: no physical mod, collection, `.pmp`, plugin, or FFXIV write path is exposed.
 
 ## Delivered in this session
 
-The rollback-first milestone is implemented:
+The rollback-first milestone and guarded dry-run/apply foundation are implemented:
 
 * recovery domain models in `PenumbraOrganizer.Core/Models/RecoveryModels.cs`
 * recovery service interfaces in `PenumbraOrganizer.Core/Interfaces/Services.cs`
@@ -26,16 +26,24 @@ The rollback-first milestone is implemented:
 * rollback verification in `PenumbraOrganizer.Infrastructure/Recovery/RollbackVerificationService.cs`
 * operation-history rebuilding in `PenumbraOrganizer.Infrastructure/Recovery/OperationHistoryService.cs`
 * shared atomic JSON persistence and safe package-path handling in `PenumbraOrganizer.Infrastructure/Recovery`
+* authoritative `mod_data.db` virtual-folder mapping and expected-result generation in `PenumbraOrganizer.Infrastructure/Apply/PenumbraVirtualFolderWriter.cs`
+* immutable dry-run planning and invalidation in `PenumbraOrganizer.Infrastructure/Apply/DryRunPlanner.cs` and `PlanInvalidationService.cs`
+* write-permission preflight in `PenumbraOrganizer.Infrastructure/Apply/WritePermissionPreflightService.cs`
+* guarded Apply executor and post-Apply verification in `PenumbraOrganizer.Infrastructure/Apply/ApplyService.cs` and `PostApplyVerificationService.cs`
 * read-only Backups screen foundation in `PenumbraOrganizer.App/ViewModels/BackupsViewModel.cs` and `PenumbraOrganizer.App/MainWindow.xaml`
+* Review Changes dry-run/apply controls in `PenumbraOrganizer.App/ViewModels/MainViewModel.cs` and `PenumbraOrganizer.App/MainWindow.xaml`
 * fixture-only recovery tests in `PenumbraOrganizer.Tests/Recovery/RecoveryServicesTests.cs`
+* fixture-only dry-run/apply tests in `PenumbraOrganizer.Tests/Apply/DryRunAndApplyTests.cs`
 
 ## Safety invariants now enforced
 
 * backup creation accepts only explicit file lists
 * protected files are rejected from writable backup requests
 * protected files are rejected from rollback transactions
+* protected rows never generate writable dry-run operations
 * backup files are length-verified and SHA-256-verified
 * expected JSON files must parse
+* Apply writes only exact planned bytes for `mod_data.db`
 * rollback restores exact backed-up bytes
 * live files are not overwritten when the current hash differs from both the expected applied hash and original backup hash
 * operation history can be rebuilt from operation packages
@@ -51,6 +59,8 @@ Contents:
 
 * `operation.json`
 * `manifest.json`
+* `plan.json`
+* `apply.json`
 * `rollback.json`
 * `verification.json`
 * `files\...`
@@ -70,20 +80,21 @@ The app now includes a read-only `Backups` tab that can:
 * re-run backup verification
 * open the backup folder
 
+The UI now exposes guarded `Create Dry Run`, `Create Backup`, and `Apply Virtual-Folder Changes` actions in Review Changes.
+
 The UI still does not expose:
 
-* live Apply
 * public rollback execution
 * force restore
+* any broader write target than `mod_data.db` `LocalModData.Folder`
 
 ## Remaining blockers before safe Apply
 
-The main remaining write milestones are:
+The main remaining blockers before wider safe public Apply exposure are:
 
-* immutable dry-run planner
-* atomic Apply pipeline
-* post-Apply verification
-* compatibility-backed write invalidation
+* proving whether `mod_filesystem\organization.json` must also be updated
+* deciding whether Penumbra rebuilds any derived folder-tree presentation automatically
+* deliberate public-release validation of the guarded Apply UI path
 * guarded public rollback execution only after end-to-end validation
 
 These milestones must continue to avoid physical mod movement, collection editing, `.pmp` handling, and real-installation test access.
