@@ -17,6 +17,7 @@ public partial class App : Application
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddDebug().SetMinimumLevel(LogLevel.Information));
         services.AddPenumbraOrganizerInfrastructure();
+        services.AddSingleton<BackupsViewModel>();
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<MainWindow>();
 

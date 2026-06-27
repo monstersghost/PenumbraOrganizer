@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
+    private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
     private ScanInventory? _inventory;
@@ -58,6 +59,7 @@ public sealed class MainViewModel : ObservableObject
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
+        BackupsViewModel backups,
         ILogger<MainViewModel> logger)
     {
         _discoveryService = discoveryService;
@@ -67,6 +69,7 @@ public sealed class MainViewModel : ObservableObject
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
+        _backups = backups;
         _logger = logger;
 
         Mods = new ObservableCollection<ModRowViewModel>();
@@ -107,6 +110,7 @@ public sealed class MainViewModel : ObservableObject
         UndoCommand = new RelayCommand(_ => Undo(), _ => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(_ => Redo(), _ => _redoStack.Count > 0);
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
+        _ = _backups.RefreshAsync();
     }
 
     public ICommand DetectCommand { get; }
@@ -142,6 +146,7 @@ public sealed class MainViewModel : ObservableObject
     public ICollectionView FilteredMods { get; }
     public ICollectionView SelectedFolderMods { get; }
     public ICollectionView ChangedMods { get; }
+    public BackupsViewModel Backups => _backups;
 
     public string DetectionSummary
     {

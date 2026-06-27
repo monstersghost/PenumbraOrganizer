@@ -471,6 +471,92 @@
                     </DockPanel>
                 </TabItem>
 
+                <TabItem Header="Backups">
+                    <Grid Margin="12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.5*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Row="0" Grid.ColumnSpan="3" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="Backups" FontSize="18" FontWeight="SemiBold" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="This screen is read-only in the public alpha. It lists verified backup operations and their rollback foundation data without exposing live rollback actions."
+                                           Foreground="#FF4A5568"
+                                           TextWrapping="Wrap" />
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh Backups" MinWidth="130" Height="30" Margin="0,0,8,8" />
+                                    <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="30" Margin="0,0,8,8" />
+                                    <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="30" Margin="0,0,8,8" />
+                                </WrapPanel>
+                                <TextBlock Margin="0,8,0,0" Text="{Binding Backups.StatusMessage}" Foreground="#FF245C9A" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <DataGrid Grid.Row="2"
+                                  ItemsSource="{Binding Backups.Operations}"
+                                  SelectedItem="{Binding Backups.SelectedOperation}"
+                                  AutoGenerateColumns="False"
+                                  IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  EnableRowVirtualization="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding CreatedAtUtc}" Width="1.2*" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding BackupStatus}" Width="*" />
+                                <DataGridTextColumn Header="Affected Items" Binding="{Binding AffectedItems}" Width="110" />
+                                <DataGridTextColumn Header="Backup Verified" Binding="{Binding BackupVerified}" Width="120" />
+                                <DataGridTextColumn Header="Rollback Status" Binding="{Binding RollbackStatus}" Width="1.2*" />
+                                <DataGridTextColumn Header="Conflicts" Binding="{Binding Conflicts}" Width="90" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <Border Grid.Row="2" Grid.Column="2" Background="White" BorderBrush="#FFE2E5EA" BorderThickness="1" Padding="14">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Top" Background="#FFFFFBEB" BorderBrush="#FFF2D47A" BorderThickness="1" Padding="10" Margin="0,0,0,12">
+                                    <TextBlock Text="{Binding Backups.SelectedBackupAvailability}" TextWrapping="Wrap" />
+                                </Border>
+
+                                <TextBlock DockPanel.Dock="Top" Text="Affected Files" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                <ListView DockPanel.Dock="Bottom" ItemsSource="{Binding Backups.AffectedFiles}" Height="260">
+                                    <ListView.View>
+                                        <GridView>
+                                            <GridViewColumn Header="Target Path" Width="240" DisplayMemberBinding="{Binding TargetPath}" />
+                                            <GridViewColumn Header="Package Path" Width="170" DisplayMemberBinding="{Binding RelativeBackupPath}" />
+                                            <GridViewColumn Header="Type" Width="80" DisplayMemberBinding="{Binding Classification}" />
+                                            <GridViewColumn Header="JSON" Width="90" DisplayMemberBinding="{Binding JsonStatus}" />
+                                        </GridView>
+                                    </ListView.View>
+                                </ListView>
+
+                                <StackPanel>
+                                    <TextBlock Text="Summary" FontWeight="SemiBold" />
+                                    <TextBox Margin="0,8,0,12"
+                                             Text="{Binding Backups.SelectionSummary}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             MinHeight="180"
+                                             VerticalScrollBarVisibility="Auto" />
+                                    <TextBlock Text="Operation Folder" FontWeight="SemiBold" />
+                                    <TextBox Margin="0,8,0,0"
+                                             Text="{Binding Backups.SelectedOperationFolder}"
+                                             IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             MinHeight="60" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </TabItem>
+
                 <TabItem Header="Folder Tree">
                     <DataGrid Margin="12"
                               ItemsSource="{Binding FolderTree}"

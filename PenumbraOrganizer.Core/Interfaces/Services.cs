@@ -73,3 +73,32 @@ public interface IProtectionService
 {
     bool IsProtectedPath(string currentVirtualFolder);
 }
+
+public interface IBackupService
+{
+    Task<OperationPackageDetails> CreateBackupAsync(BackupRequest request, CancellationToken cancellationToken);
+}
+
+public interface IBackupVerificationService
+{
+    Task<BackupVerificationResult> VerifyAsync(Guid operationId, CancellationToken cancellationToken);
+}
+
+public interface IRollbackService
+{
+    Task<RollbackTransaction> SaveTransactionAsync(RollbackTransaction transaction, CancellationToken cancellationToken);
+    Task<RollbackResult> ExecuteAsync(Guid operationId, RollbackExecutionOptions options, CancellationToken cancellationToken);
+}
+
+public interface IRollbackVerificationService
+{
+    Task<RollbackVerificationResult> VerifyAsync(Guid operationId, CancellationToken cancellationToken);
+}
+
+public interface IOperationHistoryService
+{
+    Task<IReadOnlyList<OperationHistoryEntry>> GetOperationsAsync(CancellationToken cancellationToken);
+    Task<OperationPackageDetails?> TryLoadOperationAsync(Guid operationId, CancellationToken cancellationToken);
+    Task<OperationHistoryEntry> RefreshOperationAsync(Guid operationId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<OperationHistoryEntry>> RebuildIndexAsync(CancellationToken cancellationToken);
+}
