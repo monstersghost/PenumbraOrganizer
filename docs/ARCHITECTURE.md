@@ -216,19 +216,29 @@ This flow must not introduce `.pmp` handling.
 
 ## Rollback-first write architecture
 
-The next required milestone is `Rollback and verified-backup foundation without enabling live Apply`. Recovery must be designed before any live writes are enabled.
+The rollback and verified-backup foundation is now implemented without enabling live Apply.
 
-Priority order:
+The current recovery slice includes:
 
-1. Rollback subsystem
-2. Verified backup engine
-3. Immutable dry-run planner
-4. Atomic Apply pipeline
-5. Post-Apply verification
+- recovery domain models and service interfaces in `PenumbraOrganizer.Core`
+- verified backup creation from explicit file lists only
+- immutable `manifest.json` and rollback transaction persistence
+- atomic JSON persistence for operation, manifest, rollback, verification, and history records
+- exact-byte rollback restore with conflict detection
+- backup and rollback verification services
+- operation-history rebuilding from operation packages
+- read-only `Backups` UI foundation
 
-Rollback must be independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It must use immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
+Rollback remains independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
 
-Recommended next-session details are documented in `docs/HANDOFF_ROLLBACK_FOUNDATION.md`.
+The package layout and schema details are documented in `docs/BACKUP_AND_ROLLBACK_FORMAT.md`.
+
+The next required write milestone is:
+
+1. immutable dry-run planner
+2. atomic Apply pipeline
+3. post-Apply verification
+4. guarded public rollback execution only after end-to-end validation
 
 ## Milestone 1
 

@@ -1,4 +1,4 @@
-# Penumbra Organizer - Rollback Foundation Handoff
+# Penumbra Organizer - Recovery Foundation Handoff
 
 ## Repository
 
@@ -6,117 +6,48 @@
 * Workspace root: `F:\PenumbraOrganizer`
 * Current branch: `main`
 * Current tag/release: `v0.1.0-alpha`
-* Initial public commit: `298e7fa Initial public alpha of Penumbra Organizer`
-* Latest handoff commit: see repository HEAD after `Add rollback-first development handoff`
 
 ## Current build state
 
 * Build result: solution build passes with 0 warnings and 0 errors.
-* Test count: 42/42 tests pass.
-* Release status: `v0.1.0-alpha` public prerelease exists with `PenumbraOrganizer-v0.1.0-alpha-win-x64.zip`.
+* Test count: 75/75 tests pass.
 * Apply status: Apply remains unavailable and clearly disabled in the app.
-* Live write status: no live Penumbra write path is implemented.
+* Live write status: no live Penumbra write path is exposed in the public alpha UI.
 
-## Existing architecture to reuse
+## Delivered in this session
 
-Use these existing files and concepts before adding new recovery code:
+The rollback-first milestone is implemented:
 
-* Organizer domain models: `PenumbraOrganizer.Core/Models/OrganizerModels.cs`
-* General domain models: `PenumbraOrganizer.Core/Models/DomainModels.cs`
-* Service interfaces: `PenumbraOrganizer.Core/Interfaces/Services.cs`
-* Organizer mutation service: `PenumbraOrganizer.Core/Services/OrganizerMutationService.cs`
-* Organizer proposal validation service: `PenumbraOrganizer.Core/Services/OrganizerProposalValidationService.cs`
-* Organizer session service: `PenumbraOrganizer.Infrastructure/Sessions/OrganizerSessionService.cs`
-* Compatibility service: `PenumbraOrganizer.Infrastructure/Compatibility/PenumbraCompatibilityService.cs`
-* Dependency-injection registration: `PenumbraOrganizer.Infrastructure/ServiceCollectionExtensions.cs`
-* WPF shell and current Review Changes UI: `PenumbraOrganizer.App/MainWindow.xaml`
-* Main view model: `PenumbraOrganizer.App/ViewModels/MainViewModel.cs`
-* Safety documentation: `docs/SAFETY_AND_ROLLBACK.md`
-* Session documentation: `docs/ORGANIZER_SESSION_FORMAT.md`
+* recovery domain models in `PenumbraOrganizer.Core/Models/RecoveryModels.cs`
+* recovery service interfaces in `PenumbraOrganizer.Core/Interfaces/Services.cs`
+* verified backup creation in `PenumbraOrganizer.Infrastructure/Recovery/BackupService.cs`
+* backup verification in `PenumbraOrganizer.Infrastructure/Recovery/BackupVerificationService.cs`
+* rollback transaction persistence and exact-byte restore in `PenumbraOrganizer.Infrastructure/Recovery/RollbackService.cs`
+* rollback verification in `PenumbraOrganizer.Infrastructure/Recovery/RollbackVerificationService.cs`
+* operation-history rebuilding in `PenumbraOrganizer.Infrastructure/Recovery/OperationHistoryService.cs`
+* shared atomic JSON persistence and safe package-path handling in `PenumbraOrganizer.Infrastructure/Recovery`
+* read-only Backups screen foundation in `PenumbraOrganizer.App/ViewModels/BackupsViewModel.cs` and `PenumbraOrganizer.App/MainWindow.xaml`
+* fixture-only recovery tests in `PenumbraOrganizer.Tests/Recovery/RecoveryServicesTests.cs`
 
-There is no complete Backups screen yet. The next session should add a read-only Backups screen foundation that lists backup and rollback operations and their status without enabling Apply.
+## Safety invariants now enforced
 
-## Objective
-
-Build the recovery subsystem first so all future writes are reversible by design.
-
-## Scope for the next session
-
-Include only:
-
-* rollback domain models
-* verified backup engine
-* backup manifest
-* rollback transaction record
-* rollback executor
-* rollback conflict detection
-* atomic restoration
-* backup and rollback verification
-* read-only Backups screen foundation
-* fixture-backed tests
-* documentation updates
-
-## Explicitly out of scope
-
-* enabling live Apply
-* changing live Penumbra files
-* AI proposal GUI import
-* drag-and-drop
-* collection editing
-* `.pmp` handling
-* physical mod movement
-* game-file changes
-* automatic Penumbra update
-* general UI redesign
-
-## Proposed domain models
-
-Recommended model names:
-
-* `BackupOperation`
-* `BackupManifest`
-* `BackupFileEntry`
-* `RollbackTransaction`
-* `RollbackFileEntry`
-* `RollbackConflict`
-* `RollbackResult`
-* `RollbackStatus`
-* `BackupVerificationResult`
-
-The next session may adjust names to match existing conventions.
-
-## Recommended interfaces
-
-Recommended interfaces:
-
-* `IBackupService`
-* `IBackupVerificationService`
-* `IRollbackService`
-* `IRollbackVerificationService`
-* `IOperationHistoryService`
-
-The next session should first inspect existing interfaces to avoid duplication.
-
-## Safety invariants
-
-* no backup means no future Apply
-* a backup is usable only after verification
+* backup creation accepts only explicit file lists
+* protected files are rejected from writable backup requests
+* protected files are rejected from rollback transactions
+* backup files are length-verified and SHA-256-verified
+* expected JSON files must parse
 * rollback restores exact backed-up bytes
-* rollback checks current hash before overwrite
-* conflicts never overwrite silently
-* protected files must never appear in a writable plan
-* rollback records are immutable after operation finalization
-* backup and rollback records do not depend on display names
-* backup paths are stored safely and preferably relative within the operation package
-* temporary fixture tests must never access the real Penumbra installation
+* live files are not overwritten when the current hash differs from both the expected applied hash and original backup hash
+* operation history can be rebuilt from operation packages
+* automated tests use temporary fixture directories only
 
-## Recommended storage layout
+## Storage layout
 
-Use:
+The implemented package layout is:
 
 `%LocalAppData%\PenumbraOrganizer\Backups\<operation-id>\`
 
-Example contents:
+Contents:
 
 * `operation.json`
 * `manifest.json`
@@ -125,56 +56,34 @@ Example contents:
 * `files\...`
 * `logs\...`
 
-Do not store full mod assets.
+Schema and behavior details are documented in:
 
-## Rollback conflict behavior
+`docs/BACKUP_AND_ROLLBACK_FORMAT.md`
 
-* Current hash equals expected applied hash: safe automatic restore.
-* Live file missing: restore only when the manifest identifies a previously existing target and the backup is valid.
-* Current hash differs: mark conflict and do not overwrite by default.
-* Backup missing or corrupt: block restore.
-* User chooses force restore: Advanced-only explicit confirmation, fully logged.
+## UI status
 
-## Required tests
+The app now includes a read-only `Backups` tab that can:
 
-At minimum add tests for:
+* list backup operations
+* show beginner-facing summary columns
+* show affected files for the selected operation
+* re-run backup verification
+* open the backup folder
 
-* valid backup succeeds
-* backup hash mismatch fails
-* missing backup fails
-* exact rollback succeeds
-* modified live file causes conflict
-* missing live file behavior
-* partial transaction rollback
-* protected file exclusion
-* rollback idempotence or safe second-run behavior
-* interrupted rollback recovery
-* JSON restoration validation
-* operation-history persistence
-* no access to live installation
+The UI still does not expose:
 
-## Definition of done
+* live Apply
+* public rollback execution
+* force restore
 
-The next milestone is done when:
+## Remaining blockers before safe Apply
 
-* backup and rollback APIs exist
-* all tests use temporary fixtures
-* backups are verifiable
-* rollback can restore simulated modified files exactly
-* conflicts are reported safely
-* a read-only Backups view can list operations and status
-* no live Apply path is enabled
-* build passes
-* all tests pass
-* docs are updated
+The main remaining write milestones are:
 
-## Suggested first task
+* immutable dry-run planner
+* atomic Apply pipeline
+* post-Apply verification
+* compatibility-backed write invalidation
+* guarded public rollback execution only after end-to-end validation
 
-1. inspect existing models and services
-2. define operation and rollback models
-3. add fixture-backed backup tests
-4. implement verified backup copy
-5. implement rollback exact-byte restore
-6. implement conflict detection
-7. add operation-history persistence
-8. expose read-only backup history to the GUI
+These milestones must continue to avoid physical mod movement, collection editing, `.pmp` handling, and real-installation test access.

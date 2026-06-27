@@ -106,7 +106,7 @@ Verified release package details:
 * ZIP SHA-256: `ae68aa55f0b7fd78c6b6346b82dcf49656ac6b8efd36daa13a0882f00e9fd500`
 * release EXE launches from the extracted ZIP
 * solution build passes with 0 warnings and 0 errors
-* tests pass: 42/42
+* tests pass: 75/75
 * Apply remains unavailable
 * no live Penumbra writes are implemented
 
@@ -977,6 +977,11 @@ Implemented:
 * read-only organizer proposal validation service
 * atomic organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
 * read-only Review Changes foundation with validation status rows and Apply-unavailable explanation
+* verified backup foundation under `%LocalAppData%\PenumbraOrganizer\Backups`
+* immutable backup manifests and rollback transaction records
+* exact-byte rollback executor with conflict detection and post-rollback verification
+* operation-history persistence with package rebuilding
+* read-only Backups screen foundation with backup verification and backup-folder access
 * fixture-based tests
 * self-contained single-file publishing
 * release ZIP generation
@@ -1097,12 +1102,6 @@ Unknown structures should remain readable and preserved. They must not be silent
 
 The following are not yet complete:
 
-* rollback transaction model
-* rollback executor
-* rollback conflict detection
-* post-rollback verification
-* backup engine for planned writes
-* verified backup manifests
 * dry-run planner
 * immutable operation plan
 * collision validation
@@ -1277,11 +1276,11 @@ Core operation must remain offline.
 
 ## Immediate next milestone
 
-The immediate next milestone is:
+The rollback and verified-backup foundation is now implemented and tested using temporary fixture files only. It does not write to the user's real Penumbra installation, and Apply remains unavailable.
 
-`Rollback and verified-backup foundation without enabling live Apply`
+The next milestone is:
 
-The next session must implement and test the recovery subsystem using temporary fixture files only. It must not write to the user's real Penumbra installation.
+`Immutable dry-run planning and atomic Apply pipeline without enabling public Apply`
 
 Use this priority order:
 
@@ -1291,11 +1290,11 @@ Use this priority order:
 4. Atomic Apply pipeline
 5. Post-Apply verification
 
-Rollback is the central design constraint for all future writes. It must not depend on display names, the current AI proposal, the current organizer session, a new scan, a workbook, or reconstructing JSON from current state.
+Rollback remains the central design constraint for all future writes. It must not depend on display names, the current AI proposal, the current organizer session, a new scan, a workbook, or reconstructing JSON from current state.
 
-The next-session handoff is:
+The recovery package format is documented in:
 
-`docs/HANDOFF_ROLLBACK_FOUNDATION.md`
+`docs/BACKUP_AND_ROLLBACK_FORMAT.md`
 
 Do not implement physical mod movement.
 

@@ -6,6 +6,7 @@ using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Compatibility;
 using PenumbraOrganizer.Infrastructure.Discovery;
 using PenumbraOrganizer.Infrastructure.Exports;
+using PenumbraOrganizer.Infrastructure.Recovery;
 using PenumbraOrganizer.Infrastructure.Scanning;
 using PenumbraOrganizer.Infrastructure.Sessions;
 
@@ -23,6 +24,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IOrganizerMutationService, OrganizerMutationService>();
         services.AddSingleton<IOrganizerProposalValidationService, OrganizerProposalValidationService>();
         services.AddSingleton<IOrganizerSessionService, OrganizerSessionService>();
+        services.AddSingleton<IOperationHistoryService, OperationHistoryService>();
+        services.AddSingleton<IBackupVerificationService, BackupVerificationService>();
+        services.AddSingleton<IRollbackVerificationService, RollbackVerificationService>();
+        services.AddSingleton<IBackupService, BackupService>();
+        services.AddSingleton<IRollbackService, RollbackService>();
         return services;
     }
 }

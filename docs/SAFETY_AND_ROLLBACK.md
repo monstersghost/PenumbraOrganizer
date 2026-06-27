@@ -11,6 +11,17 @@ The organizer is read-only until:
 
 The current `v0.1.0-alpha` build remains read-only for live Penumbra state. It can scan, create in-memory proposals, save organizer sessions, export sanitized AI inventory packages, and show Review Changes. It does not apply changes to Penumbra.
 
+The recovery foundation is now implemented for future Apply integration:
+
+- verified backup creation from explicit file lists
+- immutable backup manifests
+- rollback transaction persistence
+- exact-byte rollback restore with conflict detection
+- post-rollback verification
+- read-only Backups screen foundation
+
+This foundation remains fixture-tested and does not expose live Apply or public rollback execution in the current alpha UI.
+
 ## Absolute boundaries
 
 - no FFXIV game files are modified
@@ -70,6 +81,10 @@ Backup verification must check:
 
 Future Apply must abort when backup verification fails.
 
+The current package format is documented in:
+
+`docs/BACKUP_AND_ROLLBACK_FORMAT.md`
+
 ## Rollback
 
 Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current AI proposal, current organizer session, current display names, or a new live scan.
@@ -113,8 +128,8 @@ Partial rollback must be reported clearly. Re-running rollback should be resumab
 
 ## Next rollback milestone
 
-The immediate next milestone is documented in:
+The rollback foundation milestone is complete. The next write milestone is:
 
-`docs/HANDOFF_ROLLBACK_FOUNDATION.md`
+`Immutable dry-run planning and atomic Apply pipeline without enabling public Apply`
 
-That milestone must use temporary fixtures only and must not access the user's real Penumbra installation.
+Future write milestones must continue using temporary fixtures for automated verification and must not access the user's real Penumbra installation during development tests.
