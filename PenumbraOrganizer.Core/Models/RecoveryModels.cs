@@ -11,6 +11,13 @@ public enum BackupStatus
     Failed,
 }
 
+public enum BackupOperationKind
+{
+    AppliedChanges,
+    PreApplyBackup,
+    ManualBackup,
+}
+
 public enum BackupFileClassification
 {
     Json,
@@ -91,7 +98,8 @@ public sealed record BackupRequest(
     IReadOnlyList<BackupFileRequest> Files,
     string? ApplicationVersion = null,
     string? PenumbraVersion = null,
-    int? AffectedModCount = null);
+    int? AffectedModCount = null,
+    BackupOperationKind OperationKind = BackupOperationKind.PreApplyBackup);
 
 public sealed record BackupOperation(
     Guid OperationId,
@@ -99,6 +107,7 @@ public sealed record BackupOperation(
     string ApplicationVersion,
     string? PenumbraVersion,
     string ScanIdentity,
+    BackupOperationKind OperationKind,
     BackupStatus BackupStatus,
     ApplyStatus ApplyStatus,
     RollbackTransactionStatus RollbackStatus,
@@ -201,6 +210,7 @@ public sealed record RollbackVerificationResult(
 public sealed record OperationHistoryEntry(
     Guid OperationId,
     DateTimeOffset CreatedAtUtc,
+    BackupOperationKind OperationKind,
     BackupStatus BackupStatus,
     ApplyStatus ApplyStatus,
     RollbackTransactionStatus RollbackStatus,

@@ -96,7 +96,6 @@ public enum ProposalSource
 {
     Manual,
     DeterministicRule,
-    ImportedAiSuggestion,
     PreservedCurrent,
     RestoredByUndo,
 }
@@ -220,15 +219,6 @@ public sealed record CompatibilityReport(
     string ScannedVersion,
     IReadOnlyList<SchemaFingerprint> SchemaFingerprints,
     IReadOnlyList<string> Warnings);
-
-public sealed record InventoryExportResult(
-    string ExportFolder,
-    string InventoryPath,
-    string InstructionsPath,
-    string HowToUsePath,
-    string ZipPath,
-    string SourceExportId,
-    int ModRowCount);
 
 public sealed record OrganizationRuleCondition(string Field, string Operator, string Value);
 

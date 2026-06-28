@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Windows;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.App;
+using PenumbraOrganizer.App.Dialogs;
 using PenumbraOrganizer.App.Commands;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
@@ -166,11 +167,24 @@ public sealed class BackupsViewModel : ObservableObject
             "This restores Penumbra virtual-folder state only. Physical mod files are not moved.\n\n" +
             $"Backup verified: {(details.Operation.VerificationStatus == OperationVerificationStatus.Verified ? "Yes" : "No")}\n" +
             $"Current rollback status: {details.Operation.RollbackStatus}";
-        if (MessageBox.Show(
-                summary,
-                "Restore Backup",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        var confirm = new WorkflowIssueDialogModel
+        {
+            Title = "Restore Backup",
+            Heading = "Restore this backup?",
+            Summary = summary,
+            Severity = WorkflowIssueSeverity.Warning,
+            AnyWriteOccurred = false,
+            AffectedRowsOrMods = [SelectedOperation.OperationKind, $"{details.Operation.AffectedModCount ?? details.Operation.AffectedFileCount} affected mod change(s)"],
+            TechnicalDetails = $"Operation: {details.Operation.OperationId}{Environment.NewLine}Backup folder: {details.Operation.OperationFolder}",
+            ContinueLabel = "Restore Backup",
+            AllowContinue = true,
+        };
+        var confirmResult = new WorkflowIssueDialog(confirm)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        confirmResult.ShowDialog();
+        if (confirm.Result != WorkflowIssueDialogResult.Continue)
         {
             return;
         }
@@ -240,6 +254,7 @@ public sealed class BackupsViewModel : ObservableObject
                     ? "Restore is available. The app will verify current data and skip conflicts instead of overwriting them."
                     : "A restore record exists, but restore stays disabled until Apply finishes successfully.";
             SelectionSummary =
+                $"Operation kind: {selectedOperation.OperationKind}\n" +
                 $"Created: {details.Operation.CreatedAtUtc:u}\n" +
                 $"Backup status: {details.Operation.BackupStatus}\n" +
                 $"Apply status: {details.Operation.ApplyStatus}\n" +
@@ -280,6 +295,12 @@ public sealed class BackupOperationRowViewModel
 
     public Guid OperationId => _entry.OperationId;
     public DateTimeOffset CreatedAtUtc => _entry.CreatedAtUtc;
+    public string OperationKind => _entry.OperationKind switch
+    {
+        BackupOperationKind.ManualBackup => "Manual backup",
+        BackupOperationKind.PreApplyBackup => "Pre-apply backup",
+        _ => "Applied changes",
+    };
     public string BackupStatus => _entry.BackupStatus.ToString();
     public string ApplyStatus => _entry.ApplyStatus.ToString();
     public int AffectedItems => _entry.AffectedModCount ?? _entry.AffectedFileCount;

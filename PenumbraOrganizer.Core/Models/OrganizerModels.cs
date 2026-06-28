@@ -6,7 +6,6 @@ public enum OrganizerProposalSource
 {
     Manual,
     DeterministicRule,
-    ImportedAi,
     PreservedCurrent,
     RestoredByUndo,
 }
@@ -21,7 +20,6 @@ public enum OrganizerOperationType
     RenameFolder,
     DeleteFolder,
     ApplyDeterministicSuggestions,
-    ImportAiSuggestions,
 }
 
 public enum OrganizerRowStatus

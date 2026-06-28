@@ -22,8 +22,8 @@ public sealed class MainViewModel : ObservableObject
     private readonly IPenumbraDiscoveryService _discoveryService;
     private readonly IPenumbraScanService _scanService;
     private readonly IPenumbraCompatibilityService _compatibilityService;
-    private readonly IInventoryExportService _inventoryExportService;
     private readonly IWorkbookWorkflowService _workbookWorkflowService;
+    private readonly IBackupService _backupService;
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
@@ -33,19 +33,20 @@ public sealed class MainViewModel : ObservableObject
     private readonly IRealInstallationValidationService _realInstallationValidationService;
     private readonly IOperationRecoveryService _operationRecoveryService;
     private readonly IOperationObservationService _operationObservationService;
-    private readonly IAiProposalImportService _aiProposalImportService;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
     private ScanInventory? _inventory;
-    private InventoryExportResult? _lastExport;
     private WorkbookExportResult? _lastWorkbookExport;
     private WorkbookImportResult? _lastWorkbookImport;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
+    private readonly HashSet<string> _skippedReviewRowIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _warningOverrideRowIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _highlightedReviewRowIds = new(StringComparer.Ordinal);
     private CancellationTokenSource? _autosaveCts;
     private CancellationTokenSource? _busyCts;
     private string _detectionSummary = "Penumbra has not been detected yet.";
@@ -83,7 +84,6 @@ public sealed class MainViewModel : ObservableObject
     private int _collectionCount;
     private int _warningCount;
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
-    private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
     private string _busyCancelText = "Cancel";
     private bool _showAdvancedTools;
@@ -94,9 +94,8 @@ public sealed class MainViewModel : ObservableObject
         IPenumbraDiscoveryService discoveryService,
         IPenumbraScanService scanService,
         IPenumbraCompatibilityService compatibilityService,
-        IInventoryExportService inventoryExportService,
         IWorkbookWorkflowService workbookWorkflowService,
-        IAiProposalImportService aiProposalImportService,
+        IBackupService backupService,
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
@@ -114,9 +113,8 @@ public sealed class MainViewModel : ObservableObject
         _discoveryService = discoveryService;
         _scanService = scanService;
         _compatibilityService = compatibilityService;
-        _inventoryExportService = inventoryExportService;
         _workbookWorkflowService = workbookWorkflowService;
-        _aiProposalImportService = aiProposalImportService;
+        _backupService = backupService;
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
@@ -152,12 +150,8 @@ public sealed class MainViewModel : ObservableObject
         ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
         ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
         OpenWorkbookCommand = new AsyncRelayCommand(OpenWorkbookAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
-        CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
-        ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
-        OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
-        CopyMasterPromptCommand = new AsyncRelayCommand(CopyMasterPromptAsync, () => _lastExport is not null);
-        CopyInventoryFilePathCommand = new AsyncRelayCommand(CopyInventoryFilePathAsync, () => _lastExport is not null);
-        CopyCompleteAiRequestCommand = new AsyncRelayCommand(CopyCompleteAiRequestAsync, () => _lastExport is not null);
+        OpenWorkbookFolderCommand = new AsyncRelayCommand(OpenWorkbookFolderAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
+        OpenLogsFolderCommand = new AsyncRelayCommand(OpenLogsFolderAsync);
         ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
@@ -178,7 +172,7 @@ public sealed class MainViewModel : ObservableObject
         ClearControlledTestCommand = new RelayCommand(_ => ClearControlledTest(), _ => _controlledTestRequest is not null);
         SetOrganizeFilterCommand = new RelayCommand(SetOrganizeFilter);
         CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null && !IsBusy);
-        CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null && !IsBusy);
+        CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _installation is not null && !IsBusy);
         ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null && !IsBusy);
         BackupAndApplyCommand = new AsyncRelayCommand(BackupAndApplyAsync, () => _inventory is not null && !IsBusy);
         ReverifyIncompleteOperationCommand = new AsyncRelayCommand(ReverifyIncompleteOperationAsync, () => _incompleteOperations.Count > 0);
@@ -198,12 +192,8 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand ExportWorkbookCommand { get; }
     public AsyncRelayCommand ImportWorkbookCommand { get; }
     public AsyncRelayCommand OpenWorkbookCommand { get; }
-    public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
-    public AsyncRelayCommand ImportAiProposalCommand { get; }
-    public AsyncRelayCommand OpenExportFolderCommand { get; }
-    public AsyncRelayCommand CopyMasterPromptCommand { get; }
-    public AsyncRelayCommand CopyInventoryFilePathCommand { get; }
-    public AsyncRelayCommand CopyCompleteAiRequestCommand { get; }
+    public AsyncRelayCommand OpenWorkbookFolderCommand { get; }
+    public AsyncRelayCommand OpenLogsFolderCommand { get; }
     public AsyncRelayCommand ValidateInstallationCommand { get; }
     public AsyncRelayCommand CreateDiagnosticPackageCommand { get; }
     public RelayCommand SelectStrategyCommand { get; }
@@ -463,12 +453,6 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _installationValidationStatus, value);
     }
 
-    public string AiImportStatus
-    {
-        get => _aiImportStatus;
-        private set => SetProperty(ref _aiImportStatus, value);
-    }
-
     public string DiagnosticStatus
     {
         get => _diagnosticStatus;
@@ -500,6 +484,8 @@ public sealed class MainViewModel : ObservableObject
                 ExportWorkbookCommand.RaiseCanExecuteChanged();
                 ImportWorkbookCommand.RaiseCanExecuteChanged();
                 OpenWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
+                OpenLogsFolderCommand.RaiseCanExecuteChanged();
                 CreateDryRunCommand.RaiseCanExecuteChanged();
                 CreateBackupCommand.RaiseCanExecuteChanged();
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
@@ -519,6 +505,7 @@ public sealed class MainViewModel : ObservableObject
     public int ReviewNeedsReview => _reviewValidation?.Summary.NeedsReview ?? 0;
     public int ReviewInvalid => _reviewValidation?.Summary.Invalid ?? 0;
     public int ReviewWarnings => _reviewValidation?.Summary.Warnings ?? 0;
+    public int ReviewSkipped => _skippedReviewRowIds.Count;
     public int ReviewProtectionChanges => _reviewValidation?.Rows.Count(row => row.HasProtectionChange) ?? 0;
     public int ReviewMoveRows => _reviewValidation?.Rows.Count(row => row.HasFolderChange && row.Status == OrganizerRowStatus.ValidChange) ?? 0;
 
@@ -683,6 +670,9 @@ public sealed class MainViewModel : ObservableObject
                 WorkbookStatus = "Scan complete. Export one workbook, edit mod type, protected, and destination, and import it back for review.";
                 WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
                 _controlledTestRequest = null;
+                _skippedReviewRowIds.Clear();
+                _warningOverrideRowIds.Clear();
+                _highlightedReviewRowIds.Clear();
                 ControlledTestStatus = "Controlled Test Apply is not configured yet.";
                 ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
                 ClearControlledTestCommand.RaiseCanExecuteChanged();
@@ -694,13 +684,12 @@ public sealed class MainViewModel : ObservableObject
                 DetectionSummary = BuildHomeSummary(_installation, _inventory);
                 ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
                 AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
-                CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
-                ImportAiProposalCommand.RaiseCanExecuteChanged();
                 ConfigureControlledTestCommand.RaiseCanExecuteChanged();
                 BackupAndApplyCommand.RaiseCanExecuteChanged();
                 ExportWorkbookCommand.RaiseCanExecuteChanged();
                 ImportWorkbookCommand.RaiseCanExecuteChanged();
                 OpenWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
                 RaiseInstallationChanged();
             }, canCancel: true, cancelText: "Cancel Scan");
         }
@@ -715,7 +704,16 @@ public sealed class MainViewModel : ObservableObject
             StartupBootstrapLogger.RecordException("Scan failed.", ex);
             ProgressMessage = "Scan failed.";
             AppendLog("Scan failed: " + ex.Message);
-            MessageBox.Show(ToUserMessage(ex), "Scan failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Scan failed",
+                Heading = "Scan could not finish",
+                Summary = ToUserMessage(ex),
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+            });
         }
     }
 
@@ -768,31 +766,33 @@ public sealed class MainViewModel : ObservableObject
         {
             await RunBusyAsync("Exporting your workbook.", async () =>
             {
-                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), CancellationToken.None);
+                var workbookPath = ResolveWorkbookExportPath();
+                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), workbookPath, CancellationToken.None);
                 _lastWorkbookImport = null;
                 RaisePropertyChanged(nameof(WorkbookPath));
-                WorkbookStatus = _lastWorkbookExport.Summary;
+                WorkbookStatus = $"{_lastWorkbookExport.Summary}{Environment.NewLine}Saved to: {_lastWorkbookExport.WorkbookPath}";
                 WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
                 OpenWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
                 AppendLog($"Exported workbook to {_lastWorkbookExport.WorkbookPath}.");
             });
-
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = _lastWorkbookExport!.WorkbookPath,
-                UseShellExecute = true,
-            });
+            WorkbookImportStatus = $"Use Open Workbook or Open Export Folder to continue. Current workbook: {_lastWorkbookExport!.WorkbookPath}";
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Workbook export failed");
             StartupBootstrapLogger.RecordException("Workbook export failed.", ex);
             WorkbookStatus = "Workbook export failed.";
-            MessageBox.Show(
-                "The workbook could not be created. Try scanning again and then export a new workbook.",
-                "Workbook export failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Workbook export failed",
+                Heading = "Workbook could not be created",
+                Summary = "The workbook could not be created. Try scanning again and then export a new workbook.",
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+            });
         }
     }
 
@@ -824,11 +824,16 @@ public sealed class MainViewModel : ObservableObject
             if (_lastWorkbookImport.Errors.Count > 0)
             {
                 WorkbookImportStatus = _lastWorkbookImport.Summary;
-                MessageBox.Show(
-                    string.Join(Environment.NewLine, _lastWorkbookImport.Errors.Take(8)),
-                    "Workbook import blocked",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                ShowIssueDialog(new WorkflowIssueDialogModel
+                {
+                    Title = "Workbook import blocked",
+                    Heading = "Workbook import could not continue",
+                    Summary = _lastWorkbookImport.Summary,
+                    Severity = WorkflowIssueSeverity.HardFailure,
+                    AnyWriteOccurred = false,
+                    AffectedRowsOrMods = _lastWorkbookImport.Errors.Take(12).ToArray(),
+                    TechnicalDetails = string.Join(Environment.NewLine, _lastWorkbookImport.Errors),
+                });
                 return;
             }
 
@@ -842,11 +847,16 @@ public sealed class MainViewModel : ObservableObject
             _logger.LogError(ex, "Workbook import failed");
             StartupBootstrapLogger.RecordException("Workbook import failed.", ex);
             WorkbookImportStatus = "Workbook import failed.";
-            MessageBox.Show(
-                ToUserMessage(ex),
-                "Workbook import failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Workbook import failed",
+                Heading = "Workbook could not be read",
+                Summary = ToUserMessage(ex),
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+            });
         }
     }
 
@@ -860,6 +870,25 @@ public sealed class MainViewModel : ObservableObject
             FileName = _lastWorkbookExport.WorkbookPath,
             UseShellExecute = true,
         });
+        return Task.CompletedTask;
+    }
+
+    private Task OpenWorkbookFolderAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.GetDirectoryName(_lastWorkbookExport.WorkbookPath)!,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task OpenLogsFolderAsync()
+    {
+        StartupBootstrapLogger.OpenLogsFolder();
         return Task.CompletedTask;
     }
 
@@ -887,6 +916,9 @@ public sealed class MainViewModel : ObservableObject
         }
 
         _controlledTestRequest = null;
+        _skippedReviewRowIds.Clear();
+        _warningOverrideRowIds.Clear();
+        _highlightedReviewRowIds.Clear();
         ClearControlledTestCommand.RaiseCanExecuteChanged();
         _organizerFolders.Clear();
         foreach (var folder in Mods
@@ -901,111 +933,6 @@ public sealed class MainViewModel : ObservableObject
         InvalidateDryRunState("Workbook import updated the proposed destinations.");
         RefreshOrganizerViews();
         BackupAndApplyCommand.RaiseCanExecuteChanged();
-    }
-
-    private async Task CreateAiReviewPackageAsync()
-    {
-        if (_inventory is null)
-            return;
-
-        try
-        {
-            ProgressMessage = "Creating AI review package";
-            _lastExport = await _inventoryExportService.CreateAiReviewPackageAsync(_inventory, CancellationToken.None, BuildOrganizationPreferences());
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
-            OpenExportFolderCommand.RaiseCanExecuteChanged();
-            CopyMasterPromptCommand.RaiseCanExecuteChanged();
-            CopyInventoryFilePathCommand.RaiseCanExecuteChanged();
-            CopyCompleteAiRequestCommand.RaiseCanExecuteChanged();
-            AppendLog($"Created AI review package at {_lastExport.ExportFolder}");
-            AiImportStatus = "AI review package ready. Import a Penumbra_AI_Proposal.json file to merge validated suggestions into this session.";
-            ProgressMessage = "AI review package created.";
-
-            var dialog = new ExportPackageDialog(_lastExport, this)
-            {
-                Owner = Application.Current.MainWindow,
-            };
-            dialog.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "AI review package creation failed");
-            ProgressMessage = "AI review package creation failed.";
-            AppendLog("AI review package creation failed: " + ex.Message);
-            MessageBox.Show(
-                "The AI review package could not be created. Please try again after a successful scan.",
-                "Export failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-        }
-    }
-
-    private async Task ImportAiProposalAsync()
-    {
-        if (_inventory is null || _lastExport is null)
-            return;
-
-        var dialog = new OpenFileDialog
-        {
-            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-            Title = "Import Penumbra_AI_Proposal.json",
-            FileName = "Penumbra_AI_Proposal.json",
-            CheckFileExists = true,
-        };
-        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
-            return;
-
-        try
-        {
-            ProgressMessage = "Importing AI proposal.";
-            var import = await _aiProposalImportService.ImportAsync(
-                dialog.FileName,
-                _lastExport.InventoryPath,
-                CurrentProposalRows().ToArray(),
-                CancellationToken.None);
-
-            if (import.Errors.Count > 0 && import.ImportedRows.Count == 0)
-            {
-                AiImportStatus = import.Summary;
-                ProgressMessage = "AI proposal import blocked.";
-                AppendLog("AI proposal import blocked: " + string.Join(" | ", import.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase)));
-                MessageBox.Show(import.Summary, "AI proposal blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            foreach (var imported in import.ImportedRows)
-            {
-                var row = Mods.FirstOrDefault(candidate => candidate.StableScanId == imported.StableScanId);
-                if (row is null)
-                    continue;
-
-                row.Proposal.ProposedVirtualFolder = imported.ProposedVirtualFolder;
-                row.Proposal.OrganizerCreatorLabel = imported.OrganizerCreatorLabel;
-                row.Proposal.OrganizerTypeLabel = imported.OrganizerTypeLabel;
-                row.Proposal.Protected = imported.Protected;
-                row.Proposal.Source = imported.Source;
-                row.Proposal.NeedsReview = imported.NeedsReview;
-
-                if (!_organizerFolders.Any(folder => folder.Path.Equals(imported.ProposedVirtualFolder, StringComparison.OrdinalIgnoreCase)))
-                    _organizerFolders.Add(new OrganizerFolder(imported.ProposedVirtualFolder, true, false));
-            }
-
-            InvalidateDryRunState("Imported AI suggestions changed the proposal snapshot.");
-            RefreshRowsFromProposals();
-            RefreshOrganizerViews();
-            RefreshReviewChanges();
-            AiImportStatus = import.Summary;
-            ProgressMessage = "AI proposal imported.";
-            AppendLog(import.Summary);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "AI proposal import failed");
-            AiImportStatus = "AI proposal import failed.";
-            ProgressMessage = "AI proposal import failed.";
-            AppendLog("AI proposal import failed: " + ex.Message);
-            MessageBox.Show(ex.Message, "AI proposal import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
     }
 
     private async Task ValidateInstallationAsync()
@@ -1157,47 +1084,6 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Diagnostic export failed.";
             AppendLog("Diagnostic export failed: " + ex.Message);
         }
-    }
-
-    private async Task OpenExportFolderAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = _lastExport.ExportFolder,
-            UseShellExecute = true,
-        });
-    }
-
-    private async Task CopyMasterPromptAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(await File.ReadAllTextAsync(_lastExport.InstructionsPath));
-    }
-
-    private async Task CopyInventoryFilePathAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(_lastExport.InventoryPath);
-    }
-
-    private async Task CopyCompleteAiRequestAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        var prompt = await File.ReadAllTextAsync(_lastExport.InstructionsPath);
-        Clipboard.SetText($"Upload Penumbra_AI_Review_Package.zip to your AI assistant first, then paste the prompt below.{Environment.NewLine}{Environment.NewLine}{prompt}");
     }
 
     private string BuildCompatibilitySummary(CompatibilityReport compatibility)
@@ -1634,35 +1520,60 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task CreateBackupAsync()
     {
-        if (_installation is null || _currentDryRunPlan is null)
+        if (_installation is null)
             return;
 
         try
         {
-            ProgressMessage = "Creating verified backup.";
-            var snapshot = BuildActiveProposalSnapshot();
-            _preparedApplyOperation = await _applyService.PrepareAsync(_currentDryRunPlan, _installation, snapshot, CancellationToken.None);
-            BackupStatus = $"Verified backup ready. Operation: {_preparedApplyOperation.OperationId}";
-            ApplyChecklist = BuildApplyChecklist();
-            ApplyUnavailableReason = BuildApplyUnavailableReason();
-            RefreshDryRunCommandState();
+            OperationPackageDetails? details = null;
+            await RunBusyAsync("Creating verified backup.", async () =>
+            {
+                var databasePath = Path.Combine(_installation.ConfigDirectory, "mod_data.db");
+                if (!File.Exists(databasePath))
+                    throw new InvalidOperationException("The authoritative Penumbra state file mod_data.db is missing.");
+
+                var operationId = Guid.NewGuid();
+                var request = new BackupRequest(
+                    operationId,
+                    BuildManualBackupScanIdentity(),
+                    [new BackupFileRequest(databasePath, Protected: false)],
+                    typeof(MainViewModel).Assembly.GetName().Version?.ToString(),
+                    _installation.InstalledVersion,
+                    _inventory?.Mods.Count,
+                    BackupOperationKind.ManualBackup);
+
+                details = await _backupService.CreateBackupAsync(request, CancellationToken.None);
+                if (details.Operation.VerificationStatus != OperationVerificationStatus.Verified)
+                    throw new InvalidOperationException(details.Operation.LastError ?? "Backup verification failed.");
+            });
+
+            BackupStatus = details is null
+                ? "Manual backup could not be verified."
+                : $"Manual backup verified and saved to {details.Operation.OperationFolder}";
             await _backups.RefreshAsync();
             await RefreshRecoveryStatusAsync();
-            ProgressMessage = "Verified backup ready.";
-            AppendLog($"Prepared apply operation {_preparedApplyOperation.OperationId} with verified backup.");
+            ProgressMessage = "Manual backup ready.";
+            AppendLog($"Created verified manual backup at {details?.Operation.OperationFolder}.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Backup preparation failed");
-            _preparedApplyOperation = null;
-            BackupStatus = "Backup preparation failed.";
-            ApplyChecklist = BuildApplyChecklist();
-            ApplyUnavailableReason = ex.Message;
-            RefreshDryRunCommandState();
-            ProgressMessage = "Backup preparation failed.";
-            AppendLog("Backup preparation failed: " + ex.Message);
+            _logger.LogError(ex, "Manual backup failed");
+            StartupBootstrapLogger.RecordException("Manual backup failed.", ex);
+            BackupStatus = "Manual backup failed.";
+            ProgressMessage = "Manual backup failed.";
+            AppendLog("Manual backup failed: " + ex.Message);
             await _backups.RefreshAsync();
             await RefreshRecoveryStatusAsync();
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Backup failed",
+                Heading = "Backup could not be created",
+                Summary = ToUserMessage(ex),
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+            });
         }
     }
 
@@ -1693,7 +1604,16 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Backup and Apply review preparation failed");
-            MessageBox.Show(ToUserMessage(ex), "Backup and Apply blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Backup and Apply blocked",
+                Heading = "Backup and Apply is blocked",
+                Summary = ToUserMessage(ex),
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+            });
             return;
         }
 
@@ -1706,11 +1626,50 @@ public sealed class MainViewModel : ObservableObject
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = BuildApplyUnavailableReason();
             RefreshDryRunCommandState();
-            MessageBox.Show(
-                BuildPlanBlockedMessage(_currentDryRunPlan),
-                "Backup and Apply blocked",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+
+            var reviewRows = _reviewValidation?.Rows
+                .Where(row => row.Status == OrganizerRowStatus.NeedsReview && !_skippedReviewRowIds.Contains(row.StableScanId))
+                .ToArray() ?? Array.Empty<OrganizerValidationRow>();
+            var invalidRows = _reviewValidation?.Rows
+                .Where(row => row.Status is OrganizerRowStatus.InvalidPath or OrganizerRowStatus.BlockedProtected or OrganizerRowStatus.MissingMod or OrganizerRowStatus.StaleScan)
+                .ToArray() ?? Array.Empty<OrganizerValidationRow>();
+            var allowSkip = invalidRows.Length == 0 && reviewRows.Length > 0;
+
+            var result = ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Backup and Apply blocked",
+                Heading = "Backup and Apply is blocked",
+                Summary = BuildPlanBlockedMessage(_currentDryRunPlan),
+                Severity = allowSkip ? WorkflowIssueSeverity.Warning : WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = false,
+                AffectedRowsOrMods = (allowSkip ? reviewRows : invalidRows).Take(12).Select(FormatReviewRowForIssue).ToArray(),
+                TechnicalDetails = string.Join(Environment.NewLine, _currentDryRunPlan.Validation.Errors.Concat(_currentDryRunPlan.Validation.Warnings)),
+                AllowReview = reviewRows.Length > 0 || invalidRows.Length > 0,
+                AllowSkip = allowSkip,
+                AllowContinue = allowSkip,
+            });
+
+            if (result == WorkflowIssueDialogResult.Review)
+            {
+                FocusReviewRows(allowSkip ? reviewRows : invalidRows, allowSkip ? "Warnings / Needs Review" : "Invalid only");
+            }
+            else if (result == WorkflowIssueDialogResult.Skip && allowSkip)
+            {
+                foreach (var row in reviewRows)
+                    _skippedReviewRowIds.Add(row.StableScanId);
+
+                RefreshReviewChanges();
+                await BackupAndApplyAsync();
+            }
+            else if (result == WorkflowIssueDialogResult.Continue && allowSkip)
+            {
+                foreach (var row in reviewRows)
+                    _warningOverrideRowIds.Add(row.StableScanId);
+
+                RefreshReviewChanges();
+                await BackupAndApplyAsync();
+            }
+
             return;
         }
 
@@ -1792,8 +1751,17 @@ public sealed class MainViewModel : ObservableObject
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = ToUserMessage(ex);
             RefreshDryRunCommandState();
-
-            MessageBox.Show(message, "Backup and Apply failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowIssueDialog(new WorkflowIssueDialogModel
+            {
+                Title = "Backup and Apply failed",
+                Heading = "Backup and Apply did not finish",
+                Summary = message,
+                Severity = WorkflowIssueSeverity.HardFailure,
+                AnyWriteOccurred = details?.Operation.RollbackAvailable == true,
+                AffectedRowsOrMods = (_reviewValidation?.Rows.Where(row => row.Status != OrganizerRowStatus.Unchanged).Take(12).Select(FormatReviewRowForIssue).ToArray()) ?? Array.Empty<string>(),
+                TechnicalDetails = ex.ToString(),
+                AllowReview = _reviewValidation is not null,
+            });
         }
     }
 
@@ -1855,19 +1823,24 @@ public sealed class MainViewModel : ObservableObject
 
         var preferences = BuildOrganizationPreferences();
         var proposals = CurrentProposalRows()
-            .Select(proposal => new OrganizerModProposal
+            .Select(proposal =>
             {
-                StableScanId = proposal.StableScanId,
-                Name = proposal.Name,
-                CurrentVirtualFolder = proposal.CurrentVirtualFolder,
-                ProposedVirtualFolder = proposal.ProposedVirtualFolder,
-                OriginalCreator = proposal.OriginalCreator,
-                OrganizerCreatorLabel = proposal.OrganizerCreatorLabel,
-                OrganizerTypeLabel = proposal.OrganizerTypeLabel,
-                Protected = proposal.Protected,
-                OriginalProtected = proposal.OriginalProtected,
-                Source = proposal.Source,
-                NeedsReview = proposal.NeedsReview,
+                var skipped = _skippedReviewRowIds.Contains(proposal.StableScanId);
+                var warningOverride = _warningOverrideRowIds.Contains(proposal.StableScanId);
+                return new OrganizerModProposal
+                {
+                    StableScanId = proposal.StableScanId,
+                    Name = proposal.Name,
+                    CurrentVirtualFolder = proposal.CurrentVirtualFolder,
+                    ProposedVirtualFolder = skipped ? proposal.CurrentVirtualFolder : proposal.ProposedVirtualFolder,
+                    OriginalCreator = proposal.OriginalCreator,
+                    OrganizerCreatorLabel = proposal.OrganizerCreatorLabel,
+                    OrganizerTypeLabel = proposal.OrganizerTypeLabel,
+                    Protected = skipped ? proposal.OriginalProtected : proposal.Protected,
+                    OriginalProtected = proposal.OriginalProtected,
+                    Source = skipped ? OrganizerProposalSource.PreservedCurrent : proposal.Source,
+                    NeedsReview = skipped ? false : (warningOverride ? false : proposal.NeedsReview),
+                };
             })
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
@@ -1995,6 +1968,9 @@ public sealed class MainViewModel : ObservableObject
                 _preparedApplyOperation.OperationId.ToString("N"));
         var changedRows = _reviewValidation?.ValidChanges ?? Array.Empty<OrganizerValidationRow>();
         var protectedCount = _reviewValidation?.Summary.Protected ?? 0;
+        var warningCount = _reviewValidation?.Rows.Count(row => row.Status == OrganizerRowStatus.NeedsReview) ?? 0;
+        var invalidCount = _reviewValidation?.Summary.Invalid ?? 0;
+        var unchangedCount = _reviewValidation?.Summary.Unchanged ?? 0;
         var examples = changedRows
             .Take(8)
             .Select(row => $"{row.ModName}: {row.CurrentVirtualFolder} -> {row.ProposedVirtualFolder}")
@@ -2007,6 +1983,11 @@ public sealed class MainViewModel : ObservableObject
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
+            $"Warning rows included: {_warningOverrideRowIds.Count}{Environment.NewLine}" +
+            $"Skipped rows: {_skippedReviewRowIds.Count}{Environment.NewLine}" +
+            $"Invalid rows: {invalidCount}{Environment.NewLine}" +
+            $"Unchanged rows: {unchangedCount}{Environment.NewLine}" +
+            $"Needs review rows: {warningCount}{Environment.NewLine}{Environment.NewLine}" +
             $"Planned changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
             "Authoritative target: mod_data.db / LocalModData.Folder" + Environment.NewLine +
             $"Database file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
@@ -2268,7 +2249,7 @@ public sealed class MainViewModel : ObservableObject
             : BuildActiveProposalSnapshot().ValidationResult;
         ReviewRows.Clear();
         foreach (var row in FilterReviewRows(_reviewValidation.Rows))
-            ReviewRows.Add(row);
+            ReviewRows.Add(ApplyReviewSessionAnnotations(row));
 
         if (_currentDryRunPlan is not null)
         {
@@ -2295,8 +2276,38 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(ReviewNeedsReview));
         RaisePropertyChanged(nameof(ReviewInvalid));
         RaisePropertyChanged(nameof(ReviewWarnings));
+        RaisePropertyChanged(nameof(ReviewSkipped));
         RaisePropertyChanged(nameof(ReviewProtectionChanges));
         RaisePropertyChanged(nameof(ReviewMoveRows));
+    }
+
+    private OrganizerValidationRow ApplyReviewSessionAnnotations(OrganizerValidationRow row)
+    {
+        if (_skippedReviewRowIds.Contains(row.StableScanId))
+        {
+            return row with
+            {
+                Message = $"Skipped for this apply session. {row.Message}",
+            };
+        }
+
+        if (_warningOverrideRowIds.Contains(row.StableScanId))
+        {
+            return row with
+            {
+                Message = $"Warning override recorded for this apply session. {row.Message}",
+            };
+        }
+
+        if (_highlightedReviewRowIds.Contains(row.StableScanId))
+        {
+            return row with
+            {
+                Message = $"Highlighted from the latest review. {row.Message}",
+            };
+        }
+
+        return row;
     }
 
     private IEnumerable<OrganizerValidationRow> FilterReviewRows(IReadOnlyList<OrganizerValidationRow> rows)
@@ -2305,10 +2316,11 @@ public sealed class MainViewModel : ObservableObject
             "Changes only" => rows.Where(row => row.Status == OrganizerRowStatus.ValidChange),
             "Invalid only" => rows.Where(row => row.Status is OrganizerRowStatus.InvalidPath or OrganizerRowStatus.BlockedProtected or OrganizerRowStatus.MissingMod or OrganizerRowStatus.StaleScan),
             "Needs Review" => rows.Where(row => row.Status == OrganizerRowStatus.NeedsReview),
+            "Warnings / Needs Review" => rows.Where(row => row.Status == OrganizerRowStatus.NeedsReview || _warningOverrideRowIds.Contains(row.StableScanId)),
+            "Skipped" => rows.Where(row => _skippedReviewRowIds.Contains(row.StableScanId)),
             "Protected" => rows.Where(row => row.Status == OrganizerRowStatus.Protected),
             "Manual" => rows.Where(row => row.Source == OrganizerProposalSource.Manual),
             "Deterministic" => rows.Where(row => row.Source == OrganizerProposalSource.DeterministicRule),
-            "Imported AI" => rows.Where(row => row.Source == OrganizerProposalSource.ImportedAi),
             "Unchanged" => rows.Where(row => row.Status == OrganizerRowStatus.Unchanged),
             _ => rows,
         };
@@ -2351,6 +2363,82 @@ public sealed class MainViewModel : ObservableObject
 
         error = string.Empty;
         return true;
+    }
+
+    private string ResolveWorkbookExportPath()
+    {
+        var fileName = $"PenumbraOrganizer-Workbook-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.xlsx";
+        var baseDirectory = AppContext.BaseDirectory;
+        if (CanWriteToDirectory(baseDirectory))
+            return Path.Combine(baseDirectory, fileName);
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Choose Workbook Export Location",
+            Filter = "Excel workbook|*.xlsx",
+            FileName = fileName,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
+            throw new OperationCanceledException("Workbook export was cancelled.");
+
+        return dialog.FileName;
+    }
+
+    private static bool CanWriteToDirectory(string directory)
+    {
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var probePath = Path.Combine(directory, $".penumbraorganizer-write-test-{Guid.NewGuid():N}.tmp");
+            using (File.Create(probePath))
+            {
+            }
+
+            File.Delete(probePath);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private WorkflowIssueDialogResult ShowIssueDialog(WorkflowIssueDialogModel model)
+    {
+        var dialog = new WorkflowIssueDialog(model)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        dialog.ShowDialog();
+        return model.Result;
+    }
+
+    private void FocusReviewRows(IReadOnlyList<OrganizerValidationRow> rows, string filter)
+    {
+        _highlightedReviewRowIds.Clear();
+        foreach (var row in rows)
+            _highlightedReviewRowIds.Add(row.StableScanId);
+
+        ReviewFilter = filter;
+        RefreshReviewChanges();
+    }
+
+    private static string FormatReviewRowForIssue(OrganizerValidationRow row)
+        => $"{row.ModName} ({row.StableScanId}) - {row.Message}";
+
+    private string BuildManualBackupScanIdentity()
+    {
+        if (_inventory is not null)
+            return OrganizerSessionService.BuildScanIdentity(_inventory);
+
+        if (_installation is null)
+            return $"manual-backup:{DateTimeOffset.UtcNow:O}";
+
+        var statePath = Path.Combine(_installation.ConfigDirectory, "mod_data.db");
+        return $"manual-backup:{_installation.ConfigDirectory}:{File.GetLastWriteTimeUtc(statePath):O}";
     }
 
     private void AppendLog(string message)

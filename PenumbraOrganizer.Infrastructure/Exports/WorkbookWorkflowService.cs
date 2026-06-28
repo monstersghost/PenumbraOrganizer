@@ -24,25 +24,20 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
     public Task<WorkbookExportResult> ExportAsync(
         ScanInventory inventory,
         OrganizationPreferences organizationPreferences,
+        string workbookPath,
         CancellationToken cancellationToken)
         => Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            var exportsDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "PenumbraOrganizer",
-                "Exports",
-                "Workbook");
-            Directory.CreateDirectory(exportsDirectory);
+            var workbookDirectory = Path.GetDirectoryName(workbookPath);
+            if (string.IsNullOrWhiteSpace(workbookDirectory))
+                throw new InvalidOperationException("The workbook export path is invalid.");
+            Directory.CreateDirectory(workbookDirectory);
 
             var generatedAtUtc = DateTimeOffset.UtcNow;
             var sourceExportId = $"workbook-{generatedAtUtc:yyyyMMddTHHmmssZ}-{Guid.NewGuid():N}";
             var scanIdentity = OrganizerSessionService.BuildScanIdentity(inventory);
             var installationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
-            var workbookPath = Path.Combine(
-                exportsDirectory,
-                $"PenumbraOrganizer-{generatedAtUtc:yyyy-MM-dd-HHmmss}.xlsx");
 
             using var workbook = new XLWorkbook();
             BuildEditableSheet(workbook, inventory, organizationPreferences);
@@ -95,7 +90,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             var inventoryById = inventory.Mods.ToDictionary(mod => mod.StableScanId, StringComparer.Ordinal);
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             var headerMap = ReadHeaderMap(editable);
-            var requiredHeaders = new[] { "id", "mod name", "author", "current folder", "mod type", "protected", "destination" };
+            var requiredHeaders = new[] { "#", "mod name", "author", "current folder", "mod type", "protected", "destination", "_internal_key" };
             foreach (var header in requiredHeaders)
             {
                 if (!headerMap.ContainsKey(header))
@@ -116,7 +111,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                         errors.Add($"Row {rowNumber} contains a formula in '{header}'. Replace formulas with plain text before importing.");
                 }
 
-                var stableScanId = editable.Cell(rowNumber, headerMap["id"]).GetString().Trim();
+                var stableScanId = editable.Cell(rowNumber, headerMap["_internal_key"]).GetString().Trim();
                 var modName = editable.Cell(rowNumber, headerMap["mod name"]).GetString().Trim();
                 var author = editable.Cell(rowNumber, headerMap["author"]).GetString().Trim();
                 var currentFolder = editable.Cell(rowNumber, headerMap["current folder"]).GetString();
@@ -186,6 +181,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                 }
 
                 rows.Add(new WorkbookImportRow(
+                    rowNumber,
                     stableScanId,
                     string.IsNullOrWhiteSpace(modName) ? mod.Name : modName,
                     string.IsNullOrWhiteSpace(author) ? mod.Author : author,
@@ -203,7 +199,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
     private void BuildEditableSheet(XLWorkbook workbook, ScanInventory inventory, OrganizationPreferences organizationPreferences)
     {
         var sheet = workbook.Worksheets.Add(EditableSheetName);
-        var headers = new[] { "id", "mod name", "author", "current folder", "mod type", "protected", "destination" };
+        var headers = new[] { "#", "mod name", "author", "current folder", "mod type", "protected", "destination", "_internal_key" };
         for (var index = 0; index < headers.Length; index++)
             sheet.Cell(1, index + 1).Value = headers[index];
 
@@ -214,16 +210,18 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         sheet.SheetView.FreezeRows(1);
 
         var row = 2;
+        var displayNumber = 1;
         foreach (var mod in inventory.Mods.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
             var category = WorkbookCategoryCatalog.Detect(mod);
-            sheet.Cell(row, 1).Value = mod.StableScanId;
+            sheet.Cell(row, 1).Value = displayNumber++;
             sheet.Cell(row, 2).Value = mod.Name;
             sheet.Cell(row, 3).Value = mod.Author;
             sheet.Cell(row, 4).Value = mod.CurrentVirtualFolder;
             sheet.Cell(row, 5).Value = category.Name;
             sheet.Cell(row, 6).Value = mod.Protected ? "TRUE" : "FALSE";
             sheet.Cell(row, 7).Value = BuildSuggestedDestination(mod, category, organizationPreferences);
+            sheet.Cell(row, 8).Value = mod.StableScanId;
             row++;
         }
 
@@ -231,6 +229,12 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         range.CreateTable();
         sheet.SheetView.FreezeRows(1);
         sheet.Columns(1, headers.Length).Style.NumberFormat.Format = "@";
+        sheet.Column(8).Hide();
+        sheet.Column(1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        sheet.Range(2, 1, Math.Max(row - 1, 2), 4).Style.Protection.SetLocked(true);
+        sheet.Range(2, 8, Math.Max(row - 1, 2), 8).Style.Protection.SetLocked(true);
+        sheet.Range(2, 5, Math.Max(row - 1, 2), 7).Style.Protection.SetLocked(false);
+        sheet.Protect("PenumbraOrganizer");
         sheet.Columns().AdjustToContents();
     }
 

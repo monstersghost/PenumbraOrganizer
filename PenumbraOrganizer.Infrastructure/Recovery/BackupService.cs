@@ -182,6 +182,7 @@ public sealed class BackupService : IBackupService
             request.ApplicationVersion ?? typeof(BackupService).Assembly.GetName().Version?.ToString() ?? "dev",
             request.PenumbraVersion,
             request.ScanIdentity,
+            request.OperationKind,
             backupStatus,
             ApplyStatus.Pending,
             rollbackStatus,

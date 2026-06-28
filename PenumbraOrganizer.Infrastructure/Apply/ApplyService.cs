@@ -124,7 +124,8 @@ public sealed class ApplyService : IApplyService
                 plan.PlanId.ToString("N"))).ToArray(),
             plan.ApplicationVersion,
             plan.InstalledPenumbraVersion,
-            plan.Summary.AffectedModCount);
+            plan.Summary.AffectedModCount,
+            BackupOperationKind.PreApplyBackup);
 
         var backupDetails = await _backupService.CreateBackupAsync(backupRequest, cancellationToken);
         if (backupDetails.Operation.VerificationStatus != OperationVerificationStatus.Verified)
@@ -534,6 +535,9 @@ public sealed class ApplyService : IApplyService
         var operation = await AtomicJsonFileStore.ReadRequiredAsync<BackupOperation>(_layout.GetOperationPath(operationId), cancellationToken);
         var updated = operation with
         {
+            OperationKind = applyStatus is ApplyStatus.Pending or ApplyStatus.Ready
+                ? operation.OperationKind
+                : BackupOperationKind.AppliedChanges,
             ApplyStatus = applyStatus,
             RollbackAvailable = rollbackAvailable,
             FailureCount = applyStatus is ApplyStatus.Failed or ApplyStatus.PartiallyCompleted
