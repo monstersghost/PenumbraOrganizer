@@ -112,6 +112,11 @@
                                             Height="40"
                                             Margin="0,0,10,10"
                                             FontWeight="SemiBold" />
+                                    <Button Command="{Binding CreateBackupCommand}"
+                                            Content="Create Backup"
+                                            MinWidth="150"
+                                            Height="40"
+                                            Margin="0,0,10,10" />
                                     <Button Command="{Binding DetectCommand}"
                                             Content="Find Penumbra Again"
                                             MinWidth="150"
@@ -315,6 +320,11 @@
                                             MinWidth="140"
                                             Height="38"
                                             Margin="0,0,10,10" />
+                                    <Button Command="{Binding OpenWorkbookFolderCommand}"
+                                            Content="Open Export Folder"
+                                            MinWidth="150"
+                                            Height="38"
+                                            Margin="0,0,10,10" />
                                     <Button Command="{Binding ImportWorkbookCommand}"
                                             Content="Import Workbook"
                                             MinWidth="150"
@@ -370,7 +380,7 @@
                                                FontSize="18"
                                                FontWeight="SemiBold" />
                                     <TextBlock Margin="0,12,0,0"
-                                               Text="id | mod name | author | current folder | mod type | protected | destination"
+                                               Text="# | mod name | author | current folder | mod type | protected | destination"
                                                FontFamily="Consolas"
                                                TextWrapping="Wrap" />
                                     <TextBlock Margin="0,8,0,0"
@@ -384,7 +394,7 @@
                                                Text="Review rule: use mod type Review or destination 7/Review when a row still needs attention."
                                                TextWrapping="Wrap" />
                                     <TextBlock Margin="0,12,0,0"
-                                               Text="Stable id matching is used on import. Names, author labels, and folder text are not used as keys."
+                                               Text="A hidden locked internal key is used on import. The visible # column is only for row numbering."
                                                TextWrapping="Wrap"
                                                Foreground="#FF556171" />
                                 </StackPanel>
@@ -418,14 +428,13 @@
                                 BorderBrush="#FFD9DFE7"
                                 BorderThickness="1"
                                 CornerRadius="8"
-                                Padding="18"
-                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
+                                Padding="18">
                             <StackPanel>
                                 <TextBlock Text="What happens on import"
                                            FontSize="18"
                                            FontWeight="SemiBold" />
                                 <TextBlock Margin="0,12,0,0"
-                                           Text="The app validates duplicate ids, unknown ids, malformed paths, traversal such as ../, and stale exports before updating the review list."
+                                           Text="The app validates workbook keys, duplicate rows, malformed paths, traversal such as ../, and stale exports before updating the review list."
                                            TextWrapping="Wrap" />
                                 <TextBlock Margin="0,10,0,0"
                                            Text="After a successful import, go to Review and Apply to inspect the diff. Backup and Apply still creates a fresh verified backup immediately before writing."
@@ -435,264 +444,6 @@
                         </Border>
                     </Grid>
                 </ScrollViewer>
-            </TabItem>
-
-            <TabItem Header="Advanced Organizer"
-                     Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
-                <Grid Margin="14">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <Border Grid.Row="0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="18">
-                        <StackPanel>
-                            <TextBlock Text="Choose how to organize your mods"
-                                       FontSize="20"
-                                       FontWeight="SemiBold" />
-                            <WrapPanel Margin="0,14,0,0">
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Blank Template" Content="Blank template" MinWidth="140" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type" Content="Type" MinWidth="95" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type / Author" Content="Type then author" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Author / Type" Content="Author then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep Current" Content="Keep current" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export inventory for AI" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI proposal" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                            </WrapPanel>
-                            <TextBlock Margin="0,10,0,0"
-                                       Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
-                                       Foreground="#FF556171" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Grid.Row="1"
-                            Margin="0,16,0,0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
-                            BorderThickness="1"
-                            CornerRadius="8"
-                            Padding="18">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0"
-                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="34"
-                                     Padding="10,6"
-                                     VerticalContentAlignment="Center" />
-                            <Button Grid.Column="1"
-                                    Command="{Binding SetOrganizeFilterCommand}"
-                                    CommandParameter="All Mods"
-                                    Content="All Mods"
-                                    MinWidth="90"
-                                    Height="34"
-                                    Margin="10,0,0,0" />
-                            <Button Grid.Column="2"
-                                    Command="{Binding SetOrganizeFilterCommand}"
-                                    CommandParameter="Changed"
-                                    Content="Changed"
-                                    MinWidth="90"
-                                    Height="34"
-                                    Margin="10,0,0,0" />
-                            <Button Grid.Column="3"
-                                    Command="{Binding SetOrganizeFilterCommand}"
-                                    CommandParameter="Needs Review"
-                                    Content="Needs Review"
-                                    MinWidth="110"
-                                    Height="34"
-                                    Margin="10,0,0,0" />
-                            <TextBlock Grid.Column="4"
-                                       Margin="16,0,0,0"
-                                       VerticalAlignment="Center"
-                                       Foreground="#FF556171">
-                                <Run Text="{Binding ChangedProposalCount, Mode=OneWay}" />
-                                <Run Text=" changed, " />
-                                <Run Text="{Binding NeedsReviewCount, Mode=OneWay}" />
-                                <Run Text=" need review" />
-                            </TextBlock>
-                        </Grid>
-                    </Border>
-
-                    <Grid Grid.Row="2"
-                          Margin="0,16,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="330" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="330" />
-                            <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <Border Grid.Column="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-                                <TextBlock Text="Current folder tree"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <DataGrid Grid.Row="1"
-                                          Margin="0,12,0,0"
-                                          ItemsSource="{Binding FolderTree}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="True"
-                                          CanUserAddRows="False"
-                                          HeadersVisibility="Column"
-                                          SelectionMode="Single">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Current folder" Binding="{Binding Path}" Width="*" />
-                                        <DataGridTextColumn Header="Mods" Binding="{Binding DirectModCount}" Width="70" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Column="2"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Proposed folder tree"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-
-                                <Grid Grid.Row="1"
-                                      Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="32"
-                                             Padding="8,4"
-                                             VerticalContentAlignment="Center" />
-                                    <Button Grid.Column="1"
-                                            Command="{Binding CreateProposedFolderCommand}"
-                                            Content="Create Folder"
-                                            MinWidth="110"
-                                            Height="32"
-                                            Margin="10,0,0,0" />
-                                </Grid>
-
-                                <Grid Grid.Row="2"
-                                      Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding RenameFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="32"
-                                             Padding="8,4"
-                                             VerticalContentAlignment="Center" />
-                                    <Button Grid.Column="1"
-                                            Command="{Binding RenameFolderCommand}"
-                                            Content="Rename"
-                                            MinWidth="90"
-                                            Height="32"
-                                            Margin="10,0,0,0" />
-                                </Grid>
-
-                                <DataGrid Grid.Row="3"
-                                          Margin="0,12,0,0"
-                                          ItemsSource="{Binding ProposedFolders}"
-                                          SelectedItem="{Binding SelectedProposedFolder}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="True"
-                                          CanUserAddRows="False"
-                                          HeadersVisibility="Column"
-                                          SelectionMode="Single">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Proposed folder" Binding="{Binding DisplayName}" Width="*" />
-                                        <DataGridTextColumn Header="Direct" Binding="{Binding DirectModCount}" Width="70" />
-                                        <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-
-                                <WrapPanel Grid.Row="4"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                </WrapPanel>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Column="4"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Mods"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-
-                                <DataGrid Grid.Row="1"
-                                          Margin="0,12,0,0"
-                                          ItemsSource="{Binding FilteredMods}"
-                                          AutoGenerateColumns="False"
-                                          CanUserAddRows="False"
-                                          SelectionMode="Extended"
-                                          behaviors:SelectedItemsBehavior.BoundSelectedItems="{Binding SelectedOrganizerMods}">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Mod" Binding="{Binding Name}" Width="2*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Current folder" Binding="{Binding CurrentVirtualFolder}" Width="1.4*" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Proposed folder" Binding="{Binding ProposedVirtualFolder, UpdateSourceTrigger=PropertyChanged}" Width="1.5*" />
-                                        <DataGridTextColumn Header="Creator" Binding="{Binding EffectiveCreator, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" />
-                                        <DataGridTextColumn Header="Type" Binding="{Binding DetectedType, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" />
-                                        <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="95" />
-                                        <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-
-                                <WrapPanel Grid.Row="2"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                </WrapPanel>
-                            </Grid>
-                        </Border>
-                    </Grid>
-                </Grid>
             </TabItem>
 
             <TabItem Header="4. Review / 5. Apply">
@@ -725,8 +476,12 @@
                                     <Run Text=" moves, " />
                                     <Run Text="{Binding ReviewProtectionChanges, Mode=OneWay}" />
                                     <Run Text=" protection changes, " />
+                                    <Run Text="{Binding ReviewWarnings, Mode=OneWay}" />
+                                    <Run Text=" warning rows, " />
                                     <Run Text="{Binding ReviewNeedsReview, Mode=OneWay}" />
                                     <Run Text=" Review rows, " />
+                                    <Run Text="{Binding ReviewSkipped, Mode=OneWay}" />
+                                    <Run Text=" skipped, " />
                                     <Run Text="{Binding ReviewUnchanged, Mode=OneWay}" />
                                     <Run Text=" unchanged, " />
                                     <Run Text="{Binding ReviewProtected, Mode=OneWay}" />
@@ -816,7 +571,9 @@
                                           SelectedValuePath="Content">
                                     <ComboBoxItem Content="All" />
                                     <ComboBoxItem Content="Changes only" />
+                                    <ComboBoxItem Content="Warnings / Needs Review" />
                                     <ComboBoxItem Content="Needs Review" />
+                                    <ComboBoxItem Content="Skipped" />
                                     <ComboBoxItem Content="Protected" />
                                     <ComboBoxItem Content="Invalid only" />
                                     <ComboBoxItem Content="Unchanged" />
@@ -883,6 +640,7 @@
                             </StackPanel>
                             <WrapPanel Grid.Column="1"
                                        VerticalAlignment="Top">
+                                <Button Command="{Binding CreateBackupCommand}" Content="Create Backup Now" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh" MinWidth="90" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.RollbackCommand}" Content="Restore Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="34" Margin="0,0,10,10" />
@@ -912,6 +670,7 @@
                                       CanUserAddRows="False">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Date" Binding="{Binding CreatedAtUtc}" Width="1.3*" />
+                                    <DataGridTextColumn Header="Kind" Binding="{Binding OperationKind}" Width="120" />
                                     <DataGridTextColumn Header="Changed mods" Binding="{Binding AffectedItems}" Width="90" />
                                     <DataGridTextColumn Header="Apply result" Binding="{Binding ApplyStatus}" Width="110" />
                                     <DataGridTextColumn Header="Backup" Binding="{Binding BackupVerified}" Width="80" />
@@ -964,12 +723,10 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Settings / Advanced">
+            <TabItem Header="Settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="14">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
@@ -984,84 +741,16 @@
                                 <TextBlock Text="Settings"
                                            FontSize="20"
                                            FontWeight="SemiBold" />
-                                <CheckBox Margin="0,14,0,0"
-                                          IsChecked="{Binding ShowAdvancedTools}"
-                                          Content="Show advanced tools and diagnostics" />
-                                <WrapPanel Margin="0,14,0,0"
-                                           Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <WrapPanel Margin="0,14,0,0">
                                     <Button Command="{Binding SaveSessionCommand}" Content="Save Session" MinWidth="120" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ResumeLastSessionCommand}" Content="Resume Last Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding DiscardSessionCommand}" Content="Reset Saved Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding OpenLogsFolderCommand}" Content="Open Logs Folder" MinWidth="140" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
 
                         <Border Grid.Row="1"
-                                Margin="0,16,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="18"
-                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <StackPanel>
-                                <TextBlock Text="AI Proposal Import"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Margin="0,12,0,0"
-                                           Text="{Binding AiImportStatus}"
-                                           TextWrapping="Wrap" />
-                                <WrapPanel Margin="0,12,0,0">
-                                    <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export Inventory Package" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ImportAiProposalCommand}" Content="Import Proposal JSON" MinWidth="155" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding OpenExportFolderCommand}" Content="Open Export Folder" MinWidth="145" Height="34" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Row="2"
-                                Margin="0,16,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Padding="18"
-                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
-                            <StackPanel>
-                                <TextBlock Text="Advanced tools"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Margin="0,12,0,0"
-                                           Text="{Binding InstallationValidationStatus}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Margin="0,8,0,0"
-                                           Text="{Binding ControlledTestStatus}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Margin="0,8,0,0"
-                                           Text="{Binding ControlledTestSelectionSummary}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Margin="0,8,0,0"
-                                           Text="{Binding DiagnosticStatus}"
-                                           TextWrapping="Wrap" />
-                                <WrapPanel Margin="0,14,0,0">
-                                    <Button Command="{Binding ValidateInstallationCommand}" Content="Validate My Installation" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Prepared Changes" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ConfigureControlledTestCommand}" Content="Controlled Test Apply" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Controlled Test" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" />
-                                </WrapPanel>
-                                <WrapPanel Margin="0,4,0,0">
-                                    <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ContinueIncompleteVerificationCommand}" Content="Continue Verification" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding RollbackIncompleteOperationCommand}" Content="Roll Back Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ViewIncompleteOperationCommand}" Content="Focus Incomplete Backup" MinWidth="170" Height="34" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Grid.Row="3"
                                 Margin="0,16,0,0"
                                 Background="White"
                                 BorderBrush="#FFD9DFE7"

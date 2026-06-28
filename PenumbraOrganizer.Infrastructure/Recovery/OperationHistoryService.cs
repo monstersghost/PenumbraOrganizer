@@ -124,6 +124,7 @@ public sealed class OperationHistoryService : IOperationHistoryService
         => new(
             operation.OperationId,
             operation.CreatedAtUtc,
+            operation.OperationKind,
             operation.BackupStatus,
             operation.ApplyStatus,
             operation.RollbackStatus,

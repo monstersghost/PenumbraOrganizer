@@ -17,6 +17,7 @@ public sealed record WorkbookExportResult(
     string Summary);
 
 public sealed record WorkbookImportRow(
+    int RowNumber,
     string StableScanId,
     string ModName,
     string Author,

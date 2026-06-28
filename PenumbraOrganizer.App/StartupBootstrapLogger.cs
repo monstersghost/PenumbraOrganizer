@@ -7,15 +7,20 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 using System.Windows;
+using PenumbraOrganizer.App.Dialogs;
 
 internal static class StartupBootstrapLogger
 {
     private static readonly object Sync = new();
     private static StreamWriter? _writer;
     private static string _logPath = string.Empty;
+    private static string _logsDirectory = string.Empty;
+    private static string _lastExceptionDetails = string.Empty;
     private static int _dialogShown;
 
     public static string LogPath => _logPath;
+    public static string LogsDirectory => _logsDirectory;
+    public static string LastExceptionDetails => _lastExceptionDetails;
 
     public static void Initialize(string[] args)
     {
@@ -38,6 +43,7 @@ internal static class StartupBootstrapLogger
 
     public static void RecordException(string stage, Exception exception)
     {
+        _lastExceptionDetails = $"Stage: {stage}{Environment.NewLine}{Environment.NewLine}{FormatException(exception)}";
         WriteLine($"ERROR: {stage}");
         WriteLine(FormatException(exception));
     }
@@ -45,7 +51,30 @@ internal static class StartupBootstrapLogger
     public static void HandleFatal(string stage, Exception exception)
     {
         RecordException(stage, exception);
-        ShowFatalDialog(exception);
+        ShowFatalDialog(stage, exception);
+    }
+
+    public static void OpenLogsFolder()
+    {
+        var target = Directory.Exists(_logsDirectory)
+            ? _logsDirectory
+            : (!string.IsNullOrWhiteSpace(_logPath) ? Path.GetDirectoryName(_logPath) : null);
+        if (string.IsNullOrWhiteSpace(target))
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = target,
+            UseShellExecute = true,
+        });
+    }
+
+    public static void CopyDetails()
+    {
+        var details = string.IsNullOrWhiteSpace(_lastExceptionDetails)
+            ? $"Log path: {_logPath}"
+            : $"{_lastExceptionDetails}{Environment.NewLine}{Environment.NewLine}Log path: {_logPath}";
+        Clipboard.SetText(details);
     }
 
     private static void WriteHeader(string[] args)
@@ -75,6 +104,7 @@ internal static class StartupBootstrapLogger
                 "PenumbraOrganizer",
                 "Logs");
             Directory.CreateDirectory(logsDirectory);
+            _logsDirectory = logsDirectory;
             var path = Path.Combine(logsDirectory, $"startup-{timestamp:yyyyMMdd-HHmmss}.log");
             _writer = CreateWriter(path);
             return path;
@@ -156,22 +186,23 @@ internal static class StartupBootstrapLogger
         }
     }
 
-    private static void ShowFatalDialog(Exception exception)
+    private static void ShowFatalDialog(string stage, Exception exception)
     {
         if (Interlocked.Exchange(ref _dialogShown, 1) != 0)
             return;
 
-        var message = string.IsNullOrWhiteSpace(_logPath)
-            ? $"Penumbra Organizer could not start.{Environment.NewLine}{Environment.NewLine}{exception.Message}"
-            : $"Penumbra Organizer could not start.{Environment.NewLine}{Environment.NewLine}{exception.Message}{Environment.NewLine}{Environment.NewLine}Startup log: {_logPath}";
-
         try
         {
-            MessageBox.Show(
-                message,
-                "Penumbra Organizer",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            var window = new FatalErrorWindow(
+                "Penumbra Organizer could not start.",
+                stage,
+                exception,
+                _logsDirectory,
+                _logPath)
+            {
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            };
+            window.ShowDialog();
         }
         catch
         {

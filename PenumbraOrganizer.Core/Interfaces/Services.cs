@@ -18,40 +18,17 @@ public interface IPenumbraCompatibilityService
     Task<CompatibilityReport> EvaluateAsync(PenumbraInstallation installation, ScanInventory inventory, CancellationToken cancellationToken);
 }
 
-public interface IInventoryExportService
-{
-    Task<InventoryExportResult> CreateAiReviewPackageAsync(
-        ScanInventory inventory,
-        CancellationToken cancellationToken,
-        OrganizationPreferences? organizationPreferences = null);
-
-    Task ValidateExportPackageAsync(string exportFolder, CancellationToken cancellationToken);
-}
-
 public interface IWorkbookWorkflowService
 {
     Task<WorkbookExportResult> ExportAsync(
         ScanInventory inventory,
         OrganizationPreferences organizationPreferences,
+        string workbookPath,
         CancellationToken cancellationToken);
 
     Task<WorkbookImportResult> ImportAsync(
         string workbookPath,
         ScanInventory inventory,
-        CancellationToken cancellationToken);
-}
-
-public interface IAiProposalValidationService
-{
-    AiProposalValidationResult Validate(AiInventoryExport inventory, AiProposalDocument proposal);
-}
-
-public interface IAiProposalImportService
-{
-    Task<AiProposalImportResult> ImportAsync(
-        string proposalPath,
-        string inventoryPath,
-        IReadOnlyList<OrganizerModProposal> currentProposals,
         CancellationToken cancellationToken);
 }
 

@@ -61,6 +61,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        StartupBootstrapLogger.Note($"process shutting down with exit code {e.ApplicationExitCode}");
         _serviceProvider?.Dispose();
         base.OnExit(e);
     }

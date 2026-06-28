@@ -1,7 +1,6 @@
 namespace PenumbraOrganizer.Tests.Integration;
 
 using System.Security.Cryptography;
-using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using PenumbraOrganizer.Core.Interfaces;
@@ -112,87 +111,6 @@ public sealed class ValidationAndImportTests
     }
 
     [Fact]
-    public async Task AiImport_ImportsValidRows_AndPreservesManualOverrides()
-    {
-        using var context = await ValidationContext.CreateAsync();
-        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Creator A"}""");
-        context.Fixture.CreateMod("Beta", """{"FileVersion":3,"Name":"Beta","Author":"Creator B"}""");
-        context.Fixture.WriteModData(("Alpha", "Current/Alpha"), ("Beta", "Current/Beta"));
-        await context.ScanAsync();
-
-        var proposals = context.BuildSnapshot(("Alpha", "Current/Alpha"), ("Beta", "Manual/Keep")).Proposals.ToArray();
-        proposals.Single(proposal => proposal.StableScanId == "Beta").Source = OrganizerProposalSource.Manual;
-
-        var inventoryPath = WriteInventoryExport(context.RootPath, context.Inventory!, "export-123");
-        var proposalPath = WriteProposal(context.RootPath, "export-123",
-        [
-            new AiProposalRow
-            {
-                ScanId = "Alpha",
-                Protected = false,
-                CurrentVirtualFolder = "Current/Alpha",
-                ProposedVirtualFolder = "Imported/Alpha",
-                ProposedType = "TypeA",
-                ProposedCreator = "Creator A",
-                Action = "move",
-                Confidence = "high",
-                Reason = "Move alpha.",
-            },
-            new AiProposalRow
-            {
-                ScanId = "Beta",
-                Protected = false,
-                CurrentVirtualFolder = "Current/Beta",
-                ProposedVirtualFolder = "Imported/Beta",
-                ProposedType = "TypeB",
-                ProposedCreator = "Creator B",
-                Action = "move",
-                Confidence = "medium",
-                Reason = "Move beta.",
-            },
-        ]);
-
-        var result = await context.ImportService.ImportAsync(proposalPath, inventoryPath, proposals, CancellationToken.None);
-
-        result.ImportedCount.Should().Be(1);
-        result.ManualOverrideCount.Should().Be(1);
-        result.Errors.Should().BeEmpty();
-        result.ImportedRows.Single().StableScanId.Should().Be("Alpha");
-        result.Decisions.Should().Contain(decision => decision.ScanId == "Beta" && decision.Decision == AiImportDecisionKind.ManualOverride);
-    }
-
-    [Fact]
-    public async Task AiImport_WrongExportId_IsRejected()
-    {
-        using var context = await ValidationContext.CreateAsync();
-        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Creator"}""");
-        context.Fixture.WriteModData(("Alpha", "Current/Alpha"));
-        await context.ScanAsync();
-
-        var inventoryPath = WriteInventoryExport(context.RootPath, context.Inventory!, "export-expected");
-        var proposalPath = WriteProposal(context.RootPath, "export-actual",
-        [
-            new AiProposalRow
-            {
-                ScanId = "Alpha",
-                Protected = false,
-                CurrentVirtualFolder = "Current/Alpha",
-                ProposedVirtualFolder = "Imported/Alpha",
-                ProposedType = "TypeA",
-                ProposedCreator = "Creator",
-                Action = "move",
-                Confidence = "high",
-                Reason = "Move alpha.",
-            },
-        ]);
-
-        var result = await context.ImportService.ImportAsync(proposalPath, inventoryPath, context.BuildSnapshot(("Alpha", "Current/Alpha")).Proposals, CancellationToken.None);
-
-        result.Errors.Should().Contain(issue => issue.Code == "SourceExportIdMismatch");
-        result.RejectedCount.Should().Be(1);
-    }
-
-    [Fact]
     public async Task DiagnosticExport_RedactsAbsolutePaths_AndOmitsStateDatabase()
     {
         using var context = await ValidationContext.CreateAsync();
@@ -239,67 +157,6 @@ public sealed class ValidationAndImportTests
         manifest.Should().NotContain("requireAdministrator");
     }
 
-    private static string WriteInventoryExport(string rootPath, ScanInventory inventory, string sourceExportId)
-    {
-        var path = Path.Combine(rootPath, "Penumbra_Mod_Inventory.json");
-        var payload = new AiInventoryExport
-        {
-            SourceExportId = sourceExportId,
-            GeneratedAtUtc = inventory.ScannedAtUtc,
-            InstalledPenumbraVersion = inventory.Installation.InstalledVersion,
-            OrganizationPreferences = new AiOrganizationPreferences
-            {
-                Strategy = OrganizationStrategy.PreserveAndClean.ToString(),
-                UseTypeFolders = false,
-                UseCreatorFolders = false,
-                FolderOrder = Array.Empty<string>(),
-                FixedRootFolder = null,
-                PreserveMeaningfulExistingFolders = true,
-                FlattenTemporarySourceFolders = true,
-                NormalizeCreatorAliases = true,
-                UnknownCreatorBehavior = UnknownCreatorBehavior.PreserveCurrent.ToString(),
-                UnknownTypeBehavior = UnknownTypeBehavior.PreserveCurrent.ToString(),
-                UncertainClassificationBehavior = UncertainClassificationBehavior.Review.ToString(),
-                PreserveCurrentFolderWhenUncertain = true,
-                CustomPattern = null,
-            },
-            Mods = inventory.Mods.Select(mod => new AiInventoryMod
-            {
-                ScanId = mod.StableScanId,
-                ProtectedRow = mod.Protected,
-                CurrentVirtualFolder = mod.CurrentVirtualFolder,
-                Name = mod.Name,
-                Author = mod.Author,
-            }).ToArray(),
-        };
-
-        File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-        return path;
-    }
-
-    private static string WriteProposal(string rootPath, string sourceExportId, IReadOnlyList<AiProposalRow> rows)
-    {
-        var path = Path.Combine(rootPath, "Penumbra_AI_Proposal.json");
-        var payload = new AiProposalDocument
-        {
-            FormatVersion = AiExchangeFormat.CurrentFormatVersion,
-            SourceExportId = sourceExportId,
-            Summary = new AiProposalSummary
-            {
-                TotalRowsReceived = rows.Count,
-                TotalRowsReturned = rows.Count,
-                ProtectedRows = rows.Count(row => row.Protected),
-                ChangedRows = rows.Count(row => !string.Equals(row.CurrentVirtualFolder, row.ProposedVirtualFolder, StringComparison.Ordinal)),
-                UnchangedRows = rows.Count(row => string.Equals(row.CurrentVirtualFolder, row.ProposedVirtualFolder, StringComparison.Ordinal)),
-                ReviewRows = rows.Count(row => string.Equals(row.Action, "review", StringComparison.Ordinal)),
-            },
-            Proposals = rows,
-        };
-
-        File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
-        return path;
-    }
-
     private static string HashFile(string path)
         => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
 
@@ -339,7 +196,6 @@ public sealed class ValidationAndImportTests
             var rollbackService = new RollbackService(BackupsRoot, rollbackVerification, HistoryService);
             var applyService = new ApplyService(ValidationService, PreflightService, backupService, rollbackService, new PostApplyVerificationService(), HistoryService, BackupsRoot);
             RealValidationService = new RealInstallationValidationService(ScanService, Planner, PreflightService, applyService);
-            ImportService = new AiProposalImportService(new AiProposalValidationService());
             Diagnostics = new DiagnosticExportService();
         }
 
@@ -355,7 +211,6 @@ public sealed class ValidationAndImportTests
         public IWritePermissionPreflightService PreflightService { get; }
         public OperationHistoryService HistoryService { get; }
         public IRealInstallationValidationService RealValidationService { get; }
-        public IAiProposalImportService ImportService { get; }
         public IDiagnosticExportService Diagnostics { get; }
         public ScanInventory? Inventory { get; private set; }
 
