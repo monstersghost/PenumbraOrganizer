@@ -286,6 +286,9 @@ public sealed class ApplyService : IApplyService
         verificationDocument = verificationDocument with { PostApplyVerification = verification };
         await AtomicJsonFileStore.WriteAsync(_layout.GetVerificationPath(operation.OperationId), verificationDocument, _ => true, cancellationToken);
 
+        if (ShouldAttemptAutomaticRollback(final, verification))
+            final = await AttemptAutomaticRollbackAsync(operation, final, transaction, cancellationToken);
+
         await PersistApplyCompletionAsync(operation.OperationId, currentPackage.Operation!, final, transaction, cancellationToken);
         return final;
     }
@@ -478,6 +481,49 @@ public sealed class ApplyService : IApplyService
         await _historyService.RefreshOperationAsync(operationId, cancellationToken);
     }
 
+    private async Task<ApplyResult> AttemptAutomaticRollbackAsync(
+        ApplyOperation operation,
+        ApplyResult applyResult,
+        RollbackTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await AtomicJsonFileStore.WriteAsync(
+                _layout.GetRollbackPath(operation.OperationId),
+                transaction,
+                value => value.OperationId == operation.OperationId,
+                cancellationToken);
+
+            var rollback = await _rollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, cancellationToken);
+            var restored = rollback.Status == RollbackTransactionStatus.Completed;
+            var message = restored
+                ? "Automatic rollback restored the verified backup after Apply failed."
+                : $"Automatic rollback finished with status {rollback.Status}.";
+
+            return applyResult with
+            {
+                RollbackAvailable = !restored,
+                LastError = AppendMessage(applyResult.LastError, message),
+                AutomaticRollbackAttempted = true,
+                AutomaticRollbackSucceeded = restored,
+                AutomaticRollbackMessage = message,
+            };
+        }
+        catch (Exception ex)
+        {
+            var message = $"Automatic rollback failed: {ex.Message}";
+            return applyResult with
+            {
+                RollbackAvailable = true,
+                LastError = AppendMessage(applyResult.LastError, message),
+                AutomaticRollbackAttempted = true,
+                AutomaticRollbackSucceeded = false,
+                AutomaticRollbackMessage = message,
+            };
+        }
+    }
+
     private async Task UpdateOperationStateAsync(
         Guid operationId,
         ApplyStatus applyStatus,
@@ -527,6 +573,13 @@ public sealed class ApplyService : IApplyService
             results.ToArray(),
             rollbackAvailable,
             lastError ?? string.Join(Environment.NewLine, results.Where(result => result.Status == ApplyResultStatus.Failed).Select(result => result.Message).Distinct(StringComparer.OrdinalIgnoreCase)));
+
+    private static bool ShouldAttemptAutomaticRollback(ApplyResult applyResult, PostApplyVerificationResult verification)
+        => applyResult.Files.Any(file => file.WriteCompleted)
+           && (!verification.Succeeded || applyResult.Status is ApplyStatus.Failed or ApplyStatus.PartiallyCompleted);
+
+    private static string AppendMessage(string? original, string message)
+        => string.IsNullOrWhiteSpace(original) ? message : $"{original}{Environment.NewLine}{message}";
 
     private static ApplyStatus ComputeStatus(IReadOnlyList<ApplyFileResult> results)
     {

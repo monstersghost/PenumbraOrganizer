@@ -348,6 +348,52 @@ public sealed class DryRunAndApplyTests
     }
 
     [Fact]
+    public async Task Apply_VerificationFailure_AutomaticallyRollsBack()
+    {
+        using var context = await ApplyTestContext.CreateAsync(new FailingPostApplyVerificationService("Verification failed on purpose."));
+        context.Fixture.CreateMod("Rollback Mod", """{"FileVersion":3,"Name":"Rollback Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Rollback Mod", "Current/Folder"));
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Rollback Mod", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+        var details = await context.HistoryService.TryLoadOperationAsync(operation.OperationId, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.PartiallyCompleted);
+        result.AutomaticRollbackAttempted.Should().BeTrue();
+        result.AutomaticRollbackSucceeded.Should().BeTrue();
+        result.RollbackAvailable.Should().BeFalse();
+        details!.Operation.RollbackStatus.Should().Be(RollbackTransactionStatus.Completed);
+        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
+        db.GetCollection("LocalModData").FindById("Rollback Mod")!["Folder"].AsString.Should().Be("Current/Folder");
+    }
+
+    [Fact]
+    public async Task RepeatedNoOpPlan_IsIdempotent()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Repeat Mod", """{"FileVersion":3,"Name":"Repeat Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Repeat Mod", "Current/Folder"));
+
+        await context.ScanAsync();
+        var firstSnapshot = context.BuildSnapshot(("Repeat Mod", "Target/Folder"));
+        var firstPlan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, firstSnapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(firstPlan, context.Installation, firstSnapshot, CancellationToken.None);
+        await context.ApplyService.ApplyAsync(firstPlan, operation, context.Installation, firstSnapshot, CancellationToken.None);
+
+        await context.ScanAsync();
+        var secondSnapshot = context.BuildSnapshot(("Repeat Mod", "Target/Folder"));
+        var secondPlan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, secondSnapshot, CancellationToken.None);
+
+        secondPlan.FileChanges.Should().BeEmpty();
+        secondPlan.Entries.Single().RequiresWrite.Should().BeFalse();
+        secondPlan.Entries.Single().ProposedVirtualFolder.Should().Be("Target/Folder");
+    }
+
+    [Fact]
     public async Task SuccessfulApply_CanBeRolledBackExactly()
     {
         using var context = await ApplyTestContext.CreateAsync();
@@ -390,7 +436,7 @@ public sealed class DryRunAndApplyTests
 
     private sealed class ApplyTestContext : IDisposable
     {
-        private ApplyTestContext(TemporaryPenumbraFixture fixture)
+        private ApplyTestContext(TemporaryPenumbraFixture fixture, IPostApplyVerificationService? postApplyVerificationService = null)
         {
             Fixture = fixture;
             RootPath = fixture.RootPath;
@@ -420,7 +466,7 @@ public sealed class DryRunAndApplyTests
             var rollbackVerification = new RollbackVerificationService(BackupsRoot, HistoryService);
             var backupService = new BackupService(BackupsRoot, backupVerification, HistoryService);
             RollbackService = new RollbackService(BackupsRoot, rollbackVerification, HistoryService);
-            ApplyService = new ApplyService(ValidationService, PreflightService, backupService, RollbackService, new PostApplyVerificationService(), HistoryService, BackupsRoot);
+            ApplyService = new ApplyService(ValidationService, PreflightService, backupService, RollbackService, postApplyVerificationService ?? new PostApplyVerificationService(), HistoryService, BackupsRoot);
         }
 
         public TemporaryPenumbraFixture Fixture { get; }
@@ -438,12 +484,12 @@ public sealed class DryRunAndApplyTests
         public ApplyService ApplyService { get; }
         public ScanInventory? Inventory { get; private set; }
 
-        public static Task<ApplyTestContext> CreateAsync()
+        public static Task<ApplyTestContext> CreateAsync(IPostApplyVerificationService? postApplyVerificationService = null)
         {
             var fixture = new TemporaryPenumbraFixture();
             fixture.WriteMainConfig();
             fixture.WritePluginManifest();
-            return Task.FromResult(new ApplyTestContext(fixture));
+            return Task.FromResult(new ApplyTestContext(fixture, postApplyVerificationService));
         }
 
         public async Task ScanAsync()
@@ -520,5 +566,17 @@ public sealed class DryRunAndApplyTests
         {
             Fixture.Dispose();
         }
+    }
+
+    private sealed class FailingPostApplyVerificationService(string error) : IPostApplyVerificationService
+    {
+        public Task<PostApplyVerificationResult> VerifyAsync(DryRunPlan plan, ApplyResult applyResult, CancellationToken cancellationToken)
+            => Task.FromResult(new PostApplyVerificationResult(
+                applyResult.OperationId,
+                Succeeded: false,
+                VerifiedChangedModCount: 0,
+                VerifiedProtectedModCount: 0,
+                Errors: [error],
+                Warnings: Array.Empty<string>()));
     }
 }

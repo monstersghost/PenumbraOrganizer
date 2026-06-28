@@ -1709,7 +1709,11 @@ public sealed class MainViewModel : ObservableObject
             await _backups.RefreshAsync();
             await RefreshRecoveryStatusAsync();
 
-            var title = details?.PostApplyVerification?.Succeeded == true ? "Organization completed" : "Organization finished with warnings";
+            var title = _latestApplyResult?.AutomaticRollbackSucceeded == true
+                ? "Apply rolled back automatically"
+                : details?.PostApplyVerification?.Succeeded == true
+                    ? "Organization completed"
+                    : "Organization finished with warnings";
             MessageBox.Show(
                 BuildApplyCompletionMessage(_latestApplyResult!, details?.PostApplyVerification),
                 title,
@@ -1909,7 +1913,9 @@ public sealed class MainViewModel : ObservableObject
             return $"Apply is blocked while these processes are running: {string.Join(", ", _preparedApplyOperation.Preflight.BlockingProcesses)}";
 
         if (_latestApplyResult is not null)
-            return _latestApplyResult.RollbackAvailable
+            return _latestApplyResult.AutomaticRollbackSucceeded
+                ? "Apply failed, and the original backup was restored automatically."
+                : _latestApplyResult.RollbackAvailable
                 ? "Apply finished. Rollback is available from the Backups screen."
                 : $"Apply finished with status {_latestApplyResult.Status}.";
 
@@ -1961,13 +1967,16 @@ public sealed class MainViewModel : ObservableObject
         {
             { Succeeded: true, Warnings.Count: > 0 } => "Applied with verification warnings",
             { Succeeded: true } => "Applied and verified",
+            _ when applyResult.AutomaticRollbackSucceeded => "Failed and rolled back automatically",
             _ when applyResult.Status == ApplyStatus.PartiallyCompleted => "Partially applied",
             _ when applyResult.Status == ApplyStatus.Failed && anyWriteCompleted => "Failed after partial write",
             _ when applyResult.Status == ApplyStatus.Failed => "Failed before write",
             _ => applyResult.Status.ToString(),
         };
 
-        var rollbackLine = applyResult.RollbackAvailable
+        var rollbackLine = applyResult.AutomaticRollbackSucceeded
+            ? "The original backup was restored automatically."
+            : applyResult.RollbackAvailable
             ? "Rollback available from the Backups screen."
             : "Rollback is not available because no live write was confirmed.";
         var verificationLine = verification is null
@@ -1975,13 +1984,28 @@ public sealed class MainViewModel : ObservableObject
             : verification.Succeeded
                 ? "The updated records were re-read and verified against the plan."
                 : string.Join(" ", verification.Errors.Take(2));
-        return $"{category}. {verificationLine} {rollbackLine}";
+        var autoRollbackLine = string.IsNullOrWhiteSpace(applyResult.AutomaticRollbackMessage)
+            ? string.Empty
+            : $" {applyResult.AutomaticRollbackMessage}";
+        return $"{category}. {verificationLine} {rollbackLine}{autoRollbackLine}";
     }
 
     private string BuildApplyCompletionMessage(ApplyResult applyResult, PostApplyVerificationResult? verification)
     {
         var changedCount = _reviewValidation?.Summary.Changed ?? applyResult.Files.Count(file => file.WriteCompleted);
         var protectedCount = _reviewValidation?.Summary.Protected ?? 0;
+        if (applyResult.AutomaticRollbackSucceeded)
+        {
+            return
+                $"Apply did not finish cleanly{Environment.NewLine}{Environment.NewLine}" +
+                $"{changedCount} mod(s) were part of the attempted update{Environment.NewLine}" +
+                $"{protectedCount} protected mod(s) unchanged{Environment.NewLine}" +
+                $"Backup verified{Environment.NewLine}" +
+                $"Automatic rollback completed{Environment.NewLine}{Environment.NewLine}" +
+                "Your original Penumbra database was restored from the verified backup." + Environment.NewLine +
+                "Your physical mod files were not moved.";
+        }
+
         var verificationLine = verification?.Succeeded == true
             ? "Result verified"
             : "Verification finished with warnings";

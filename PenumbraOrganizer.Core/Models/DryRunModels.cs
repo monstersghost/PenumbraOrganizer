@@ -174,7 +174,10 @@ public sealed record ApplyResult(
     DateTimeOffset CompletedAtUtc,
     IReadOnlyList<ApplyFileResult> Files,
     bool RollbackAvailable,
-    string? LastError);
+    string? LastError,
+    bool AutomaticRollbackAttempted = false,
+    bool AutomaticRollbackSucceeded = false,
+    string? AutomaticRollbackMessage = null);
 
 public sealed record PostApplyVerificationResult(
     Guid OperationId,

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Exports;
+using System.IO.Compression;
 
 public sealed class WorkbookWorkflowTests
 {
@@ -30,6 +31,20 @@ public sealed class WorkbookWorkflowTests
         imported.Rows.Should().ContainSingle();
         imported.Rows[0].StableScanId.Should().Be("Dress01");
         imported.Rows[0].ResolvedDestination.Should().Be("Clothing/Bizu");
+    }
+
+    [Fact]
+    public async Task Export_FormatsStableIdsAsText()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("00123", "Bizu Dress", "Bizu", "Old/Folder"));
+
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using var workbook = new XLWorkbook(export.WorkbookPath);
+        var sheet = workbook.Worksheet("Edit Destinations");
+        sheet.Cell(2, 1).Style.NumberFormat.Format.Should().Be("@");
+        sheet.Cell(2, 1).GetString().Should().Be("00123");
     }
 
     [Fact]
@@ -74,6 +89,70 @@ public sealed class WorkbookWorkflowTests
         imported.Errors.Should().Contain(error => error.Contains("current folder", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task Import_RejectsFormulaDrivenEditableCells()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            sheet.Cell(2, 7).FormulaA1 = "\"1/Bizu\"";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().Contain(error => error.Contains("formula", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Import_RejectsMacroAndExternalLinkPackages()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using (var archive = ZipFile.Open(export.WorkbookPath, ZipArchiveMode.Update))
+        {
+            archive.CreateEntry("xl/vbaProject.bin");
+        }
+
+        var macroAct = () => service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+        await macroAct.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Macro-enabled*");
+
+        export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+        using (var archive = ZipFile.Open(export.WorkbookPath, ZipArchiveMode.Update))
+        {
+            archive.CreateEntry("xl/externalLinks/externalLink1.xml");
+        }
+
+        var externalLinkAct = () => service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+        await externalLinkAct.Should().ThrowAsync<InvalidOperationException>().WithMessage("*external links*");
+    }
+
+    [Fact]
+    public async Task Import_RejectsProtectedRowsThatAlsoMove()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder", true));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            sheet.Cell(2, 6).Value = "TRUE";
+            sheet.Cell(2, 7).Value = "1/Bizu";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().Contain(error => error.Contains("Protected mod", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static WorkbookWorkflowService CreateService()
         => new(new CreatorCanonicalizer(), NullLogger<WorkbookWorkflowService>.Instance);
 
@@ -94,6 +173,9 @@ public sealed class WorkbookWorkflowTests
             CustomPattern: null);
 
     private static ScanInventory CreateInventory(params (string StableId, string Name, string Author, string CurrentFolder)[] mods)
+        => CreateInventory(mods.Select(mod => (mod.StableId, mod.Name, mod.Author, mod.CurrentFolder, false)).ToArray());
+
+    private static ScanInventory CreateInventory(params (string StableId, string Name, string Author, string CurrentFolder, bool Protected)[] mods)
         => new()
         {
             Installation = new PenumbraInstallation(
@@ -120,7 +202,7 @@ public sealed class WorkbookWorkflowTests
                 UnknownMetadataFiles = Array.Empty<string>(),
                 MalformedMetadataFiles = Array.Empty<string>(),
                 CollectionStates = Array.Empty<ModCollectionState>(),
-                Protected = false,
+                Protected = mod.Protected,
                 Warnings = Array.Empty<string>(),
                 ContentSignalSummary = mod.Name,
                 SchemaFingerprints = Array.Empty<SchemaFingerprint>(),
