@@ -89,6 +89,7 @@ public sealed class MainViewModel : ObservableObject
     private bool _showAdvancedTools;
     private bool _canCancelBusy;
     private bool _isBusy;
+    private bool _suspendOrganizerRefresh;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -894,40 +895,48 @@ public sealed class MainViewModel : ObservableObject
 
     private void ApplyWorkbookImport(WorkbookImportResult import)
     {
-        var importById = import.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
-        foreach (var mod in Mods)
+        _suspendOrganizerRefresh = true;
+        try
         {
-            if (!importById.TryGetValue(mod.StableScanId, out var row))
-                continue;
+            var importById = import.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+            foreach (var mod in Mods)
+            {
+                if (!importById.TryGetValue(mod.StableScanId, out var row))
+                    continue;
 
-            var originalType = mod.DetectedType;
-            mod.Protected = row.Protected;
-            mod.DetectedType = row.ResolvedModType;
-            mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
-            mod.ProposalSource =
-                string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal) &&
-                string.Equals(row.ResolvedModType, originalType, StringComparison.OrdinalIgnoreCase)
-                    ? "Preserved current"
-                    : "Manual";
-            mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
-            mod.Proposal.NeedsReview =
-                string.Equals(row.ResolvedModType, "Review", StringComparison.OrdinalIgnoreCase)
-                || mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase);
+                var originalType = mod.DetectedType;
+                mod.Protected = row.Protected;
+                mod.DetectedType = row.ResolvedModType;
+                mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
+                mod.ProposalSource =
+                    string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal) &&
+                    string.Equals(row.ResolvedModType, originalType, StringComparison.OrdinalIgnoreCase)
+                        ? "Preserved current"
+                        : "Manual";
+                mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
+                mod.Proposal.NeedsReview =
+                    string.Equals(row.ResolvedModType, "Review", StringComparison.OrdinalIgnoreCase)
+                    || mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase);
+            }
+
+            _controlledTestRequest = null;
+            _skippedReviewRowIds.Clear();
+            _warningOverrideRowIds.Clear();
+            _highlightedReviewRowIds.Clear();
+            ClearControlledTestCommand.RaiseCanExecuteChanged();
+            _organizerFolders.Clear();
+            foreach (var folder in Mods
+                         .Select(mod => mod.ProposedVirtualFolder)
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                _organizerFolders.Add(new OrganizerFolder(folder));
+            }
         }
-
-        _controlledTestRequest = null;
-        _skippedReviewRowIds.Clear();
-        _warningOverrideRowIds.Clear();
-        _highlightedReviewRowIds.Clear();
-        ClearControlledTestCommand.RaiseCanExecuteChanged();
-        _organizerFolders.Clear();
-        foreach (var folder in Mods
-                     .Select(mod => mod.ProposedVirtualFolder)
-                     .Where(path => !string.IsNullOrWhiteSpace(path))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        finally
         {
-            _organizerFolders.Add(new OrganizerFolder(folder));
+            _suspendOrganizerRefresh = false;
         }
 
         InvalidateDryRunState("Workbook import updated the proposed destinations.");
@@ -1347,6 +1356,9 @@ public sealed class MainViewModel : ObservableObject
 
     private void ModRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_suspendOrganizerRefresh)
+            return;
+
         if (e.PropertyName is nameof(ModRowViewModel.ProposedVirtualFolder)
             or nameof(ModRowViewModel.Protected)
             or nameof(ModRowViewModel.DetectedType)
