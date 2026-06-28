@@ -1,6 +1,7 @@
 namespace PenumbraOrganizer.Infrastructure.Exports;
 
 using ClosedXML.Excel;
+using System.IO.Compression;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
@@ -24,157 +25,172 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         ScanInventory inventory,
         OrganizationPreferences organizationPreferences,
         CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
+        => Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
 
-        var exportsDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "PenumbraOrganizer",
-            "Exports",
-            "Workbook");
-        Directory.CreateDirectory(exportsDirectory);
+            var exportsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PenumbraOrganizer",
+                "Exports",
+                "Workbook");
+            Directory.CreateDirectory(exportsDirectory);
 
-        var generatedAtUtc = DateTimeOffset.UtcNow;
-        var sourceExportId = $"workbook-{generatedAtUtc:yyyyMMddTHHmmssZ}-{Guid.NewGuid():N}";
-        var scanIdentity = OrganizerSessionService.BuildScanIdentity(inventory);
-        var installationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
-        var workbookPath = Path.Combine(
-            exportsDirectory,
-            $"PenumbraOrganizer-{generatedAtUtc:yyyy-MM-dd-HHmmss}.xlsx");
+            var generatedAtUtc = DateTimeOffset.UtcNow;
+            var sourceExportId = $"workbook-{generatedAtUtc:yyyyMMddTHHmmssZ}-{Guid.NewGuid():N}";
+            var scanIdentity = OrganizerSessionService.BuildScanIdentity(inventory);
+            var installationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
+            var workbookPath = Path.Combine(
+                exportsDirectory,
+                $"PenumbraOrganizer-{generatedAtUtc:yyyy-MM-dd-HHmmss}.xlsx");
 
-        using var workbook = new XLWorkbook();
-        BuildEditableSheet(workbook, inventory, organizationPreferences);
-        BuildCategorySheet(workbook);
-        BuildMetadataSheet(workbook, sourceExportId, generatedAtUtc, scanIdentity, installationIdentity, organizationPreferences);
-        workbook.SaveAs(workbookPath);
+            using var workbook = new XLWorkbook();
+            BuildEditableSheet(workbook, inventory, organizationPreferences);
+            BuildCategorySheet(workbook);
+            BuildMetadataSheet(workbook, sourceExportId, generatedAtUtc, scanIdentity, installationIdentity, organizationPreferences);
+            workbook.SaveAs(workbookPath);
 
-        var strategyLabel = StrategyLabel(organizationPreferences.Strategy);
-        var summary = $"Workbook exported with {inventory.Mods.Count} mod row(s) using {strategyLabel} suggestions.";
-        _logger.LogInformation("Exported workbook workflow file to {WorkbookPath}", workbookPath);
-        return Task.FromResult(new WorkbookExportResult(
-            workbookPath,
-            sourceExportId,
-            generatedAtUtc,
-            scanIdentity,
-            installationIdentity,
-            strategyLabel,
-            inventory.Mods.Count,
-            summary));
-    }
+            var strategyLabel = StrategyLabel(organizationPreferences.Strategy);
+            var summary = $"Workbook exported with {inventory.Mods.Count} mod row(s) using {strategyLabel} suggestions.";
+            _logger.LogInformation("Exported workbook workflow file to {WorkbookPath}", workbookPath);
+            return new WorkbookExportResult(
+                workbookPath,
+                sourceExportId,
+                generatedAtUtc,
+                scanIdentity,
+                installationIdentity,
+                strategyLabel,
+                inventory.Mods.Count,
+                summary);
+        }, cancellationToken);
 
     public Task<WorkbookImportResult> ImportAsync(
         string workbookPath,
         ScanInventory inventory,
         CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!File.Exists(workbookPath))
-            throw new InvalidOperationException("The selected workbook could not be found.");
-
-        using var workbook = new XLWorkbook(workbookPath);
-        var editable = workbook.Worksheets.FirstOrDefault(sheet => string.Equals(sheet.Name, EditableSheetName, StringComparison.Ordinal))
-                       ?? throw new InvalidOperationException("The workbook is missing the Edit Destinations sheet.");
-        var metadata = workbook.Worksheets.FirstOrDefault(sheet => string.Equals(sheet.Name, MetadataSheetName, StringComparison.Ordinal))
-                       ?? throw new InvalidOperationException("The workbook is missing its metadata sheet.");
-
-        var meta = ReadMetadata(metadata);
-        var rows = new List<WorkbookImportRow>();
-        var errors = new List<string>();
-        var warnings = new List<string>();
-
-        ValidateMetadata(meta, inventory, errors);
-        var metadataErrorCount = errors.Count;
-
-        var inventoryById = inventory.Mods.ToDictionary(mod => mod.StableScanId, StringComparer.Ordinal);
-        var seenIds = new HashSet<string>(StringComparer.Ordinal);
-        var headerMap = ReadHeaderMap(editable);
-        var requiredHeaders = new[] { "id", "mod name", "author", "current folder", "detected type", "protected", "destination" };
-        foreach (var header in requiredHeaders)
-        {
-            if (!headerMap.ContainsKey(header))
-                errors.Add($"The workbook is missing the required column '{header}'.");
-        }
-
-        if (errors.Count > metadataErrorCount)
-            return Task.FromResult(BuildImportResult(workbookPath, meta, rows, errors, warnings));
-
-        var lastRow = editable.LastRowUsed()?.RowNumber() ?? 1;
-        for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+        => Task.Run(() =>
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(workbookPath))
+                throw new InvalidOperationException("The selected workbook could not be found.");
+            if (!string.Equals(Path.GetExtension(workbookPath), ".xlsx", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Only .xlsx workbooks are supported for import.");
 
-            var stableScanId = editable.Cell(rowNumber, headerMap["id"]).GetString().Trim();
-            var modName = editable.Cell(rowNumber, headerMap["mod name"]).GetString().Trim();
-            var author = editable.Cell(rowNumber, headerMap["author"]).GetString().Trim();
-            var currentFolder = editable.Cell(rowNumber, headerMap["current folder"]).GetString();
-            var detectedType = editable.Cell(rowNumber, headerMap["detected type"]).GetString().Trim();
-            var protectedRaw = editable.Cell(rowNumber, headerMap["protected"]).GetString().Trim();
-            var destination = editable.Cell(rowNumber, headerMap["destination"]).GetString().Trim();
+            ValidateWorkbookPackage(workbookPath);
 
-            if (string.IsNullOrWhiteSpace(stableScanId) &&
-                string.IsNullOrWhiteSpace(modName) &&
-                string.IsNullOrWhiteSpace(author) &&
-                string.IsNullOrWhiteSpace(currentFolder) &&
-                string.IsNullOrWhiteSpace(destination))
+            using var workbook = new XLWorkbook(workbookPath);
+            var editable = workbook.Worksheets.FirstOrDefault(sheet => string.Equals(sheet.Name, EditableSheetName, StringComparison.Ordinal))
+                           ?? throw new InvalidOperationException("The workbook is missing the Edit Destinations sheet.");
+            var metadata = workbook.Worksheets.FirstOrDefault(sheet => string.Equals(sheet.Name, MetadataSheetName, StringComparison.Ordinal))
+                           ?? throw new InvalidOperationException("The workbook is missing its metadata sheet.");
+
+            var meta = ReadMetadata(metadata);
+            var rows = new List<WorkbookImportRow>();
+            var errors = new List<string>();
+            var warnings = new List<string>();
+
+            ValidateMetadata(meta, inventory, errors);
+            var metadataErrorCount = errors.Count;
+
+            var inventoryById = inventory.Mods.ToDictionary(mod => mod.StableScanId, StringComparer.Ordinal);
+            var seenIds = new HashSet<string>(StringComparer.Ordinal);
+            var headerMap = ReadHeaderMap(editable);
+            var requiredHeaders = new[] { "id", "mod name", "author", "current folder", "detected type", "protected", "destination" };
+            foreach (var header in requiredHeaders)
             {
-                continue;
+                if (!headerMap.ContainsKey(header))
+                    errors.Add($"The workbook is missing the required column '{header}'.");
             }
 
-            if (string.IsNullOrWhiteSpace(stableScanId))
+            if (errors.Count > metadataErrorCount)
+                return BuildImportResult(workbookPath, meta, rows, errors, warnings);
+
+            var lastRow = editable.LastRowUsed()?.RowNumber() ?? 1;
+            for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
             {
-                errors.Add($"Row {rowNumber} is missing the stable internal id.");
-                continue;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                foreach (var header in requiredHeaders)
+                {
+                    if (editable.Cell(rowNumber, headerMap[header]).HasFormula)
+                        errors.Add($"Row {rowNumber} contains a formula in '{header}'. Replace formulas with plain text before importing.");
+                }
+
+                var stableScanId = editable.Cell(rowNumber, headerMap["id"]).GetString().Trim();
+                var modName = editable.Cell(rowNumber, headerMap["mod name"]).GetString().Trim();
+                var author = editable.Cell(rowNumber, headerMap["author"]).GetString().Trim();
+                var currentFolder = editable.Cell(rowNumber, headerMap["current folder"]).GetString();
+                var detectedType = editable.Cell(rowNumber, headerMap["detected type"]).GetString().Trim();
+                var protectedRaw = editable.Cell(rowNumber, headerMap["protected"]).GetString().Trim();
+                var destination = editable.Cell(rowNumber, headerMap["destination"]).GetString().Trim();
+
+                if (string.IsNullOrWhiteSpace(stableScanId) &&
+                    string.IsNullOrWhiteSpace(modName) &&
+                    string.IsNullOrWhiteSpace(author) &&
+                    string.IsNullOrWhiteSpace(currentFolder) &&
+                    string.IsNullOrWhiteSpace(destination))
+                {
+                    continue;
+                }
+
+                if (errors.Any(error => error.StartsWith($"Row {rowNumber} ", StringComparison.Ordinal)))
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(stableScanId))
+                {
+                    errors.Add($"Row {rowNumber} is missing the stable internal id.");
+                    continue;
+                }
+
+                if (!seenIds.Add(stableScanId))
+                {
+                    errors.Add($"Duplicate id detected in the workbook: {stableScanId}.");
+                    continue;
+                }
+
+                if (!inventoryById.TryGetValue(stableScanId, out var mod))
+                {
+                    errors.Add($"The workbook references an unknown mod id: {stableScanId}.");
+                    continue;
+                }
+
+                if (!string.Equals(currentFolder, mod.CurrentVirtualFolder, StringComparison.Ordinal))
+                {
+                    errors.Add($"The current folder for {stableScanId} changed after export. Scan and export a new workbook before importing edits.");
+                    continue;
+                }
+
+                if (!TryParseProtected(protectedRaw, mod.Protected, out var protectedValue))
+                {
+                    errors.Add($"The protected value for {stableScanId} is invalid. Use TRUE or FALSE.");
+                    continue;
+                }
+
+                if (!TryResolveDestination(destination, out var resolvedDestination, out var destinationError))
+                {
+                    errors.Add($"The destination for {stableScanId} is invalid: {destinationError}");
+                    continue;
+                }
+
+                if (protectedValue && resolvedDestination is not null && !string.Equals(resolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal))
+                {
+                    errors.Add($"Protected mod {stableScanId} cannot also move to a different destination.");
+                    continue;
+                }
+
+                rows.Add(new WorkbookImportRow(
+                    stableScanId,
+                    string.IsNullOrWhiteSpace(modName) ? mod.Name : modName,
+                    string.IsNullOrWhiteSpace(author) ? mod.Author : author,
+                    currentFolder,
+                    string.IsNullOrWhiteSpace(detectedType) ? WorkbookCategoryCatalog.Detect(mod).Name : detectedType,
+                    protectedValue,
+                    destination,
+                    resolvedDestination));
             }
 
-            if (!seenIds.Add(stableScanId))
-            {
-                errors.Add($"Duplicate id detected in the workbook: {stableScanId}.");
-                continue;
-            }
-
-            if (!inventoryById.TryGetValue(stableScanId, out var mod))
-            {
-                errors.Add($"The workbook references an unknown mod id: {stableScanId}.");
-                continue;
-            }
-
-            if (!string.Equals(currentFolder, mod.CurrentVirtualFolder, StringComparison.Ordinal))
-            {
-                errors.Add($"The current folder for {stableScanId} changed after export. Scan and export a new workbook before importing edits.");
-                continue;
-            }
-
-            if (!TryParseProtected(protectedRaw, mod.Protected, out var protectedValue))
-            {
-                errors.Add($"The protected value for {stableScanId} is invalid. Use TRUE or FALSE.");
-                continue;
-            }
-
-            if (!TryResolveDestination(destination, out var resolvedDestination, out var destinationError))
-            {
-                errors.Add($"The destination for {stableScanId} is invalid: {destinationError}");
-                continue;
-            }
-
-            if (protectedValue && resolvedDestination is not null && !string.Equals(resolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal))
-            {
-                errors.Add($"Protected mod {stableScanId} cannot also move to a different destination.");
-                continue;
-            }
-
-            rows.Add(new WorkbookImportRow(
-                stableScanId,
-                string.IsNullOrWhiteSpace(modName) ? mod.Name : modName,
-                string.IsNullOrWhiteSpace(author) ? mod.Author : author,
-                currentFolder,
-                string.IsNullOrWhiteSpace(detectedType) ? WorkbookCategoryCatalog.Detect(mod).Name : detectedType,
-                protectedValue,
-                destination,
-                resolvedDestination));
-        }
-
-        return Task.FromResult(BuildImportResult(workbookPath, meta, rows, errors, warnings));
-    }
+            return BuildImportResult(workbookPath, meta, rows, errors, warnings);
+        }, cancellationToken);
 
     private void BuildEditableSheet(XLWorkbook workbook, ScanInventory inventory, OrganizationPreferences organizationPreferences)
     {
@@ -200,7 +216,24 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         var range = sheet.Range(1, 1, Math.Max(row - 1, 1), headers.Length);
         range.CreateTable();
         sheet.SheetView.FreezeRows(1);
+        sheet.Columns(1, headers.Length).Style.NumberFormat.Format = "@";
         sheet.Columns().AdjustToContents();
+    }
+
+    private static void ValidateWorkbookPackage(string workbookPath)
+    {
+        using var archive = ZipFile.OpenRead(workbookPath);
+        if (archive.Entries.Any(entry => entry.FullName.Equals("xl/vbaProject.bin", StringComparison.OrdinalIgnoreCase) ||
+                                         entry.FullName.StartsWith("xl/activeX/", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Macro-enabled or ActiveX workbook content is not supported.");
+        }
+
+        if (archive.Entries.Any(entry => entry.FullName.StartsWith("xl/externalLinks/", StringComparison.OrdinalIgnoreCase) ||
+                                         entry.FullName.Equals("xl/connections.xml", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Workbooks with external links or connections are not supported.");
+        }
     }
 
     private static void BuildCategorySheet(XLWorkbook workbook)
