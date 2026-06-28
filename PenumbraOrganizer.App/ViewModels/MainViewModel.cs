@@ -89,7 +89,12 @@ public sealed class MainViewModel : ObservableObject
     private bool _showAdvancedTools;
     private bool _canCancelBusy;
     private bool _isBusy;
+    private ICollectionView _filteredMods = null!;
+    private ICollectionView _selectedFolderMods = null!;
+    private ICollectionView _changedMods = null!;
     private bool _suspendOrganizerRefresh;
+    private bool _suspendSelectedFolderRefresh;
+    private bool _suspendCollectionViewRefresh;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -137,12 +142,9 @@ public sealed class MainViewModel : ObservableObject
         SelectedOrganizerMods = new ObservableCollection<ModRowViewModel>();
         ReviewRows = new ObservableCollection<OrganizerValidationRow>();
         ScanWarnings = new ObservableCollection<string>();
-        FilteredMods = new CollectionViewSource { Source = Mods }.View;
-        FilteredMods.Filter = FilterMod;
-        SelectedFolderMods = new CollectionViewSource { Source = Mods }.View;
-        SelectedFolderMods.Filter = FilterSelectedFolderMod;
-        ChangedMods = new CollectionViewSource { Source = Mods }.View;
-        ChangedMods.Filter = item => item is ModRowViewModel mod && mod.IsChanged;
+        _filteredMods = CreateCollectionView(FilterMod);
+        _selectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        _changedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
@@ -231,9 +233,23 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ModRowViewModel> SelectedOrganizerMods { get; }
     public ObservableCollection<OrganizerValidationRow> ReviewRows { get; }
     public ObservableCollection<string> ScanWarnings { get; }
-    public ICollectionView FilteredMods { get; }
-    public ICollectionView SelectedFolderMods { get; }
-    public ICollectionView ChangedMods { get; }
+    public ICollectionView FilteredMods
+    {
+        get => _filteredMods;
+        private set => SetProperty(ref _filteredMods, value);
+    }
+
+    public ICollectionView SelectedFolderMods
+    {
+        get => _selectedFolderMods;
+        private set => SetProperty(ref _selectedFolderMods, value);
+    }
+
+    public ICollectionView ChangedMods
+    {
+        get => _changedMods;
+        private set => SetProperty(ref _changedMods, value);
+    }
     public BackupsViewModel Backups => _backups;
 
     public string DetectionSummary
@@ -261,8 +277,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _searchText, value))
             {
-                FilteredMods.Refresh();
-                SelectedFolderMods.Refresh();
+                RefreshCollectionViews();
             }
         }
     }
@@ -377,7 +392,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedProposedFolder, value))
             {
-                SelectedFolderMods.Refresh();
+                if (!_suspendSelectedFolderRefresh)
+                    RefreshSelectedFolderView();
                 RenameFolderName = value is null ? string.Empty : value.Path;
                 RefreshSelectionCommandState();
             }
@@ -637,49 +653,61 @@ public sealed class MainViewModel : ObservableObject
                 var compatibility = await _compatibilityService.EvaluateAsync(_installation, _inventory, cancellationToken);
 
                 Mods.Clear();
-                foreach (var mod in _inventory.Mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+                _suspendOrganizerRefresh = true;
+                _suspendSelectedFolderRefresh = true;
+                _suspendCollectionViewRefresh = true;
+                try
                 {
-                    var row = new ModRowViewModel(mod);
-                    row.PropertyChanged += ModRowPropertyChanged;
-                    Mods.Add(row);
+                    foreach (var mod in _inventory.Mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var row = new ModRowViewModel(mod);
+                        row.PropertyChanged += ModRowPropertyChanged;
+                        Mods.Add(row);
+                    }
+
+                    Collections.Clear();
+                    foreach (var collection in _inventory.Collections)
+                        Collections.Add(collection);
+
+                    FolderTree.Clear();
+                    _organizerFolders.Clear();
+                    foreach (var node in _inventory.CurrentFolderTree)
+                    {
+                        FolderTree.Add(node);
+                        if (!string.IsNullOrWhiteSpace(node.Path) && !_organizerFolders.Any(folder => folder.Path.Equals(node.Path, StringComparison.OrdinalIgnoreCase)))
+                            _organizerFolders.Add(new OrganizerFolder(node.Path, ManuallyCreated: false, node.Protected));
+                    }
+
+                    ScanWarnings.Clear();
+                    foreach (var warning in _inventory.Warnings.Concat(_inventory.Mods.SelectMany(m => m.Warnings)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(w => w, StringComparer.OrdinalIgnoreCase))
+                        ScanWarnings.Add(warning);
+
+                    InstalledModCount = _inventory.Mods.Count;
+                    ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
+                    CollectionCount = _inventory.Collections.Count;
+                    WarningCount = ScanWarnings.Count;
+                    _lastWorkbookExport = null;
+                    _lastWorkbookImport = null;
+                    RaisePropertyChanged(nameof(WorkbookPath));
+                    WorkbookStatus = "Scan complete. Export one workbook, edit mod type, protected, and destination, and import it back for review.";
+                    WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
+                    _controlledTestRequest = null;
+                    _skippedReviewRowIds.Clear();
+                    _warningOverrideRowIds.Clear();
+                    _highlightedReviewRowIds.Clear();
+                    ControlledTestStatus = "Controlled Test Apply is not configured yet.";
+                    ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
+                    ClearControlledTestCommand.RaiseCanExecuteChanged();
+                    InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
+                    ResetOrganizerHistory();
+                }
+                finally
+                {
+                    _suspendOrganizerRefresh = false;
+                    _suspendSelectedFolderRefresh = false;
+                    _suspendCollectionViewRefresh = false;
                 }
 
-                Collections.Clear();
-                foreach (var collection in _inventory.Collections)
-                    Collections.Add(collection);
-
-                FolderTree.Clear();
-                _organizerFolders.Clear();
-                foreach (var node in _inventory.CurrentFolderTree)
-                {
-                    FolderTree.Add(node);
-                    if (!string.IsNullOrWhiteSpace(node.Path) && !_organizerFolders.Any(folder => folder.Path.Equals(node.Path, StringComparison.OrdinalIgnoreCase)))
-                        _organizerFolders.Add(new OrganizerFolder(node.Path, ManuallyCreated: false, node.Protected));
-                }
-
-                ScanWarnings.Clear();
-                foreach (var warning in _inventory.Warnings.Concat(_inventory.Mods.SelectMany(m => m.Warnings)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(w => w, StringComparer.OrdinalIgnoreCase))
-                    ScanWarnings.Add(warning);
-
-                InstalledModCount = _inventory.Mods.Count;
-                ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
-                CollectionCount = _inventory.Collections.Count;
-                WarningCount = ScanWarnings.Count;
-                _lastWorkbookExport = null;
-                _lastWorkbookImport = null;
-                RaisePropertyChanged(nameof(WorkbookPath));
-                WorkbookStatus = "Scan complete. Export one workbook, edit mod type, protected, and destination, and import it back for review.";
-                WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
-                _controlledTestRequest = null;
-                _skippedReviewRowIds.Clear();
-                _warningOverrideRowIds.Clear();
-                _highlightedReviewRowIds.Clear();
-                ControlledTestStatus = "Controlled Test Apply is not configured yet.";
-                ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
-                ClearControlledTestCommand.RaiseCanExecuteChanged();
-                InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
-                ResetOrganizerHistory();
-                RebuildProposedFolders();
                 RefreshOrganizerViews();
                 CompatibilitySummary = BuildCompatibilitySummary(compatibility);
                 DetectionSummary = BuildHomeSummary(_installation, _inventory);
@@ -1135,7 +1163,7 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         OrganizeFilter = filter;
-        FilteredMods.Refresh();
+        RefreshCollectionViews();
     }
 
     private bool FilterSelectedFolderMod(object item)
@@ -1307,19 +1335,27 @@ public sealed class MainViewModel : ObservableObject
     private void RebuildProposedFolders()
     {
         var selectedPath = SelectedProposedFolder?.Path;
-        ProposedFolders.Clear();
-        foreach (var folder in _organizerFolders.Select(folder => folder.Path)
-                     .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
-                     .Where(folder => !string.IsNullOrWhiteSpace(folder))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+        _suspendSelectedFolderRefresh = true;
+        try
         {
-            ProposedFolders.Add(new OrganizerFolderViewModel(folder));
-        }
+            ProposedFolders.Clear();
+            foreach (var folder in _organizerFolders.Select(folder => folder.Path)
+                         .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
+                         .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+            {
+                ProposedFolders.Add(new OrganizerFolderViewModel(folder));
+            }
 
-        RecountProposedFolders();
-        SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
-                                 ?? ProposedFolders.FirstOrDefault();
+            RecountProposedFolders();
+            SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
+                                     ?? ProposedFolders.FirstOrDefault();
+        }
+        finally
+        {
+            _suspendSelectedFolderRefresh = false;
+        }
     }
 
     private void RecountProposedFolders()
@@ -1337,9 +1373,7 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshOrganizerViews()
     {
         RebuildProposedFolders();
-        FilteredMods.Refresh();
-        SelectedFolderMods.Refresh();
-        ChangedMods.Refresh();
+        RefreshCollectionViews();
         RecountProposedFolders();
         ChangedProposalCount = Mods.Count(mod => mod.IsChanged);
         NeedsReviewCount = Mods.Count(mod => mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase) ||
@@ -1364,6 +1398,58 @@ public sealed class MainViewModel : ObservableObject
             or nameof(ModRowViewModel.DetectedType)
             or nameof(ModRowViewModel.EffectiveCreator))
             RefreshOrganizerViews();
+    }
+
+    private void RefreshCollectionViews()
+    {
+        if (_suspendCollectionViewRefresh)
+            return;
+
+        try
+        {
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+        catch (NullReferenceException ex)
+        {
+            _logger.LogWarning(ex, "Collection view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+    }
+
+    private void RefreshSelectedFolderView()
+    {
+        if (_suspendCollectionViewRefresh)
+            return;
+
+        try
+        {
+            SelectedFolderMods.Refresh();
+        }
+        catch (NullReferenceException ex)
+        {
+            _logger.LogWarning(ex, "Selected folder view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            SelectedFolderMods.Refresh();
+        }
+    }
+
+    private void RebuildCollectionViews()
+    {
+        FilteredMods = CreateCollectionView(FilterMod);
+        SelectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        ChangedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
+    }
+
+    private ICollectionView CreateCollectionView(Predicate<object> filter)
+    {
+        var view = new CollectionViewSource { Source = Mods }.View;
+        view.Filter = filter;
+        return view;
     }
 
     private void ResetOrganizerHistory()
