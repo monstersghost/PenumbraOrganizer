@@ -23,7 +23,19 @@ public sealed class OrganizerProposalValidationService : IOrganizerProposalValid
         {
             if (!proposals.Any(row => row.StableScanId.Equals(scanRow.StableScanId, StringComparison.Ordinal)))
             {
-                rows.Add(new OrganizerValidationRow(scanRow.StableScanId, scanRow.Name, scanRow.CurrentVirtualFolder, scanRow.CurrentVirtualFolder, OrganizerProposalSource.PreservedCurrent, OrganizerRowStatus.MissingMod, "This mod is missing from the proposed plan."));
+                rows.Add(new OrganizerValidationRow(
+                    scanRow.StableScanId,
+                    scanRow.Name,
+                    scanRow.CurrentVirtualFolder,
+                    scanRow.CurrentVirtualFolder,
+                    OrganizerProposalSource.PreservedCurrent,
+                    OrganizerRowStatus.MissingMod,
+                    "This mod is missing from the proposed plan.",
+                    WorkbookCategoryCatalog.Detect(scanRow).Name,
+                    scanRow.Protected,
+                    scanRow.Protected,
+                    HasFolderChange: false,
+                    HasProtectionChange: false));
                 errors.Add(new OrganizerValidationIssue(scanRow.StableScanId, "MissingMod", "This mod is missing from the proposed plan."));
             }
         }
@@ -32,7 +44,19 @@ public sealed class OrganizerProposalValidationService : IOrganizerProposalValid
         {
             if (!scanById.TryGetValue(proposal.StableScanId, out var scanRow))
             {
-                rows.Add(new OrganizerValidationRow(proposal.StableScanId, proposal.Name, proposal.CurrentVirtualFolder, proposal.ProposedVirtualFolder, proposal.Source, OrganizerRowStatus.MissingMod, "This mod is not part of the current scan."));
+                rows.Add(new OrganizerValidationRow(
+                    proposal.StableScanId,
+                    proposal.Name,
+                    proposal.CurrentVirtualFolder,
+                    proposal.ProposedVirtualFolder,
+                    proposal.Source,
+                    OrganizerRowStatus.MissingMod,
+                    "This mod is not part of the current scan.",
+                    proposal.OrganizerTypeLabel,
+                    proposal.Protected,
+                    proposal.OriginalProtected,
+                    HasFolderChange: !string.Equals(proposal.CurrentVirtualFolder, proposal.ProposedVirtualFolder, StringComparison.Ordinal),
+                    HasProtectionChange: proposal.Protected != proposal.OriginalProtected));
                 errors.Add(new OrganizerValidationIssue(proposal.StableScanId, "UnknownMod", "This mod is not part of the current scan."));
                 continue;
             }
@@ -45,7 +69,12 @@ public sealed class OrganizerProposalValidationService : IOrganizerProposalValid
                 proposal.ProposedVirtualFolder,
                 proposal.Source,
                 status.Status,
-                status.Message));
+                status.Message,
+                proposal.OrganizerTypeLabel,
+                scanRow.Protected || proposal.Protected,
+                scanRow.Protected,
+                HasFolderChange: !string.Equals(proposal.CurrentVirtualFolder, proposal.ProposedVirtualFolder, StringComparison.Ordinal),
+                HasProtectionChange: proposal.Protected != scanRow.Protected));
         }
 
         var summary = new OrganizerValidationSummary(
@@ -106,7 +135,16 @@ public sealed class OrganizerProposalValidationService : IOrganizerProposalValid
             warnings.Add(new OrganizerValidationIssue(proposal.StableScanId, "StrategyWarning", strategyWarning));
 
         if (scanRow.Protected || proposal.Protected)
+        {
+            if (proposal.Protected != scanRow.Protected)
+            {
+                return proposal.Protected
+                    ? (OrganizerRowStatus.Protected, "Protection will be turned on. Folder stays unchanged.")
+                    : (OrganizerRowStatus.Protected, "Protection will be turned off. Folder stays unchanged.");
+            }
+
             return (OrganizerRowStatus.Protected, "Protected and unchanged.");
+        }
 
         if (string.Equals(proposal.CurrentVirtualFolder, proposal.ProposedVirtualFolder, StringComparison.Ordinal))
             return (OrganizerRowStatus.Unchanged, "No folder change.");

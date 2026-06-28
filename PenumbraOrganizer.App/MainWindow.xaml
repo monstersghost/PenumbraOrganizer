@@ -48,6 +48,12 @@
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
+                    <Button Command="{Binding CancelBusyCommand}"
+                            Content="{Binding BusyCancelText}"
+                            MinWidth="125"
+                            Height="36"
+                            Margin="0,0,10,0"
+                            Visibility="{Binding CanCancelBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
                     <Button Command="{Binding DetectCommand}"
                             Content="Find Penumbra"
                             MinWidth="125"
@@ -64,7 +70,7 @@
         <TabControl Grid.Row="1"
                     Margin="20"
                     IsEnabled="{Binding IsNotBusy}">
-            <TabItem Header="Home / Scan">
+            <TabItem Header="1. Scan">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="14">
                         <Grid.RowDefinitions>
@@ -259,7 +265,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="Workbook Workflow">
+            <TabItem Header="2. Export / 3. Import">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="14">
                         <Grid.RowDefinitions>
@@ -281,11 +287,11 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel>
-                                    <TextBlock Text="Simple workbook flow"
+                                    <TextBlock Text="Export a simple workbook"
                                                FontSize="20"
                                                FontWeight="SemiBold" />
                                     <TextBlock Margin="0,10,0,0"
-                                               Text="Scan your library, export one workbook, edit only the destination and protected columns, import it back, review the diff, then click Backup and Apply."
+                                               Text="Scan your library, export one workbook, edit mod type, protected, and destination, import it back, then continue to Review and Apply."
                                                TextWrapping="Wrap" />
                                     <TextBlock Margin="0,10,0,0"
                                                Text="{Binding WorkbookStatus}"
@@ -325,20 +331,19 @@
                                 CornerRadius="8"
                                 Padding="18">
                             <StackPanel>
-                                <TextBlock Text="Recommendation Style"
+                                <TextBlock Text="Export Strategy"
                                            FontSize="18"
                                            FontWeight="SemiBold" />
                                 <TextBlock Margin="0,8,0,0"
-                                           Text="This only fills the initial destination values in the workbook. You can edit every destination before importing."
+                                           Text="This only fills the initial mod type and destination suggestions in the workbook. You can edit both before importing."
                                            TextWrapping="Wrap"
                                            Foreground="#FF556171" />
                                 <WrapPanel Margin="0,14,0,0">
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Start Manually" Content="Start manually" MinWidth="140" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator" Content="By creator" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By mod type" Content="By mod type" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By type and creator" Content="Type / author" MinWidth="135" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Author / type" MinWidth="135" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve current" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Blank Template" Content="Blank Template" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type" Content="Type" MinWidth="95" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type / Author" Content="Type / Author" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Author / Type" Content="Author / Type" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep Current" Content="Keep Current" MinWidth="125" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                                 <TextBlock Margin="0,8,0,0"
                                            Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
@@ -365,11 +370,18 @@
                                                FontSize="18"
                                                FontWeight="SemiBold" />
                                     <TextBlock Margin="0,12,0,0"
-                                               Text="id | mod name | author | current folder | detected type | protected | destination"
+                                               Text="id | mod name | author | current folder | mod type | protected | destination"
                                                FontFamily="Consolas"
                                                TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,8,0,0"
+                                               Text="Editable workbook columns are shaded green: mod type, protected, and destination."
+                                               TextWrapping="Wrap"
+                                               Foreground="#FF245C9A" />
                                     <TextBlock Margin="0,12,0,0"
                                                Text="Blank destination rule: leave destination empty to keep the current folder unchanged."
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Margin="0,12,0,0"
+                                               Text="Review rule: use mod type Review or destination 7/Review when a row still needs attention."
                                                TextWrapping="Wrap" />
                                     <TextBlock Margin="0,12,0,0"
                                                Text="Stable id matching is used on import. Names, author labels, and folder text are not used as keys."
@@ -406,7 +418,8 @@
                                 BorderBrush="#FFD9DFE7"
                                 BorderThickness="1"
                                 CornerRadius="8"
-                                Padding="18">
+                                Padding="18"
+                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="What happens on import"
                                            FontSize="18"
@@ -415,7 +428,7 @@
                                            Text="The app validates duplicate ids, unknown ids, malformed paths, traversal such as ../, and stale exports before updating the review list."
                                            TextWrapping="Wrap" />
                                 <TextBlock Margin="0,10,0,0"
-                                           Text="After a successful import, go to Review Changes to inspect the diff. Backup and Apply still creates a fresh verified backup immediately before writing."
+                                           Text="After a successful import, go to Review and Apply to inspect the diff. Backup and Apply still creates a fresh verified backup immediately before writing."
                                            TextWrapping="Wrap"
                                            Foreground="#FF556171" />
                             </StackPanel>
@@ -424,7 +437,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="Organize"
+            <TabItem Header="Advanced Organizer"
                      Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
                 <Grid Margin="14">
                     <Grid.RowDefinitions>
@@ -444,12 +457,11 @@
                                        FontSize="20"
                                        FontWeight="SemiBold" />
                             <WrapPanel Margin="0,14,0,0">
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Start Manually" Content="Start manually" MinWidth="140" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator" Content="By creator" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By mod type" Content="By mod type" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By type and creator" Content="Type then creator" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Creator then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve and clean" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Blank Template" Content="Blank template" MinWidth="140" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type" Content="Type" MinWidth="95" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Type / Author" Content="Type then author" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Author / Type" Content="Author then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep Current" Content="Keep current" MinWidth="125" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export inventory for AI" MinWidth="160" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI proposal" MinWidth="145" Height="34" Margin="0,0,10,10" />
@@ -683,7 +695,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Review Changes">
+            <TabItem Header="4. Review / 5. Apply">
                 <Grid Margin="14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -709,10 +721,16 @@
                                 <TextBlock Margin="0,10,0,0"
                                            FontSize="16"
                                            TextWrapping="Wrap">
-                                    <Run Text="{Binding ReviewChanged, Mode=OneWay}" />
-                                    <Run Text=" mods will change, " />
+                                    <Run Text="{Binding ReviewMoveRows, Mode=OneWay}" />
+                                    <Run Text=" moves, " />
+                                    <Run Text="{Binding ReviewProtectionChanges, Mode=OneWay}" />
+                                    <Run Text=" protection changes, " />
+                                    <Run Text="{Binding ReviewNeedsReview, Mode=OneWay}" />
+                                    <Run Text=" Review rows, " />
+                                    <Run Text="{Binding ReviewUnchanged, Mode=OneWay}" />
+                                    <Run Text=" unchanged, " />
                                     <Run Text="{Binding ReviewProtected, Mode=OneWay}" />
-                                    <Run Text=" protected mods will remain unchanged, " />
+                                    <Run Text=" protected rows, " />
                                     <Run Text="{Binding ReviewInvalid, Mode=OneWay}" />
                                     <Run Text=" invalid changes." />
                                 </TextBlock>
@@ -801,9 +819,6 @@
                                     <ComboBoxItem Content="Needs Review" />
                                     <ComboBoxItem Content="Protected" />
                                     <ComboBoxItem Content="Invalid only" />
-                                    <ComboBoxItem Content="Imported AI" />
-                                    <ComboBoxItem Content="Manual" />
-                                    <ComboBoxItem Content="Deterministic" />
                                     <ComboBoxItem Content="Unchanged" />
                                 </ComboBox>
                                 <Button Command="{Binding RefreshReviewCommand}"
@@ -823,7 +838,10 @@
                                     <DataGridTextColumn Header="Mod" Binding="{Binding ModName}" Width="2*" />
                                     <DataGridTextColumn Header="Current folder" Binding="{Binding CurrentVirtualFolder}" Width="1.5*" />
                                     <DataGridTextColumn Header="New folder" Binding="{Binding ProposedVirtualFolder}" Width="1.5*" />
-                                    <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120" />
+                                    <DataGridTextColumn Header="Change" Binding="{Binding ChangeSummary}" Width="1.05*" />
+                                    <DataGridTextColumn Header="Type" Binding="{Binding TypeLabel}" Width="1.05*" />
+                                    <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="95" />
+                                    <DataGridTextColumn Header="Review status" Binding="{Binding StatusLabel}" Width="1.05*" />
                                     <DataGridTextColumn Header="Proposal source" Binding="{Binding Source}" Width="130" />
                                     <DataGridTextColumn Header="Notes" Binding="{Binding Message}" Width="2*" />
                                 </DataGrid.Columns>
@@ -833,7 +851,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Backups">
+            <TabItem Header="6. Restore">
                 <Grid Margin="14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -946,7 +964,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem Header="Settings">
+            <TabItem Header="Settings / Advanced">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="14">
                         <Grid.RowDefinitions>
@@ -969,7 +987,8 @@
                                 <CheckBox Margin="0,14,0,0"
                                           IsChecked="{Binding ShowAdvancedTools}"
                                           Content="Show advanced tools and diagnostics" />
-                                <WrapPanel Margin="0,14,0,0">
+                                <WrapPanel Margin="0,14,0,0"
+                                           Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <Button Command="{Binding SaveSessionCommand}" Content="Save Session" MinWidth="120" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ResumeLastSessionCommand}" Content="Resume Last Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding DiscardSessionCommand}" Content="Reset Saved Session" MinWidth="150" Height="34" Margin="0,0,10,10" />
@@ -983,7 +1002,8 @@
                                 BorderBrush="#FFD9DFE7"
                                 BorderThickness="1"
                                 CornerRadius="8"
-                                Padding="18">
+                                Padding="18"
+                                Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="AI Proposal Import"
                                            FontSize="18"
@@ -1103,6 +1123,13 @@
                     <ProgressBar Margin="0,18,0,0"
                                  IsIndeterminate="True"
                                  Height="8" />
+                    <Button Command="{Binding CancelBusyCommand}"
+                            Content="{Binding BusyCancelText}"
+                            MinWidth="130"
+                            Height="36"
+                            Margin="0,18,0,0"
+                            HorizontalAlignment="Center"
+                            Visibility="{Binding CanCancelBusy, Converter={StaticResource BoolToVisibilityConverter}}" />
                 </StackPanel>
             </Border>
         </Border>

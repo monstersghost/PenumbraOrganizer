@@ -30,7 +30,51 @@ public sealed class WorkbookWorkflowTests
         imported.Errors.Should().BeEmpty();
         imported.Rows.Should().ContainSingle();
         imported.Rows[0].StableScanId.Should().Be("Dress01");
+        imported.Rows[0].ResolvedModType.Should().Be("Clothing");
         imported.Rows[0].ResolvedDestination.Should().Be("Clothing/Bizu");
+    }
+
+    [Fact]
+    public async Task Import_AllowsEditableModTypeWithoutForcingMovement()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            sheet.Cell(2, 5).Value = "7";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().BeEmpty();
+        imported.Rows.Should().ContainSingle();
+        imported.Rows[0].ResolvedModType.Should().Be("Review");
+        imported.Rows[0].ResolvedDestination.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Import_DistinguishesBlankDestinationFromExplicitReviewDestination()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            sheet.Cell(2, 7).Value = "7/Review";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().BeEmpty();
+        imported.Rows.Should().ContainSingle();
+        imported.Rows[0].ResolvedDestination.Should().Be("Review/Review");
     }
 
     [Fact]
@@ -45,6 +89,20 @@ public sealed class WorkbookWorkflowTests
         var sheet = workbook.Worksheet("Edit Destinations");
         sheet.Cell(2, 1).Style.NumberFormat.Format.Should().Be("@");
         sheet.Cell(2, 1).GetString().Should().Be("00123");
+        sheet.Cell(2, 5).GetString().Should().NotBe("Protected");
+    }
+
+    [Fact]
+    public async Task Export_UsesRequestedSimpleStrategySuggestions()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Current/Folder"));
+
+        (await ReadDestinationAsync(service, inventory, OrganizationStrategy.StartManually)).Should().BeEmpty();
+        (await ReadDestinationAsync(service, inventory, OrganizationStrategy.TypeOnly)).Should().Be("1");
+        (await ReadDestinationAsync(service, inventory, OrganizationStrategy.TypeThenCreator)).Should().Be("1/Bizu");
+        (await ReadDestinationAsync(service, inventory, OrganizationStrategy.CreatorThenType)).Should().Be("Bizu/1");
+        (await ReadDestinationAsync(service, inventory, OrganizationStrategy.PreserveAndClean)).Should().Be("Current/Folder");
     }
 
     [Fact]
@@ -65,7 +123,9 @@ public sealed class WorkbookWorkflowTests
 
         var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
 
-        imported.Errors.Should().Contain(error => error.Contains("Duplicate id", StringComparison.OrdinalIgnoreCase));
+        imported.Errors.Should().Contain(error =>
+            error.Contains("Row 3", StringComparison.OrdinalIgnoreCase)
+            && error.Contains("duplicate id", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -86,7 +146,9 @@ public sealed class WorkbookWorkflowTests
         var imported = await service.ImportAsync(export.WorkbookPath, changedInventory, CancellationToken.None);
 
         imported.Errors.Should().Contain(error => error.Contains("library changed", StringComparison.OrdinalIgnoreCase));
-        imported.Errors.Should().Contain(error => error.Contains("current folder", StringComparison.OrdinalIgnoreCase));
+        imported.Errors.Should().Contain(error =>
+            error.Contains("Row 2", StringComparison.OrdinalIgnoreCase)
+            && error.Contains("current folder", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -150,11 +212,23 @@ public sealed class WorkbookWorkflowTests
 
         var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
 
-        imported.Errors.Should().Contain(error => error.Contains("Protected mod", StringComparison.OrdinalIgnoreCase));
+        imported.Errors.Should().Contain(error =>
+            error.Contains("Row 2", StringComparison.OrdinalIgnoreCase)
+            && error.Contains("protected mod", StringComparison.OrdinalIgnoreCase));
     }
 
     private static WorkbookWorkflowService CreateService()
         => new(new CreatorCanonicalizer(), NullLogger<WorkbookWorkflowService>.Instance);
+
+    private static async Task<string> ReadDestinationAsync(
+        WorkbookWorkflowService service,
+        ScanInventory inventory,
+        OrganizationStrategy strategy)
+    {
+        var export = await service.ExportAsync(inventory, Preferences(strategy), CancellationToken.None);
+        using var workbook = new XLWorkbook(export.WorkbookPath);
+        return workbook.Worksheet("Edit Destinations").Cell(2, 7).GetString();
+    }
 
     private static OrganizationPreferences Preferences(OrganizationStrategy strategy)
         => new(

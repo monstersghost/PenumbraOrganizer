@@ -14,9 +14,7 @@ public sealed class ProtectionService : IProtectionService
 
         return firstSegment.Equals("0", StringComparison.OrdinalIgnoreCase)
                || firstSegment.Equals("Protected", StringComparison.OrdinalIgnoreCase)
-               || firstSegment.Equals(".Character specific mods", StringComparison.OrdinalIgnoreCase)
-               || firstSegment.Equals("Character specific mods", StringComparison.OrdinalIgnoreCase)
-               || firstSegment.Equals("Personal", StringComparison.OrdinalIgnoreCase)
+               || firstSegment.Equals("Locked", StringComparison.OrdinalIgnoreCase)
                || firstSegment.Equals("Do Not Move", StringComparison.OrdinalIgnoreCase);
     }
 }

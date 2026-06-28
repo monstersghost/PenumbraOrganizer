@@ -47,16 +47,17 @@ public sealed class MainViewModel : ObservableObject
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
     private CancellationTokenSource? _autosaveCts;
+    private CancellationTokenSource? _busyCts;
     private string _detectionSummary = "Penumbra has not been detected yet.";
     private string _compatibilitySummary = "Compatibility status will appear after a scan.";
     private string _progressMessage = "Ready.";
     private string _searchText = string.Empty;
     private string _activityLog = "Welcome. This app starts in read-only scan mode.";
-    private string _selectedStrategy = "Start Manually";
+    private string _selectedStrategy = "Blank Template";
     private string _organizeFilter = "All Mods";
     private string _manualConfigPath = string.Empty;
-    private string _workbookStatus = "After scanning, export one workbook, edit the destination column, and import it back for review.";
-    private string _workbookImportStatus = "Blank destination values leave mods in their current folders.";
+    private string _workbookStatus = "After scanning, export one workbook, edit mod type, protected, and destination, and import it back for review.";
+    private string _workbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
     private string _newFolderName = string.Empty;
     private string _renameFolderName = string.Empty;
     private string _reviewFilter = "All";
@@ -84,7 +85,9 @@ public sealed class MainViewModel : ObservableObject
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
     private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
+    private string _busyCancelText = "Cancel";
     private bool _showAdvancedTools;
+    private bool _canCancelBusy;
     private bool _isBusy;
 
     public MainViewModel(
@@ -144,6 +147,7 @@ public sealed class MainViewModel : ObservableObject
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
+        CancelBusyCommand = new AsyncRelayCommand(CancelBusyAsync, () => IsBusy && CanCancelBusy);
         ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
         ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
         ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
@@ -189,6 +193,7 @@ public sealed class MainViewModel : ObservableObject
 
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
+    public AsyncRelayCommand CancelBusyCommand { get; }
     public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
     public AsyncRelayCommand ExportWorkbookCommand { get; }
     public AsyncRelayCommand ImportWorkbookCommand { get; }
@@ -303,6 +308,12 @@ public sealed class MainViewModel : ObservableObject
     {
         get => _workbookImportStatus;
         private set => SetProperty(ref _workbookImportStatus, value);
+    }
+
+    public string BusyCancelText
+    {
+        get => _busyCancelText;
+        private set => SetProperty(ref _busyCancelText, value);
     }
 
     public string WorkbookPath => _lastWorkbookExport?.WorkbookPath ?? string.Empty;
@@ -470,6 +481,12 @@ public sealed class MainViewModel : ObservableObject
         set => SetProperty(ref _showAdvancedTools, value);
     }
 
+    public bool CanCancelBusy
+    {
+        get => _canCancelBusy;
+        private set => SetProperty(ref _canCancelBusy, value);
+    }
+
     public bool IsBusy
     {
         get => _isBusy;
@@ -488,6 +505,7 @@ public sealed class MainViewModel : ObservableObject
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
                 BackupAndApplyCommand.RaiseCanExecuteChanged();
                 ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+                CancelBusyCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -501,6 +519,8 @@ public sealed class MainViewModel : ObservableObject
     public int ReviewNeedsReview => _reviewValidation?.Summary.NeedsReview ?? 0;
     public int ReviewInvalid => _reviewValidation?.Summary.Invalid ?? 0;
     public int ReviewWarnings => _reviewValidation?.Summary.Warnings ?? 0;
+    public int ReviewProtectionChanges => _reviewValidation?.Rows.Count(row => row.HasProtectionChange) ?? 0;
+    public int ReviewMoveRows => _reviewValidation?.Rows.Count(row => row.HasFolderChange && row.Status == OrganizerRowStatus.ValidChange) ?? 0;
 
     public string UndoDescription => _undoStack.Count == 0 ? "Undo" : "Undo: " + _undoStack.Peek().Description;
     public string RedoDescription => _redoStack.Count == 0 ? "Redo" : "Redo: " + _redoStack.Peek().Description;
@@ -536,21 +556,43 @@ public sealed class MainViewModel : ObservableObject
         ConfigureControlledTestCommand.RaiseCanExecuteChanged();
     }
 
-    private async Task RunBusyAsync(string progressMessage, Func<Task> action)
+    private Task RunBusyAsync(string progressMessage, Func<Task> action)
+        => RunBusyAsync(progressMessage, _ => action(), canCancel: false, cancelText: "Cancel");
+
+    private async Task RunBusyAsync(string progressMessage, Func<CancellationToken, Task> action, bool canCancel, string cancelText)
     {
         if (IsBusy)
             return;
 
+        _busyCts = canCancel ? new CancellationTokenSource() : null;
         try
         {
             IsBusy = true;
+            CanCancelBusy = canCancel;
+            BusyCancelText = cancelText;
             ProgressMessage = progressMessage;
-            await action();
+            await action(_busyCts?.Token ?? CancellationToken.None);
         }
         finally
         {
+            _busyCts?.Dispose();
+            _busyCts = null;
+            CanCancelBusy = false;
+            BusyCancelText = "Cancel";
             IsBusy = false;
         }
+    }
+
+    private Task CancelBusyAsync()
+    {
+        if (_busyCts is null || _busyCts.IsCancellationRequested)
+            return Task.CompletedTask;
+
+        _busyCts.Cancel();
+        ProgressMessage = "Cancelling the current scan.";
+        AppendLog("Cancellation requested for the current scan.");
+        CancelBusyCommand.RaiseCanExecuteChanged();
+        return Task.CompletedTask;
     }
 
     private async Task DetectAsync()
@@ -597,79 +639,84 @@ public sealed class MainViewModel : ObservableObject
         if (_installation is null)
             return;
 
-        await RunBusyAsync("Scanning your installed mods.", async () =>
+        try
         {
-            var progress = new Progress<string>(message => ProgressMessage = message);
-            AppendLog("Starting read-only scan.");
-            _inventory = await _scanService.ScanAsync(_installation, progress, CancellationToken.None);
-            var compatibility = await _compatibilityService.EvaluateAsync(_installation, _inventory, CancellationToken.None);
-
-            Mods.Clear();
-            foreach (var mod in _inventory.Mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+            await RunBusyAsync("Scanning your installed mods.", async cancellationToken =>
             {
-                var row = new ModRowViewModel(mod);
-                row.PropertyChanged += ModRowPropertyChanged;
-                Mods.Add(row);
-            }
+                var progress = new Progress<string>(message => ProgressMessage = message);
+                AppendLog("Starting read-only scan.");
+                _inventory = await _scanService.ScanAsync(_installation, progress, cancellationToken);
+                var compatibility = await _compatibilityService.EvaluateAsync(_installation, _inventory, cancellationToken);
 
-            Collections.Clear();
-            foreach (var collection in _inventory.Collections)
-                Collections.Add(collection);
+                Mods.Clear();
+                foreach (var mod in _inventory.Mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    var row = new ModRowViewModel(mod);
+                    row.PropertyChanged += ModRowPropertyChanged;
+                    Mods.Add(row);
+                }
 
-            FolderTree.Clear();
-            _organizerFolders.Clear();
-            foreach (var node in _inventory.CurrentFolderTree)
-            {
-                FolderTree.Add(node);
-                if (!string.IsNullOrWhiteSpace(node.Path) && !_organizerFolders.Any(folder => folder.Path.Equals(node.Path, StringComparison.OrdinalIgnoreCase)))
-                    _organizerFolders.Add(new OrganizerFolder(node.Path, ManuallyCreated: false, node.Protected));
-            }
+                Collections.Clear();
+                foreach (var collection in _inventory.Collections)
+                    Collections.Add(collection);
 
-            ScanWarnings.Clear();
-            foreach (var warning in _inventory.Warnings.Concat(_inventory.Mods.SelectMany(m => m.Warnings)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(w => w, StringComparer.OrdinalIgnoreCase))
-                ScanWarnings.Add(warning);
+                FolderTree.Clear();
+                _organizerFolders.Clear();
+                foreach (var node in _inventory.CurrentFolderTree)
+                {
+                    FolderTree.Add(node);
+                    if (!string.IsNullOrWhiteSpace(node.Path) && !_organizerFolders.Any(folder => folder.Path.Equals(node.Path, StringComparison.OrdinalIgnoreCase)))
+                        _organizerFolders.Add(new OrganizerFolder(node.Path, ManuallyCreated: false, node.Protected));
+                }
 
-            InstalledModCount = _inventory.Mods.Count;
-            ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
-            CollectionCount = _inventory.Collections.Count;
-            WarningCount = ScanWarnings.Count;
-            _lastWorkbookExport = null;
-            _lastWorkbookImport = null;
-            RaisePropertyChanged(nameof(WorkbookPath));
-            WorkbookStatus = "Scan complete. Export one workbook, edit the destination column, and import it back for review.";
-            WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule;
-            _controlledTestRequest = null;
-            ControlledTestStatus = "Controlled Test Apply is not configured yet.";
-            ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
-            ClearControlledTestCommand.RaiseCanExecuteChanged();
-            InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
-            ResetOrganizerHistory();
-            RebuildProposedFolders();
-            RefreshOrganizerViews();
-            CompatibilitySummary = BuildCompatibilitySummary(compatibility);
-            DetectionSummary = BuildHomeSummary(_installation, _inventory);
-            ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
-            AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
-            CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
-            ConfigureControlledTestCommand.RaiseCanExecuteChanged();
-            BackupAndApplyCommand.RaiseCanExecuteChanged();
-            ExportWorkbookCommand.RaiseCanExecuteChanged();
-            ImportWorkbookCommand.RaiseCanExecuteChanged();
-            OpenWorkbookCommand.RaiseCanExecuteChanged();
-            RaiseInstallationChanged();
-        }).ContinueWith(task =>
+                ScanWarnings.Clear();
+                foreach (var warning in _inventory.Warnings.Concat(_inventory.Mods.SelectMany(m => m.Warnings)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(w => w, StringComparer.OrdinalIgnoreCase))
+                    ScanWarnings.Add(warning);
+
+                InstalledModCount = _inventory.Mods.Count;
+                ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
+                CollectionCount = _inventory.Collections.Count;
+                WarningCount = ScanWarnings.Count;
+                _lastWorkbookExport = null;
+                _lastWorkbookImport = null;
+                RaisePropertyChanged(nameof(WorkbookPath));
+                WorkbookStatus = "Scan complete. Export one workbook, edit mod type, protected, and destination, and import it back for review.";
+                WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
+                _controlledTestRequest = null;
+                ControlledTestStatus = "Controlled Test Apply is not configured yet.";
+                ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
+                ClearControlledTestCommand.RaiseCanExecuteChanged();
+                InvalidateDryRunState("Scan refreshed the live Penumbra snapshot.");
+                ResetOrganizerHistory();
+                RebuildProposedFolders();
+                RefreshOrganizerViews();
+                CompatibilitySummary = BuildCompatibilitySummary(compatibility);
+                DetectionSummary = BuildHomeSummary(_installation, _inventory);
+                ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
+                AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
+                CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
+                ImportAiProposalCommand.RaiseCanExecuteChanged();
+                ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+                BackupAndApplyCommand.RaiseCanExecuteChanged();
+                ExportWorkbookCommand.RaiseCanExecuteChanged();
+                ImportWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookCommand.RaiseCanExecuteChanged();
+                RaiseInstallationChanged();
+            }, canCancel: true, cancelText: "Cancel Scan");
+        }
+        catch (OperationCanceledException)
         {
-            if (task.Exception is null)
-                return;
-
-            var ex = task.Exception.GetBaseException();
+            ProgressMessage = "Scan cancelled.";
+            AppendLog("Scan cancelled.");
+        }
+        catch (Exception ex)
+        {
             _logger.LogError(ex, "Penumbra scan failed");
             StartupBootstrapLogger.RecordException("Scan failed.", ex);
             ProgressMessage = "Scan failed.";
             AppendLog("Scan failed: " + ex.Message);
             MessageBox.Show(ToUserMessage(ex), "Scan failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
     }
 
     private async Task ChoosePenumbraConfigAsync()
@@ -725,7 +772,7 @@ public sealed class MainViewModel : ObservableObject
                 _lastWorkbookImport = null;
                 RaisePropertyChanged(nameof(WorkbookPath));
                 WorkbookStatus = _lastWorkbookExport.Summary;
-                WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule;
+                WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
                 OpenWorkbookCommand.RaiseCanExecuteChanged();
                 AppendLog($"Exported workbook to {_lastWorkbookExport.WorkbookPath}.");
             });
@@ -824,14 +871,19 @@ public sealed class MainViewModel : ObservableObject
             if (!importById.TryGetValue(mod.StableScanId, out var row))
                 continue;
 
+            var originalType = mod.DetectedType;
             mod.Protected = row.Protected;
-            mod.DetectedType = row.DetectedType;
+            mod.DetectedType = row.ResolvedModType;
             mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
-            mod.ProposalSource = string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal)
-                ? "Preserved current"
-                : "Manual";
+            mod.ProposalSource =
+                string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal) &&
+                string.Equals(row.ResolvedModType, originalType, StringComparison.OrdinalIgnoreCase)
+                    ? "Preserved current"
+                    : "Manual";
             mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
-            mod.Proposal.NeedsReview = string.Equals(row.DetectedType, "Review", StringComparison.OrdinalIgnoreCase);
+            mod.Proposal.NeedsReview =
+                string.Equals(row.ResolvedModType, "Review", StringComparison.OrdinalIgnoreCase)
+                || mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase);
         }
 
         _controlledTestRequest = null;
@@ -1396,6 +1448,7 @@ public sealed class MainViewModel : ObservableObject
         RecountProposedFolders();
         ChangedProposalCount = Mods.Count(mod => mod.IsChanged);
         NeedsReviewCount = Mods.Count(mod => mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase) ||
+                                             mod.DetectedType.Equals("Review", StringComparison.OrdinalIgnoreCase) ||
                                              mod.DetectedType == "Unknown type" ||
                                              mod.EffectiveCreator == "Unknown creator");
         UndoCommand.RaiseCanExecuteChanged();
@@ -1408,7 +1461,10 @@ public sealed class MainViewModel : ObservableObject
 
     private void ModRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ModRowViewModel.ProposedVirtualFolder) or nameof(ModRowViewModel.Protected))
+        if (e.PropertyName is nameof(ModRowViewModel.ProposedVirtualFolder)
+            or nameof(ModRowViewModel.Protected)
+            or nameof(ModRowViewModel.DetectedType)
+            or nameof(ModRowViewModel.EffectiveCreator))
             RefreshOrganizerViews();
     }
 
@@ -2239,6 +2295,8 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(ReviewNeedsReview));
         RaisePropertyChanged(nameof(ReviewInvalid));
         RaisePropertyChanged(nameof(ReviewWarnings));
+        RaisePropertyChanged(nameof(ReviewProtectionChanges));
+        RaisePropertyChanged(nameof(ReviewMoveRows));
     }
 
     private IEnumerable<OrganizerValidationRow> FilterReviewRows(IReadOnlyList<OrganizerValidationRow> rows)
@@ -2258,11 +2316,10 @@ public sealed class MainViewModel : ObservableObject
     private OrganizationPreferences BuildOrganizationPreferences()
         => SelectedStrategy switch
         {
-            "By creator" => new OrganizationPreferences(OrganizationStrategy.CreatorOnly, false, true, [OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.NotApplicable, UncertainClassificationBehavior.Review, true, null),
-            "By mod type" => new OrganizationPreferences(OrganizationStrategy.TypeOnly, true, false, [OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.NotApplicable, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
-            "By type and creator" => new OrganizationPreferences(OrganizationStrategy.TypeThenCreator, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
-            "By creator and type" => new OrganizationPreferences(OrganizationStrategy.CreatorThenType, true, true, [OrganizationFolderComponent.Creator, OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
-            "Keep my current layout and clean it" => new OrganizationPreferences(OrganizationStrategy.PreserveAndClean, false, false, Array.Empty<OrganizationFolderComponent>(), null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
+            "Type" => new OrganizationPreferences(OrganizationStrategy.TypeOnly, true, false, [OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.NotApplicable, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
+            "Type / Author" => new OrganizationPreferences(OrganizationStrategy.TypeThenCreator, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
+            "Author / Type" => new OrganizationPreferences(OrganizationStrategy.CreatorThenType, true, true, [OrganizationFolderComponent.Creator, OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
+            "Keep Current" => new OrganizationPreferences(OrganizationStrategy.PreserveAndClean, false, false, Array.Empty<OrganizationFolderComponent>(), null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
             "Custom" => new OrganizationPreferences(OrganizationStrategy.Custom, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, "{Type}/{Creator}"),
             _ => new OrganizationPreferences(OrganizationStrategy.StartManually, false, false, Array.Empty<OrganizationFolderComponent>(), null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
         };

@@ -6,10 +6,11 @@ Quick start:
 1. Extract the ZIP.
 2. Double-click PenumbraOrganizer.exe.
 3. Click Scan My Mods.
-4. Organize your mods.
-5. Review the proposed changes.
-6. Click Backup and Apply.
-7. Open Backups and click Restore Backup if you want to undo a previous operation.
+4. Export the workbook.
+5. Edit mod type, protected, and destination in Excel.
+6. Import the workbook and review the proposed changes.
+7. Click Backup and Apply.
+8. Open Backups and click Restore Backup if you want to undo a previous operation.
 
 Important:
 - No installation is required.
@@ -27,7 +28,8 @@ Where the app stores its own data:
 Typical workflow:
 Open EXE
 -> Scan Penumbra
--> Organize Mods
+-> Export Workbook
+-> Import Workbook
 -> Review Changes
 -> Backup and Apply
 -> Done

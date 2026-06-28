@@ -25,7 +25,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
         context.Fixture.CreateMod("Unsupported Mod", """{"FileVersion":3,"Name":"Unsupported Mod","Author":"Author"}""");
         context.Fixture.CreateMod("Eligible Mod", """{"FileVersion":3,"Name":"Eligible Mod","Author":"Author"}""");
         context.Fixture.WriteModData(
-            ("Protected Mod", ".Character specific mods/Akako Main Files"),
+            ("Protected Mod", "Protected/Main Files"),
             ("Ambiguous One", "Current/A"),
             ("Ambiguous Two", "Current/B"),
             ("Eligible Mod", "Current/Eligible"));

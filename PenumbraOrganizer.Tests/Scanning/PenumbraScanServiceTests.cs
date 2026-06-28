@@ -10,7 +10,7 @@ using PenumbraOrganizer.Tests.Fixtures;
 public sealed class PenumbraScanServiceTests
 {
     [Fact]
-    public async Task ScanAsync_ReadsModsFoldersCollectionsAndProtection()
+    public async Task ScanAsync_ReadsModsFoldersCollectionsAndGenericProtection()
     {
         using var fixture = new TemporaryPenumbraFixture();
         fixture.WriteMainConfig();
@@ -37,17 +37,17 @@ public sealed class PenumbraScanServiceTests
             }
             """);
         fixture.CreateMod(
-            "Akako Locked",
+            "Locked Mod",
             """
             {
               "FileVersion": 3,
-              "Name": "Akako Locked",
+              "Name": "Locked Mod",
               "Author": "Akako"
             }
             """);
         fixture.WriteModData(
             ("Sample Mod", "Clothing/Bizu Mods"),
-            ("Akako Locked", ".Character specific mods/Akako Main Files"));
+            ("Locked Mod", "Protected/Akako Main Files"));
         fixture.WriteCollection(
             "aqua.json",
             new
@@ -76,7 +76,7 @@ public sealed class PenumbraScanServiceTests
 
         inventory.Mods.Should().HaveCount(2);
         inventory.Mods.Should().ContainSingle(m => m.Name == "Sample Mod" && m.ContentSignalSummary.Contains("Clothing", StringComparison.Ordinal));
-        inventory.Mods.Should().ContainSingle(m => m.Name == "Akako Locked" && m.Protected);
+        inventory.Mods.Should().ContainSingle(m => m.Name == "Locked Mod" && m.Protected);
         inventory.Collections.Should().ContainSingle(c => c.Name == "Aqua");
         inventory.CurrentFolderTree.Should().Contain(node => node.Path == "Clothing/Bizu Mods");
     }
@@ -108,5 +108,44 @@ public sealed class PenumbraScanServiceTests
         inventory.Mods.Should().ContainSingle();
         inventory.Mods[0].MalformedMetadataFiles.Should().Contain("meta.json");
         inventory.Mods[0].Warnings.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ScanAsync_RespectsCancellation()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        for (var index = 0; index < 25; index++)
+        {
+            fixture.CreateMod(
+                $"Mod {index:D2}",
+                $$"""
+                {
+                  "FileVersion": 3,
+                  "Name": "Mod {{index:D2}}",
+                  "Author": "Author"
+                }
+                """);
+        }
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var act = () => service.ScanAsync(installation, null, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 }
