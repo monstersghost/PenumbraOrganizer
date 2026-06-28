@@ -103,7 +103,38 @@ public sealed record OrganizerValidationRow(
     string ProposedVirtualFolder,
     OrganizerProposalSource Source,
     OrganizerRowStatus Status,
-    string Message);
+    string Message,
+    string TypeLabel = "",
+    bool Protected = false,
+    bool OriginalProtected = false,
+    bool HasFolderChange = false,
+    bool HasProtectionChange = false)
+{
+    public string ChangeSummary
+        => Status switch
+        {
+            OrganizerRowStatus.NeedsReview => "Review",
+            _ when HasFolderChange && HasProtectionChange => "Move + Protection",
+            _ when HasFolderChange => "Move",
+            _ when HasProtectionChange => "Protection",
+            OrganizerRowStatus.Protected => "Protected",
+            _ => "Unchanged",
+        };
+
+    public string StatusLabel
+        => Status switch
+        {
+            OrganizerRowStatus.ValidChange => "Ready",
+            OrganizerRowStatus.Unchanged => "Unchanged",
+            OrganizerRowStatus.Protected => "Protected",
+            OrganizerRowStatus.NeedsReview => "Needs Review",
+            OrganizerRowStatus.InvalidPath => "Invalid Path",
+            OrganizerRowStatus.BlockedProtected => "Blocked",
+            OrganizerRowStatus.MissingMod => "Missing",
+            OrganizerRowStatus.StaleScan => "Stale",
+            _ => Status.ToString(),
+        };
+}
 
 public sealed record OrganizerValidationSummary(
     int TotalMods,

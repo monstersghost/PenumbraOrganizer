@@ -32,7 +32,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
         progress?.Report("Reading installed mods");
         var collectionStatesByName = BuildCollectionStateLookup(collections);
         var physicalDirectories = Directory.Exists(installation.ModRoot)
-            ? Directory.EnumerateDirectories(installation.ModRoot).ToList()
+            ? Directory.EnumerateDirectories(installation.ModRoot)
+                .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+                .ToList()
             : new List<string>();
         var warnings = new List<string>();
 
@@ -43,10 +45,13 @@ public sealed class PenumbraScanService : IPenumbraScanService
         var duplicateNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var mods = new List<ModScanResult>(physicalDirectories.Count);
 
-        foreach (var physicalDirectory in physicalDirectories.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+        for (var index = 0; index < physicalDirectories.Count; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (index == 0 || index % 50 == 0 || index == physicalDirectories.Count - 1)
+                progress?.Report($"Reading installed mods ({index + 1:N0} / {physicalDirectories.Count:N0})");
 
+            var physicalDirectory = physicalDirectories[index];
             var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, duplicateNames);
             if (mod is not null)
                 mods.Add(mod);

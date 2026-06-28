@@ -95,7 +95,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             var inventoryById = inventory.Mods.ToDictionary(mod => mod.StableScanId, StringComparer.Ordinal);
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             var headerMap = ReadHeaderMap(editable);
-            var requiredHeaders = new[] { "id", "mod name", "author", "current folder", "detected type", "protected", "destination" };
+            var requiredHeaders = new[] { "id", "mod name", "author", "current folder", "mod type", "protected", "destination" };
             foreach (var header in requiredHeaders)
             {
                 if (!headerMap.ContainsKey(header))
@@ -120,7 +120,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                 var modName = editable.Cell(rowNumber, headerMap["mod name"]).GetString().Trim();
                 var author = editable.Cell(rowNumber, headerMap["author"]).GetString().Trim();
                 var currentFolder = editable.Cell(rowNumber, headerMap["current folder"]).GetString();
-                var detectedType = editable.Cell(rowNumber, headerMap["detected type"]).GetString().Trim();
+                var modType = editable.Cell(rowNumber, headerMap["mod type"]).GetString().Trim();
                 var protectedRaw = editable.Cell(rowNumber, headerMap["protected"]).GetString().Trim();
                 var destination = editable.Cell(rowNumber, headerMap["destination"]).GetString().Trim();
 
@@ -128,6 +128,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                     string.IsNullOrWhiteSpace(modName) &&
                     string.IsNullOrWhiteSpace(author) &&
                     string.IsNullOrWhiteSpace(currentFolder) &&
+                    string.IsNullOrWhiteSpace(modType) &&
                     string.IsNullOrWhiteSpace(destination))
                 {
                     continue;
@@ -144,37 +145,43 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 
                 if (!seenIds.Add(stableScanId))
                 {
-                    errors.Add($"Duplicate id detected in the workbook: {stableScanId}.");
+                    errors.Add($"Row {rowNumber} contains a duplicate id: {stableScanId}.");
                     continue;
                 }
 
                 if (!inventoryById.TryGetValue(stableScanId, out var mod))
                 {
-                    errors.Add($"The workbook references an unknown mod id: {stableScanId}.");
+                    errors.Add($"Row {rowNumber} references an unknown mod id: {stableScanId}.");
                     continue;
                 }
 
                 if (!string.Equals(currentFolder, mod.CurrentVirtualFolder, StringComparison.Ordinal))
                 {
-                    errors.Add($"The current folder for {stableScanId} changed after export. Scan and export a new workbook before importing edits.");
+                    errors.Add($"Row {rowNumber} no longer matches the exported current folder for {stableScanId}. Scan and export a new workbook before importing edits.");
                     continue;
                 }
 
                 if (!TryParseProtected(protectedRaw, mod.Protected, out var protectedValue))
                 {
-                    errors.Add($"The protected value for {stableScanId} is invalid. Use TRUE or FALSE.");
+                    errors.Add($"Row {rowNumber} has an invalid protected value for {stableScanId}. Use TRUE or FALSE.");
+                    continue;
+                }
+
+                if (!TryResolveModType(modType, WorkbookCategoryCatalog.Detect(mod).Name, out var resolvedModType, out var modTypeError))
+                {
+                    errors.Add($"Row {rowNumber} has an invalid mod type for {stableScanId}: {modTypeError}");
                     continue;
                 }
 
                 if (!TryResolveDestination(destination, out var resolvedDestination, out var destinationError))
                 {
-                    errors.Add($"The destination for {stableScanId} is invalid: {destinationError}");
+                    errors.Add($"Row {rowNumber} has an invalid destination for {stableScanId}: {destinationError}");
                     continue;
                 }
 
                 if (protectedValue && resolvedDestination is not null && !string.Equals(resolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal))
                 {
-                    errors.Add($"Protected mod {stableScanId} cannot also move to a different destination.");
+                    errors.Add($"Row {rowNumber} tries to move protected mod {stableScanId} to a different destination.");
                     continue;
                 }
 
@@ -183,9 +190,10 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                     string.IsNullOrWhiteSpace(modName) ? mod.Name : modName,
                     string.IsNullOrWhiteSpace(author) ? mod.Author : author,
                     currentFolder,
-                    string.IsNullOrWhiteSpace(detectedType) ? WorkbookCategoryCatalog.Detect(mod).Name : detectedType,
+                    string.IsNullOrWhiteSpace(modType) ? WorkbookCategoryCatalog.Detect(mod).Name : modType,
                     protectedValue,
                     destination,
+                    resolvedModType,
                     resolvedDestination));
             }
 
@@ -195,9 +203,15 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
     private void BuildEditableSheet(XLWorkbook workbook, ScanInventory inventory, OrganizationPreferences organizationPreferences)
     {
         var sheet = workbook.Worksheets.Add(EditableSheetName);
-        var headers = new[] { "id", "mod name", "author", "current folder", "detected type", "protected", "destination" };
+        var headers = new[] { "id", "mod name", "author", "current folder", "mod type", "protected", "destination" };
         for (var index = 0; index < headers.Length; index++)
             sheet.Cell(1, index + 1).Value = headers[index];
+
+        sheet.Row(1).Style.Font.Bold = true;
+        sheet.Row(1).Style.Fill.BackgroundColor = XLColor.FromHtml("#E9EEF4");
+        for (var editableColumn = 5; editableColumn <= 7; editableColumn++)
+            sheet.Cell(1, editableColumn).Style.Fill.BackgroundColor = XLColor.FromHtml("#DFF3E4");
+        sheet.SheetView.FreezeRows(1);
 
         var row = 2;
         foreach (var mod in inventory.Mods.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
@@ -241,12 +255,13 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         var sheet = workbook.Worksheets.Add(CategorySheetName);
         sheet.Cell(1, 1).Value = "This sheet explains category shorthand and the blank-destination rule.";
         sheet.Cell(2, 1).Value = WorkbookCategoryCatalog.BlankDestinationRule;
-        sheet.Cell(4, 1).Value = "code";
-        sheet.Cell(4, 2).Value = "name";
-        sheet.Cell(4, 3).Value = "description";
-        sheet.Cell(4, 4).Value = "example destination";
+        sheet.Cell(3, 1).Value = WorkbookCategoryCatalog.ReviewRule;
+        sheet.Cell(5, 1).Value = "code";
+        sheet.Cell(5, 2).Value = "name";
+        sheet.Cell(5, 3).Value = "description";
+        sheet.Cell(5, 4).Value = "example destination";
 
-        var row = 5;
+        var row = 6;
         foreach (var category in WorkbookCategoryCatalog.Definitions)
         {
             sheet.Cell(row, 1).Value = category.Code;
@@ -277,6 +292,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             ["installationIdentity"] = installationIdentity,
             ["strategy"] = organizationPreferences.Strategy.ToString(),
             ["blankDestinationRule"] = WorkbookCategoryCatalog.BlankDestinationRule,
+            ["reviewRule"] = WorkbookCategoryCatalog.ReviewRule,
         };
 
         var row = 1;
@@ -383,11 +399,11 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         var code = category.Code.ToString();
         return organizationPreferences.Strategy switch
         {
-            OrganizationStrategy.CreatorOnly => string.IsNullOrWhiteSpace(creator) ? WorkbookCategoryCatalog.Definitions[7].Code.ToString() : creator,
+            OrganizationStrategy.CreatorOnly => string.IsNullOrWhiteSpace(creator) ? WorkbookCategoryCatalog.GetRequiredByCode(7).Code.ToString() : creator,
             OrganizationStrategy.TypeOnly => code,
             OrganizationStrategy.TypeThenCreator => string.IsNullOrWhiteSpace(creator) ? code : $"{code}/{creator}",
             OrganizationStrategy.CreatorThenType => string.IsNullOrWhiteSpace(creator) ? code : $"{creator}/{code}",
-            OrganizationStrategy.PreserveAndClean => NormalizeRelativePath(mod.CurrentVirtualFolder),
+            OrganizationStrategy.PreserveAndClean => mod.CurrentVirtualFolder,
             OrganizationStrategy.Custom => string.IsNullOrWhiteSpace(creator) ? code : $"{code}/{creator}",
             _ => string.Empty,
         };
@@ -431,6 +447,42 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 
         value = fallback;
         return false;
+    }
+
+    private static bool TryResolveModType(string raw, string fallback, out string resolvedType, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            resolvedType = fallback;
+            error = string.Empty;
+            return true;
+        }
+
+        var normalized = raw.Trim();
+        if (int.TryParse(normalized, out var code))
+        {
+            if (!WorkbookCategoryCatalog.TryGetByCode(code, out var category))
+            {
+                resolvedType = fallback;
+                error = $"Category code {code} is not defined in the workbook mapping sheet.";
+                return false;
+            }
+
+            resolvedType = category.Name;
+            error = string.Empty;
+            return true;
+        }
+
+        if (!WorkbookCategoryCatalog.TryGetByName(normalized, out var namedCategory))
+        {
+            resolvedType = fallback;
+            error = $"Use a category name or code from the workbook mapping sheet.";
+            return false;
+        }
+
+        resolvedType = namedCategory.Name;
+        error = string.Empty;
+        return true;
     }
 
     private static bool TryResolveDestination(string raw, out string? resolvedDestination, out string error)
@@ -488,12 +540,12 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
     private static string StrategyLabel(OrganizationStrategy strategy)
         => strategy switch
         {
-            OrganizationStrategy.CreatorOnly => "creator",
-            OrganizationStrategy.TypeOnly => "mod type",
+            OrganizationStrategy.CreatorOnly => "author only",
+            OrganizationStrategy.TypeOnly => "type",
             OrganizationStrategy.TypeThenCreator => "type/author",
             OrganizationStrategy.CreatorThenType => "author/type",
-            OrganizationStrategy.PreserveAndClean => "preserve and clean",
+            OrganizationStrategy.PreserveAndClean => "keep current",
             OrganizationStrategy.Custom => "custom",
-            _ => "manual",
+            _ => "blank template",
         };
 }
