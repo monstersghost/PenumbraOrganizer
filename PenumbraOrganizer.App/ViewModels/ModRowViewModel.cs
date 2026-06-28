@@ -131,22 +131,5 @@ public sealed class ModRowViewModel : ObservableObject
         };
 
     private static string DetectType(ModScanResult mod)
-    {
-        var haystack = string.Join(' ', mod.Tags.Append(mod.ContentSignalSummary).Append(mod.Name));
-        if (haystack.Contains("hair", StringComparison.OrdinalIgnoreCase))
-            return "Hair";
-        if (haystack.Contains("animation", StringComparison.OrdinalIgnoreCase) || haystack.Contains("pap", StringComparison.OrdinalIgnoreCase))
-            return "Animation";
-        if (haystack.Contains("accessory", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("horn", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("ear", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("tail", StringComparison.OrdinalIgnoreCase))
-            return "Accessory";
-        if (haystack.Contains("cloth", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("outfit", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("dress", StringComparison.OrdinalIgnoreCase))
-            return "Clothing";
-
-        return "Unknown type";
-    }
+        => WorkbookCategoryCatalog.Detect(mod).Name;
 }
