@@ -23,6 +23,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IPenumbraScanService _scanService;
     private readonly IPenumbraCompatibilityService _compatibilityService;
     private readonly IInventoryExportService _inventoryExportService;
+    private readonly IWorkbookWorkflowService _workbookWorkflowService;
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
@@ -40,6 +41,8 @@ public sealed class MainViewModel : ObservableObject
     private PenumbraInstallation? _installation;
     private ScanInventory? _inventory;
     private InventoryExportResult? _lastExport;
+    private WorkbookExportResult? _lastWorkbookExport;
+    private WorkbookImportResult? _lastWorkbookImport;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
@@ -52,6 +55,8 @@ public sealed class MainViewModel : ObservableObject
     private string _selectedStrategy = "Start Manually";
     private string _organizeFilter = "All Mods";
     private string _manualConfigPath = string.Empty;
+    private string _workbookStatus = "After scanning, export one workbook, edit the destination column, and import it back for review.";
+    private string _workbookImportStatus = "Blank destination values leave mods in their current folders.";
     private string _newFolderName = string.Empty;
     private string _renameFolderName = string.Empty;
     private string _reviewFilter = "All";
@@ -87,6 +92,7 @@ public sealed class MainViewModel : ObservableObject
         IPenumbraScanService scanService,
         IPenumbraCompatibilityService compatibilityService,
         IInventoryExportService inventoryExportService,
+        IWorkbookWorkflowService workbookWorkflowService,
         IAiProposalImportService aiProposalImportService,
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
@@ -106,6 +112,7 @@ public sealed class MainViewModel : ObservableObject
         _scanService = scanService;
         _compatibilityService = compatibilityService;
         _inventoryExportService = inventoryExportService;
+        _workbookWorkflowService = workbookWorkflowService;
         _aiProposalImportService = aiProposalImportService;
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
@@ -138,6 +145,9 @@ public sealed class MainViewModel : ObservableObject
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
         ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
+        ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        OpenWorkbookCommand = new AsyncRelayCommand(OpenWorkbookAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
         CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
         ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
         OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
@@ -180,6 +190,9 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
+    public AsyncRelayCommand ExportWorkbookCommand { get; }
+    public AsyncRelayCommand ImportWorkbookCommand { get; }
+    public AsyncRelayCommand OpenWorkbookCommand { get; }
     public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
     public AsyncRelayCommand ImportAiProposalCommand { get; }
     public AsyncRelayCommand OpenExportFolderCommand { get; }
@@ -279,6 +292,25 @@ public sealed class MainViewModel : ObservableObject
         get => _manualConfigPath;
         private set => SetProperty(ref _manualConfigPath, value);
     }
+
+    public string WorkbookStatus
+    {
+        get => _workbookStatus;
+        private set => SetProperty(ref _workbookStatus, value);
+    }
+
+    public string WorkbookImportStatus
+    {
+        get => _workbookImportStatus;
+        private set => SetProperty(ref _workbookImportStatus, value);
+    }
+
+    public string WorkbookPath => _lastWorkbookExport?.WorkbookPath ?? string.Empty;
+
+    public string WorkbookCategorySummary
+        => string.Join(
+            Environment.NewLine,
+            WorkbookCategoryCatalog.Definitions.Select(category => $"{category.Code} = {category.Name}"));
 
     public int InstalledModCount
     {
@@ -448,6 +480,9 @@ public sealed class MainViewModel : ObservableObject
                 RaisePropertyChanged(nameof(IsNotBusy));
                 ScanCommand.RaiseCanExecuteChanged();
                 ChoosePenumbraConfigCommand.RaiseCanExecuteChanged();
+                ExportWorkbookCommand.RaiseCanExecuteChanged();
+                ImportWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookCommand.RaiseCanExecuteChanged();
                 CreateDryRunCommand.RaiseCanExecuteChanged();
                 CreateBackupCommand.RaiseCanExecuteChanged();
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
@@ -598,6 +633,11 @@ public sealed class MainViewModel : ObservableObject
             ProtectedModCount = _inventory.Mods.Count(m => m.Protected);
             CollectionCount = _inventory.Collections.Count;
             WarningCount = ScanWarnings.Count;
+            _lastWorkbookExport = null;
+            _lastWorkbookImport = null;
+            RaisePropertyChanged(nameof(WorkbookPath));
+            WorkbookStatus = "Scan complete. Export one workbook, edit the destination column, and import it back for review.";
+            WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule;
             _controlledTestRequest = null;
             ControlledTestStatus = "Controlled Test Apply is not configured yet.";
             ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
@@ -614,6 +654,9 @@ public sealed class MainViewModel : ObservableObject
             ImportAiProposalCommand.RaiseCanExecuteChanged();
             ConfigureControlledTestCommand.RaiseCanExecuteChanged();
             BackupAndApplyCommand.RaiseCanExecuteChanged();
+            ExportWorkbookCommand.RaiseCanExecuteChanged();
+            ImportWorkbookCommand.RaiseCanExecuteChanged();
+            OpenWorkbookCommand.RaiseCanExecuteChanged();
             RaiseInstallationChanged();
         }).ContinueWith(task =>
         {
@@ -667,6 +710,145 @@ public sealed class MainViewModel : ObservableObject
             _logger.LogError(ex, "Manual Penumbra selection failed");
             MessageBox.Show(ToUserMessage(ex), "Penumbra not found", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private async Task ExportWorkbookAsync()
+    {
+        if (_inventory is null)
+            return;
+
+        try
+        {
+            await RunBusyAsync("Exporting your workbook.", async () =>
+            {
+                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), CancellationToken.None);
+                _lastWorkbookImport = null;
+                RaisePropertyChanged(nameof(WorkbookPath));
+                WorkbookStatus = _lastWorkbookExport.Summary;
+                WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule;
+                OpenWorkbookCommand.RaiseCanExecuteChanged();
+                AppendLog($"Exported workbook to {_lastWorkbookExport.WorkbookPath}.");
+            });
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = _lastWorkbookExport!.WorkbookPath,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Workbook export failed");
+            StartupBootstrapLogger.RecordException("Workbook export failed.", ex);
+            WorkbookStatus = "Workbook export failed.";
+            MessageBox.Show(
+                "The workbook could not be created. Try scanning again and then export a new workbook.",
+                "Workbook export failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private async Task ImportWorkbookAsync()
+    {
+        if (_inventory is null)
+            return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import Edited Workbook",
+            Filter = "Excel workbook|*.xlsx",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            await RunBusyAsync("Importing workbook destinations.", async () =>
+            {
+                _lastWorkbookImport = await _workbookWorkflowService.ImportAsync(dialog.FileName, _inventory, CancellationToken.None);
+            });
+
+            if (_lastWorkbookImport is null)
+                return;
+
+            if (_lastWorkbookImport.Errors.Count > 0)
+            {
+                WorkbookImportStatus = _lastWorkbookImport.Summary;
+                MessageBox.Show(
+                    string.Join(Environment.NewLine, _lastWorkbookImport.Errors.Take(8)),
+                    "Workbook import blocked",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            ApplyWorkbookImport(_lastWorkbookImport);
+            WorkbookImportStatus = _lastWorkbookImport.Summary;
+            WorkbookStatus = $"Imported workbook: {Path.GetFileName(_lastWorkbookImport.WorkbookPath)}";
+            AppendLog($"Imported workbook from {_lastWorkbookImport.WorkbookPath}.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Workbook import failed");
+            StartupBootstrapLogger.RecordException("Workbook import failed.", ex);
+            WorkbookImportStatus = "Workbook import failed.";
+            MessageBox.Show(
+                ToUserMessage(ex),
+                "Workbook import failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    private Task OpenWorkbookAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _lastWorkbookExport.WorkbookPath,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private void ApplyWorkbookImport(WorkbookImportResult import)
+    {
+        var importById = import.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+        foreach (var mod in Mods)
+        {
+            if (!importById.TryGetValue(mod.StableScanId, out var row))
+                continue;
+
+            mod.Protected = row.Protected;
+            mod.DetectedType = row.DetectedType;
+            mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
+            mod.ProposalSource = string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal)
+                ? "Preserved current"
+                : "Manual";
+            mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
+            mod.Proposal.NeedsReview = string.Equals(row.DetectedType, "Review", StringComparison.OrdinalIgnoreCase);
+        }
+
+        _controlledTestRequest = null;
+        ClearControlledTestCommand.RaiseCanExecuteChanged();
+        _organizerFolders.Clear();
+        foreach (var folder in Mods
+                     .Select(mod => mod.ProposedVirtualFolder)
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            _organizerFolders.Add(new OrganizerFolder(folder));
+        }
+
+        InvalidateDryRunState("Workbook import updated the proposed destinations.");
+        RefreshOrganizerViews();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
     }
 
     private async Task CreateAiReviewPackageAsync()
@@ -2056,8 +2238,9 @@ public sealed class MainViewModel : ObservableObject
             "By mod type" => new OrganizationPreferences(OrganizationStrategy.TypeOnly, true, false, [OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.NotApplicable, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
             "By type and creator" => new OrganizationPreferences(OrganizationStrategy.TypeThenCreator, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
             "By creator and type" => new OrganizationPreferences(OrganizationStrategy.CreatorThenType, true, true, [OrganizationFolderComponent.Creator, OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
+            "Keep my current layout and clean it" => new OrganizationPreferences(OrganizationStrategy.PreserveAndClean, false, false, Array.Empty<OrganizationFolderComponent>(), null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
             "Custom" => new OrganizationPreferences(OrganizationStrategy.Custom, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, "{Type}/{Creator}"),
-            _ => OrganizationPreferences.DefaultManual,
+            _ => new OrganizationPreferences(OrganizationStrategy.StartManually, false, false, Array.Empty<OrganizationFolderComponent>(), null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
         };
 
     private static string NormalizeVirtualFolder(string path)

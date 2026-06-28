@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRealInstallationValidationService, RealInstallationValidationService>();
         services.AddSingleton<IPostApplyVerificationService, PostApplyVerificationService>();
         services.AddSingleton<IInventoryExportService, InventoryExportService>();
+        services.AddSingleton<IWorkbookWorkflowService, WorkbookWorkflowService>();
         services.AddSingleton<IAiProposalValidationService, AiProposalValidationService>();
         services.AddSingleton<IAiProposalImportService, AiProposalImportService>();
         services.AddSingleton<IOrganizerMutationService, OrganizerMutationService>();

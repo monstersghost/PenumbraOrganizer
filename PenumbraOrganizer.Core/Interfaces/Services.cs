@@ -28,6 +28,19 @@ public interface IInventoryExportService
     Task ValidateExportPackageAsync(string exportFolder, CancellationToken cancellationToken);
 }
 
+public interface IWorkbookWorkflowService
+{
+    Task<WorkbookExportResult> ExportAsync(
+        ScanInventory inventory,
+        OrganizationPreferences organizationPreferences,
+        CancellationToken cancellationToken);
+
+    Task<WorkbookImportResult> ImportAsync(
+        string workbookPath,
+        ScanInventory inventory,
+        CancellationToken cancellationToken);
+}
+
 public interface IAiProposalValidationService
 {
     AiProposalValidationResult Validate(AiInventoryExport inventory, AiProposalDocument proposal);
