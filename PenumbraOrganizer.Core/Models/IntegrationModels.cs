@@ -88,43 +88,6 @@ public sealed record RealInstallationValidationResult(
     string Summary,
     bool AppearsSafeForApply);
 
-public enum AiImportDecisionKind
-{
-    ImportedSuggestion,
-    ManualOverride,
-    RejectedSuggestion,
-    NeedsReview,
-    Unchanged,
-}
-
-public sealed record AiProposalImportDecision(
-    string ScanId,
-    string ModName,
-    AiImportDecisionKind Decision,
-    string Message);
-
-public sealed record ImportedProposalRow(
-    string StableScanId,
-    string ProposedVirtualFolder,
-    string OrganizerCreatorLabel,
-    string OrganizerTypeLabel,
-    OrganizerProposalSource Source,
-    bool Protected,
-    bool NeedsReview);
-
-public sealed record AiProposalImportResult(
-    string ProposalPath,
-    string SourceExportId,
-    int ImportedCount,
-    int ManualOverrideCount,
-    int RejectedCount,
-    int NeedsReviewCount,
-    IReadOnlyList<ImportedProposalRow> ImportedRows,
-    IReadOnlyList<AiProposalImportDecision> Decisions,
-    IReadOnlyList<AiProposalValidationIssue> Errors,
-    IReadOnlyList<AiProposalValidationIssue> Warnings,
-    string Summary);
-
 public sealed record DiagnosticExportRequest(
     string ApplicationVersion,
     PenumbraInstallation? Installation,

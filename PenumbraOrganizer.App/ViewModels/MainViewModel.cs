@@ -22,7 +22,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IPenumbraDiscoveryService _discoveryService;
     private readonly IPenumbraScanService _scanService;
     private readonly IPenumbraCompatibilityService _compatibilityService;
-    private readonly IInventoryExportService _inventoryExportService;
+    private readonly IWorkbookWorkflowService _workbookWorkflowService;
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
@@ -32,14 +32,15 @@ public sealed class MainViewModel : ObservableObject
     private readonly IRealInstallationValidationService _realInstallationValidationService;
     private readonly IOperationRecoveryService _operationRecoveryService;
     private readonly IOperationObservationService _operationObservationService;
-    private readonly IAiProposalImportService _aiProposalImportService;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
     private ScanInventory? _inventory;
-    private InventoryExportResult? _lastExport;
+    private WorkbookExportResult? _lastWorkbookExport;
+    private WorkbookImportResult? _lastWorkbookImport;
+    private string? _lastManualBackupPath;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
@@ -77,17 +78,22 @@ public sealed class MainViewModel : ObservableObject
     private int _collectionCount;
     private int _warningCount;
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
-    private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
+    private string _workbookStatus = "Scan your mods, then export one workbook, edit mod type / protected / destination, and import it back for review.";
+    private string _workbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
     private bool _showAdvancedTools;
     private bool _isBusy;
+    private ICollectionView _filteredMods = null!;
+    private ICollectionView _selectedFolderMods = null!;
+    private ICollectionView _changedMods = null!;
+    private bool _suspendOrganizerRefresh;
+    private bool _suspendSelectedFolderRefresh;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
         IPenumbraScanService scanService,
         IPenumbraCompatibilityService compatibilityService,
-        IInventoryExportService inventoryExportService,
-        IAiProposalImportService aiProposalImportService,
+        IWorkbookWorkflowService workbookWorkflowService,
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
@@ -105,8 +111,7 @@ public sealed class MainViewModel : ObservableObject
         _discoveryService = discoveryService;
         _scanService = scanService;
         _compatibilityService = compatibilityService;
-        _inventoryExportService = inventoryExportService;
-        _aiProposalImportService = aiProposalImportService;
+        _workbookWorkflowService = workbookWorkflowService;
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
@@ -128,24 +133,20 @@ public sealed class MainViewModel : ObservableObject
         SelectedOrganizerMods = new ObservableCollection<ModRowViewModel>();
         ReviewRows = new ObservableCollection<OrganizerValidationRow>();
         ScanWarnings = new ObservableCollection<string>();
-        FilteredMods = new CollectionViewSource { Source = Mods }.View;
-        FilteredMods.Filter = FilterMod;
-        SelectedFolderMods = new CollectionViewSource { Source = Mods }.View;
-        SelectedFolderMods.Filter = FilterSelectedFolderMod;
-        ChangedMods = new CollectionViewSource { Source = Mods }.View;
-        ChangedMods.Filter = item => item is ModRowViewModel mod && mod.IsChanged;
+        _filteredMods = CreateCollectionView(FilterMod);
+        _selectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        _changedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
         ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
-        CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
-        ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
-        OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
-        CopyMasterPromptCommand = new AsyncRelayCommand(CopyMasterPromptAsync, () => _lastExport is not null);
-        CopyInventoryFilePathCommand = new AsyncRelayCommand(CopyInventoryFilePathAsync, () => _lastExport is not null);
-        CopyCompleteAiRequestCommand = new AsyncRelayCommand(CopyCompleteAiRequestAsync, () => _lastExport is not null);
+        ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        OpenWorkbookCommand = new AsyncRelayCommand(OpenWorkbookAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
+        OpenWorkbookFolderCommand = new AsyncRelayCommand(OpenWorkbookFolderAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
         ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
+        BackupNowCommand = new AsyncRelayCommand(CreateManualBackupAsync, () => !IsBusy);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
         CreateProposedFolderCommand = new RelayCommand(_ => CreateProposedFolder(), _ => CanCreateProposedFolder());
         AssignSelectedToSelectedFolderCommand = new RelayCommand(_ => AssignSelectedToSelectedFolder(), _ => SelectedProposedFolder is not null && SelectedOrganizerMods.Count > 0);
@@ -154,6 +155,7 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand = new RelayCommand(_ => ResetAllVisibleToCurrentFolder(), _ => FilteredMods.Cast<object>().Any());
         MarkSelectedProtectedCommand = new RelayCommand(_ => MarkSelectedProtected(), _ => SelectedOrganizerMods.Count > 0);
         UnprotectSelectedCommand = new RelayCommand(_ => UnprotectSelected(), _ => SelectedOrganizerMods.Count > 0);
+        EditMetadataCommand = new RelayCommand(_ => EditSelectedMetadata(), _ => SelectedOrganizerMods.Count > 0);
         RenameFolderCommand = new RelayCommand(_ => RenameSelectedFolder(), _ => SelectedProposedFolder is not null && !string.IsNullOrWhiteSpace(RenameFolderName));
         DeleteEmptyFolderCommand = new RelayCommand(_ => DeleteSelectedEmptyFolder(), _ => SelectedProposedFolder is not null);
         SaveSessionCommand = new AsyncRelayCommand(SaveSessionAsync, () => _inventory is not null);
@@ -180,14 +182,13 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
-    public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
-    public AsyncRelayCommand ImportAiProposalCommand { get; }
-    public AsyncRelayCommand OpenExportFolderCommand { get; }
-    public AsyncRelayCommand CopyMasterPromptCommand { get; }
-    public AsyncRelayCommand CopyInventoryFilePathCommand { get; }
-    public AsyncRelayCommand CopyCompleteAiRequestCommand { get; }
+    public AsyncRelayCommand ExportWorkbookCommand { get; }
+    public AsyncRelayCommand ImportWorkbookCommand { get; }
+    public AsyncRelayCommand OpenWorkbookCommand { get; }
+    public AsyncRelayCommand OpenWorkbookFolderCommand { get; }
     public AsyncRelayCommand ValidateInstallationCommand { get; }
     public AsyncRelayCommand CreateDiagnosticPackageCommand { get; }
+    public AsyncRelayCommand BackupNowCommand { get; }
     public RelayCommand SelectStrategyCommand { get; }
     public RelayCommand CreateProposedFolderCommand { get; }
     public RelayCommand AssignSelectedToSelectedFolderCommand { get; }
@@ -196,6 +197,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetAllVisibleToCurrentFolderCommand { get; }
     public RelayCommand MarkSelectedProtectedCommand { get; }
     public RelayCommand UnprotectSelectedCommand { get; }
+    public RelayCommand EditMetadataCommand { get; }
     public RelayCommand RenameFolderCommand { get; }
     public RelayCommand DeleteEmptyFolderCommand { get; }
     public AsyncRelayCommand SaveSessionCommand { get; }
@@ -222,9 +224,23 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ModRowViewModel> SelectedOrganizerMods { get; }
     public ObservableCollection<OrganizerValidationRow> ReviewRows { get; }
     public ObservableCollection<string> ScanWarnings { get; }
-    public ICollectionView FilteredMods { get; }
-    public ICollectionView SelectedFolderMods { get; }
-    public ICollectionView ChangedMods { get; }
+    public ICollectionView FilteredMods
+    {
+        get => _filteredMods;
+        private set => SetProperty(ref _filteredMods, value);
+    }
+
+    public ICollectionView SelectedFolderMods
+    {
+        get => _selectedFolderMods;
+        private set => SetProperty(ref _selectedFolderMods, value);
+    }
+
+    public ICollectionView ChangedMods
+    {
+        get => _changedMods;
+        private set => SetProperty(ref _changedMods, value);
+    }
     public BackupsViewModel Backups => _backups;
 
     public string DetectionSummary
@@ -252,8 +268,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _searchText, value))
             {
-                FilteredMods.Refresh();
-                SelectedFolderMods.Refresh();
+                RefreshCollectionViews();
             }
         }
     }
@@ -343,7 +358,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedProposedFolder, value))
             {
-                SelectedFolderMods.Refresh();
+                if (!_suspendSelectedFolderRefresh)
+                    RefreshSelectedFolderView();
                 RenameFolderName = value is null ? string.Empty : value.Path;
                 RefreshSelectionCommandState();
             }
@@ -420,11 +436,22 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _installationValidationStatus, value);
     }
 
-    public string AiImportStatus
+    public string WorkbookStatus
     {
-        get => _aiImportStatus;
-        private set => SetProperty(ref _aiImportStatus, value);
+        get => _workbookStatus;
+        private set => SetProperty(ref _workbookStatus, value);
     }
+
+    public string WorkbookImportStatus
+    {
+        get => _workbookImportStatus;
+        private set => SetProperty(ref _workbookImportStatus, value);
+    }
+
+    public string WorkbookPath => _lastWorkbookExport?.WorkbookPath ?? string.Empty;
+
+    public string WorkbookCategorySummary
+        => "Mod type codes: " + string.Join("  •  ", WorkbookCategoryCatalog.Definitions.Select(category => $"{category.Code} = {category.Name}"));
 
     public string DiagnosticStatus
     {
@@ -453,6 +480,9 @@ public sealed class MainViewModel : ObservableObject
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
                 BackupAndApplyCommand.RaiseCanExecuteChanged();
                 ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+                ExportWorkbookCommand.RaiseCanExecuteChanged();
+                ImportWorkbookCommand.RaiseCanExecuteChanged();
+                BackupNowCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -574,6 +604,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 var row = new ModRowViewModel(mod);
                 row.PropertyChanged += ModRowPropertyChanged;
+                row.MetadataEdited += OnRowMetadataEdited;
                 Mods.Add(row);
             }
 
@@ -601,6 +632,11 @@ public sealed class MainViewModel : ObservableObject
             CollectionCount = _inventory.Collections.Count;
             WarningCount = ScanWarnings.Count;
             _controlledTestRequest = null;
+            _lastWorkbookExport = null;
+            _lastWorkbookImport = null;
+            RaisePropertyChanged(nameof(WorkbookPath));
+            WorkbookStatus = "Scan complete. Export one workbook, edit mod type / protected / destination, and import it back for review.";
+            WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
             ControlledTestStatus = "Controlled Test Apply is not configured yet.";
             ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
             ClearControlledTestCommand.RaiseCanExecuteChanged();
@@ -612,8 +648,10 @@ public sealed class MainViewModel : ObservableObject
             DetectionSummary = BuildHomeSummary(_installation, _inventory);
             ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
             AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
-            CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
+            ExportWorkbookCommand.RaiseCanExecuteChanged();
+            ImportWorkbookCommand.RaiseCanExecuteChanged();
+            OpenWorkbookCommand.RaiseCanExecuteChanged();
+            OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
             ConfigureControlledTestCommand.RaiseCanExecuteChanged();
             BackupAndApplyCommand.RaiseCanExecuteChanged();
             RaiseInstallationChanged();
@@ -671,109 +709,186 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async Task CreateAiReviewPackageAsync()
+    private async Task ExportWorkbookAsync()
     {
         if (_inventory is null)
             return;
 
         try
         {
-            ProgressMessage = "Creating AI review package";
-            _lastExport = await _inventoryExportService.CreateAiReviewPackageAsync(_inventory, CancellationToken.None, BuildOrganizationPreferences());
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
-            OpenExportFolderCommand.RaiseCanExecuteChanged();
-            CopyMasterPromptCommand.RaiseCanExecuteChanged();
-            CopyInventoryFilePathCommand.RaiseCanExecuteChanged();
-            CopyCompleteAiRequestCommand.RaiseCanExecuteChanged();
-            AppendLog($"Created AI review package at {_lastExport.ExportFolder}");
-            AiImportStatus = "AI review package ready. Import a Penumbra_AI_Proposal.json file to merge validated suggestions into this session.";
-            ProgressMessage = "AI review package created.";
-
-            var dialog = new ExportPackageDialog(_lastExport, this)
+            await RunBusyAsync("Exporting your workbook.", async () =>
             {
-                Owner = Application.Current.MainWindow,
-            };
-            dialog.ShowDialog();
+                var workbookPath = ResolveWorkbookExportPath();
+                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), workbookPath, CancellationToken.None);
+                _lastWorkbookImport = null;
+                RaisePropertyChanged(nameof(WorkbookPath));
+                WorkbookStatus = $"{_lastWorkbookExport.Summary}{Environment.NewLine}Saved to: {_lastWorkbookExport.WorkbookPath}";
+                WorkbookImportStatus = $"Edit the 'mod type', 'protected', and 'destination' columns, save the file, then click Import Workbook. {WorkbookCategoryCatalog.BlankDestinationRule}";
+                OpenWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
+                AppendLog($"Exported workbook to {_lastWorkbookExport.WorkbookPath}.");
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressMessage = "Workbook export cancelled.";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI review package creation failed");
-            ProgressMessage = "AI review package creation failed.";
-            AppendLog("AI review package creation failed: " + ex.Message);
-            MessageBox.Show(
-                "The AI review package could not be created. Please try again after a successful scan.",
-                "Export failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            _logger.LogError(ex, "Workbook export failed");
+            WorkbookStatus = "Workbook export failed.";
+            ProgressMessage = "Workbook export failed.";
+            AppendLog("Workbook export failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Workbook export failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
-    private async Task ImportAiProposalAsync()
+    private async Task ImportWorkbookAsync()
     {
-        if (_inventory is null || _lastExport is null)
+        if (_inventory is null)
             return;
 
         var dialog = new OpenFileDialog
         {
-            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-            Title = "Import Penumbra_AI_Proposal.json",
-            FileName = "Penumbra_AI_Proposal.json",
+            Title = "Import Edited Workbook",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
             CheckFileExists = true,
+            Multiselect = false,
         };
         if (dialog.ShowDialog(Application.Current.MainWindow) != true)
             return;
 
         try
         {
-            ProgressMessage = "Importing AI proposal.";
-            var import = await _aiProposalImportService.ImportAsync(
-                dialog.FileName,
-                _lastExport.InventoryPath,
-                CurrentProposalRows().ToArray(),
-                CancellationToken.None);
-
-            if (import.Errors.Count > 0 && import.ImportedRows.Count == 0)
+            await RunBusyAsync("Importing workbook destinations.", async () =>
             {
-                AiImportStatus = import.Summary;
-                ProgressMessage = "AI proposal import blocked.";
-                AppendLog("AI proposal import blocked: " + string.Join(" | ", import.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase)));
-                MessageBox.Show(import.Summary, "AI proposal blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+                _lastWorkbookImport = await _workbookWorkflowService.ImportAsync(dialog.FileName, _inventory!, CancellationToken.None);
+            });
+
+            if (_lastWorkbookImport is null)
+                return;
+
+            if (_lastWorkbookImport.Errors.Count > 0)
+            {
+                WorkbookImportStatus = _lastWorkbookImport.Summary;
+                ProgressMessage = "Workbook import blocked.";
+                AppendLog("Workbook import blocked: " + string.Join(" | ", _lastWorkbookImport.Errors.Take(8)));
+                MessageBox.Show(
+                    _lastWorkbookImport.Summary + Environment.NewLine + Environment.NewLine +
+                    string.Join(Environment.NewLine, _lastWorkbookImport.Errors.Take(12)),
+                    "Workbook import blocked",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
                 return;
             }
 
-            foreach (var imported in import.ImportedRows)
-            {
-                var row = Mods.FirstOrDefault(candidate => candidate.StableScanId == imported.StableScanId);
-                if (row is null)
-                    continue;
-
-                row.Proposal.ProposedVirtualFolder = imported.ProposedVirtualFolder;
-                row.Proposal.OrganizerCreatorLabel = imported.OrganizerCreatorLabel;
-                row.Proposal.OrganizerTypeLabel = imported.OrganizerTypeLabel;
-                row.Proposal.Protected = imported.Protected;
-                row.Proposal.Source = imported.Source;
-                row.Proposal.NeedsReview = imported.NeedsReview;
-
-                if (!_organizerFolders.Any(folder => folder.Path.Equals(imported.ProposedVirtualFolder, StringComparison.OrdinalIgnoreCase)))
-                    _organizerFolders.Add(new OrganizerFolder(imported.ProposedVirtualFolder, true, false));
-            }
-
-            InvalidateDryRunState("Imported AI suggestions changed the proposal snapshot.");
-            RefreshRowsFromProposals();
-            RefreshOrganizerViews();
-            RefreshReviewChanges();
-            AiImportStatus = import.Summary;
-            ProgressMessage = "AI proposal imported.";
-            AppendLog(import.Summary);
+            ApplyWorkbookImport(_lastWorkbookImport);
+            WorkbookImportStatus = _lastWorkbookImport.Summary;
+            WorkbookStatus = $"Imported workbook: {Path.GetFileName(_lastWorkbookImport.WorkbookPath)}";
+            ProgressMessage = "Workbook imported.";
+            AppendLog($"Imported workbook from {_lastWorkbookImport.WorkbookPath}.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI proposal import failed");
-            AiImportStatus = "AI proposal import failed.";
-            ProgressMessage = "AI proposal import failed.";
-            AppendLog("AI proposal import failed: " + ex.Message);
-            MessageBox.Show(ex.Message, "AI proposal import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _logger.LogError(ex, "Workbook import failed");
+            WorkbookImportStatus = "Workbook import failed.";
+            ProgressMessage = "Workbook import failed.";
+            AppendLog("Workbook import failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Workbook import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private Task OpenWorkbookAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _lastWorkbookExport.WorkbookPath,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task OpenWorkbookFolderAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.GetDirectoryName(_lastWorkbookExport.WorkbookPath)!,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private void ApplyWorkbookImport(WorkbookImportResult import)
+    {
+        _suspendOrganizerRefresh = true;
+        try
+        {
+            var importById = import.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+            foreach (var mod in Mods)
+            {
+                if (!importById.TryGetValue(mod.StableScanId, out var row))
+                    continue;
+
+                var originalType = mod.DetectedType;
+                mod.Protected = row.Protected;
+                mod.DetectedType = row.ResolvedModType;
+                mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
+                mod.ProposalSource =
+                    string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal) &&
+                    string.Equals(row.ResolvedModType, originalType, StringComparison.OrdinalIgnoreCase)
+                        ? "Preserved current"
+                        : "Manual";
+                mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
+                mod.Proposal.NeedsReview =
+                    string.Equals(row.ResolvedModType, "Review", StringComparison.OrdinalIgnoreCase)
+                    || mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase);
+            }
+
+            _organizerFolders.Clear();
+            foreach (var folder in Mods
+                         .Select(mod => mod.ProposedVirtualFolder)
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                _organizerFolders.Add(new OrganizerFolder(folder));
+            }
+
+            SeedExistingEmptyFolders();
+        }
+        finally
+        {
+            _suspendOrganizerRefresh = false;
+        }
+
+        InvalidateDryRunState("Workbook import updated the proposed destinations.");
+        RefreshOrganizerViews();
+        RefreshReviewChanges();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
+    }
+
+    private string ResolveWorkbookExportPath()
+    {
+        var fileName = $"PenumbraOrganizer-Workbook-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.xlsx";
+        var dialog = new SaveFileDialog
+        {
+            Title = "Choose Workbook Export Location",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
+            FileName = fileName,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
+            throw new OperationCanceledException("Workbook export was cancelled.");
+
+        return dialog.FileName;
     }
 
     private async Task ValidateInstallationAsync()
@@ -927,45 +1042,64 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async Task OpenExportFolderAsync()
+    private async Task CreateManualBackupAsync()
     {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Process.Start(new ProcessStartInfo
+        if (_installation is null)
+            await DetectAsync();
+        if (_installation is null)
         {
-            FileName = _lastExport.ExportFolder,
-            UseShellExecute = true,
-        });
+            MessageBox.Show("Penumbra was not found yet. Detect or choose Penumbra.json first.", "Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var configDirectory = _installation.ConfigDirectory;
+        if (string.IsNullOrWhiteSpace(configDirectory) || !Directory.Exists(configDirectory))
+        {
+            MessageBox.Show("The Penumbra configuration folder could not be found.", "Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await RunBusyAsync("Backing up your Penumbra configuration.", () => Task.Run(() =>
+            {
+                var destinationRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "PenumbraOrganizer",
+                    "ManualBackups",
+                    DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss"));
+                CopyDirectory(configDirectory, Path.Combine(destinationRoot, "Penumbra"));
+                _lastManualBackupPath = destinationRoot;
+            }));
+
+            ProgressMessage = "Manual backup created.";
+            AppendLog($"Created a manual Penumbra configuration backup at {_lastManualBackupPath}.");
+            if (MessageBox.Show(
+                    $"A full copy of your Penumbra configuration (sort_order.json, mod_data, collections, …) was saved to:{Environment.NewLine}{Environment.NewLine}{_lastManualBackupPath}{Environment.NewLine}{Environment.NewLine}Open the backup folder now?",
+                    "Backup created",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information) == MessageBoxResult.Yes
+                && _lastManualBackupPath is not null)
+            {
+                Process.Start(new ProcessStartInfo { FileName = _lastManualBackupPath, UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manual backup failed");
+            ProgressMessage = "Manual backup failed.";
+            AppendLog("Manual backup failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Backup failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
-    private async Task CopyMasterPromptAsync()
+    private static void CopyDirectory(string sourceDir, string targetDir)
     {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(await File.ReadAllTextAsync(_lastExport.InstructionsPath));
-    }
-
-    private async Task CopyInventoryFilePathAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(_lastExport.InventoryPath);
-    }
-
-    private async Task CopyCompleteAiRequestAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        var prompt = await File.ReadAllTextAsync(_lastExport.InstructionsPath);
-        Clipboard.SetText($"Upload Penumbra_AI_Review_Package.zip to your AI assistant first, then paste the prompt below.{Environment.NewLine}{Environment.NewLine}{prompt}");
+        Directory.CreateDirectory(targetDir);
+        foreach (var file in Directory.EnumerateFiles(sourceDir))
+            File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)), overwrite: true);
+        foreach (var directory in Directory.EnumerateDirectories(sourceDir))
+            CopyDirectory(directory, Path.Combine(targetDir, Path.GetFileName(directory)!));
     }
 
     private string BuildCompatibilitySummary(CompatibilityReport compatibility)
@@ -1008,7 +1142,7 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         OrganizeFilter = filter;
-        FilteredMods.Refresh();
+        RefreshCollectionViews();
     }
 
     private bool FilterSelectedFolderMod(object item)
@@ -1025,8 +1159,96 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         SelectedStrategy = strategy;
-        InvalidateDryRunState("Organization strategy changed.");
         AppendLog($"Selected organization strategy: {strategy}.");
+
+        if (_inventory is null || Mods.Count == 0)
+        {
+            ProgressMessage = "Scan your mods first, then choose how to organize them.";
+            return;
+        }
+
+        ApplyDeterministicStrategy(strategy);
+    }
+
+    /// <summary>
+    /// Computes a proposed destination for every mod from the chosen strategy and the deterministic
+    /// 0-8 type classifier, then surfaces the plan so the user can review it before applying.
+    /// Protected mods stay put; "Start Manually" resets proposals to the current folders.
+    /// </summary>
+    private void ApplyDeterministicStrategy(string strategy)
+    {
+        var changed = 0;
+        foreach (var row in Mods)
+        {
+            var proposal = row.Proposal;
+            if (proposal.Protected)
+            {
+                proposal.ProposedVirtualFolder = proposal.CurrentVirtualFolder;
+                proposal.Source = OrganizerProposalSource.PreservedCurrent;
+                continue;
+            }
+
+            var destination = BuildStrategyDestination(strategy, row);
+            proposal.ProposedVirtualFolder = destination;
+            proposal.Source = strategy == "Start Manually"
+                ? OrganizerProposalSource.PreservedCurrent
+                : OrganizerProposalSource.DeterministicRule;
+            proposal.NeedsReview = row.DetectedType.Equals("Review", StringComparison.OrdinalIgnoreCase)
+                                   || destination.Contains("Review", StringComparison.OrdinalIgnoreCase);
+            if (!string.Equals(destination, proposal.CurrentVirtualFolder, StringComparison.Ordinal))
+                changed++;
+        }
+
+        _organizerFolders.Clear();
+        foreach (var folder in Mods
+                     .Select(row => row.Proposal.ProposedVirtualFolder)
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            _organizerFolders.Add(new OrganizerFolder(folder, ManuallyCreated: true));
+        }
+
+        SeedExistingEmptyFolders();
+        InvalidateDryRunState($"Applied the '{strategy}' organization plan.");
+        ResetOrganizerHistory();
+        RefreshRowsFromProposals();
+        RefreshOrganizerViews();
+        RefreshReviewChanges();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
+
+        ProgressMessage = strategy == "Start Manually"
+            ? "Cleared the plan. Organize manually or export a workbook, then Backup and Apply."
+            : $"Applied '{strategy}'. {changed} mod(s) have a new proposed folder — review, then Backup and Apply.";
+        AppendLog(ProgressMessage);
+    }
+
+    private static string BuildStrategyDestination(string strategy, ModRowViewModel row)
+    {
+        var type = string.IsNullOrWhiteSpace(row.DetectedType) ? "Others" : row.DetectedType.Trim();
+        var creator = SanitizeFolderSegment(row.EffectiveCreator);
+        var hasCreator = !string.IsNullOrWhiteSpace(creator)
+                         && !creator.Equals("Unknown creator", StringComparison.OrdinalIgnoreCase);
+
+        return strategy switch
+        {
+            "By creator" => hasCreator ? creator : "Review",
+            "By mod type" => type,
+            "By type and creator" => hasCreator ? $"{type}/{creator}" : type,
+            "By creator and type" => hasCreator ? $"{creator}/{type}" : type,
+            "Custom" => hasCreator ? $"{type}/{creator}" : type,
+            "Keep my current layout and clean it" => row.CurrentVirtualFolder,
+            _ => row.CurrentVirtualFolder,
+        };
+    }
+
+    private static string SanitizeFolderSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var invalid = Path.GetInvalidFileNameChars().Append('/').Append('\\').Distinct().ToArray();
+        return string.Join(" ", value.Split(invalid, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 
     private bool CanCreateProposedFolder()
@@ -1180,19 +1402,29 @@ public sealed class MainViewModel : ObservableObject
     private void RebuildProposedFolders()
     {
         var selectedPath = SelectedProposedFolder?.Path;
-        ProposedFolders.Clear();
-        foreach (var folder in _organizerFolders.Select(folder => folder.Path)
-                     .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
-                     .Where(folder => !string.IsNullOrWhiteSpace(folder))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+        // Setting SelectedProposedFolder below would otherwise re-enter SelectedFolderMods.Refresh()
+        // while RefreshOrganizerViews is mid-refresh; suppress it and let the caller refresh once.
+        _suspendSelectedFolderRefresh = true;
+        try
         {
-            ProposedFolders.Add(new OrganizerFolderViewModel(folder));
-        }
+            ProposedFolders.Clear();
+            foreach (var folder in _organizerFolders.Select(folder => folder.Path)
+                         .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
+                         .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+            {
+                ProposedFolders.Add(new OrganizerFolderViewModel(folder));
+            }
 
-        RecountProposedFolders();
-        SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
-                                 ?? ProposedFolders.FirstOrDefault();
+            RecountProposedFolders();
+            SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
+                                     ?? ProposedFolders.FirstOrDefault();
+        }
+        finally
+        {
+            _suspendSelectedFolderRefresh = false;
+        }
     }
 
     private void RecountProposedFolders()
@@ -1210,9 +1442,7 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshOrganizerViews()
     {
         RebuildProposedFolders();
-        FilteredMods.Refresh();
-        SelectedFolderMods.Refresh();
-        ChangedMods.Refresh();
+        RefreshCollectionViews();
         RecountProposedFolders();
         ChangedProposalCount = Mods.Count(mod => mod.IsChanged);
         NeedsReviewCount = Mods.Count(mod => mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase) ||
@@ -1228,8 +1458,120 @@ public sealed class MainViewModel : ObservableObject
 
     private void ModRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_suspendOrganizerRefresh)
+            return;
+
         if (e.PropertyName is nameof(ModRowViewModel.ProposedVirtualFolder) or nameof(ModRowViewModel.Protected))
             RefreshOrganizerViews();
+    }
+
+    // WPF's ListCollectionView.Refresh() can throw a NullReferenceException in PrepareLocalArray()
+    // when a refresh is requested re-entrantly (e.g. a row's PropertyChanged fires mid-refresh and
+    // rebuilds the proposed folders, which re-refreshes a view filtered over the same source).
+    // Recreating the view recovers cleanly, so guard every refresh and rebuild on NRE.
+    private void RefreshCollectionViews()
+    {
+        // A DataGrid cell/row can still be mid-edit when a command fires (e.g. the Protected
+        // checkbox or an edited proposed-folder cell). Commit it first, otherwise Refresh throws
+        // "'Refresh' is not allowed during an AddNew or EditItem transaction." Rebuilding the views
+        // is the fallback: fresh views carry no edit transaction.
+        CommitPendingGridEdits();
+        try
+        {
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Collection view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+    }
+
+    private void RefreshSelectedFolderView()
+    {
+        CommitPendingGridEdits();
+        try
+        {
+            SelectedFolderMods.Refresh();
+        }
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Selected folder view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            SelectedFolderMods.Refresh();
+        }
+    }
+
+    private void CommitPendingGridEdits()
+    {
+        foreach (var view in new[] { _filteredMods, _selectedFolderMods, _changedMods })
+        {
+            if (view is not IEditableCollectionView editable)
+                continue;
+
+            try
+            {
+                if (editable.IsAddingNew)
+                    editable.CommitNew();
+                if (editable.IsEditingItem)
+                    editable.CommitEdit();
+            }
+            catch (InvalidOperationException)
+            {
+                // Some views refuse CommitEdit in certain states; the refresh fallback rebuilds.
+            }
+        }
+    }
+
+    private void RebuildCollectionViews()
+    {
+        FilteredMods = CreateCollectionView(FilterMod);
+        SelectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        ChangedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
+    }
+
+    private ICollectionView CreateCollectionView(Predicate<object> filter)
+    {
+        var view = new CollectionViewSource { Source = Mods }.View;
+        view.Filter = filter;
+        return view;
+    }
+
+    private void OnRowMetadataEdited()
+    {
+        // A staged metadata change makes any existing dry run stale; the edit is written only
+        // through the standard Backup and Apply path.
+        InvalidateDryRunState("Mod metadata edits changed.");
+        DebouncedSaveSession();
+    }
+
+    private void EditSelectedMetadata()
+    {
+        var row = SelectedOrganizerMods.FirstOrDefault();
+        if (row is null)
+            return;
+
+        if (SelectedOrganizerMods.Count > 1)
+            ProgressMessage = $"Editing metadata for {row.Name}. Select a single mod to edit a different one.";
+
+        var dialog = new ModMetadataDialog(row)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        // The dialog committed edits live; surface them and refresh review state.
+        AppendLog(row.HasMetadataEdit
+            ? $"Staged metadata edits for {row.Name}: {row.MetadataSummary}."
+            : $"Cleared metadata edits for {row.Name}.");
+        RefreshReviewChanges();
+        RefreshOrganizerViews();
     }
 
     private void ResetOrganizerHistory()
@@ -1248,6 +1590,7 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand.RaiseCanExecuteChanged();
         MarkSelectedProtectedCommand.RaiseCanExecuteChanged();
         UnprotectSelectedCommand.RaiseCanExecuteChanged();
+        EditMetadataCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteEmptyFolderCommand.RaiseCanExecuteChanged();
     }
@@ -1257,8 +1600,19 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshRowsFromProposals()
     {
-        foreach (var row in Mods)
-            row.RefreshFromProposal();
+        // Suspend per-row refresh callbacks so the bulk update doesn't re-enter
+        // RefreshOrganizerViews once per row (which crashes a view mid-refresh). Callers
+        // refresh the views once afterward.
+        _suspendOrganizerRefresh = true;
+        try
+        {
+            foreach (var row in Mods)
+                row.RefreshFromProposal();
+        }
+        finally
+        {
+            _suspendOrganizerRefresh = false;
+        }
     }
 
     private static string ComposeSiblingPath(string oldPath, string newLeaf)
@@ -1346,22 +1700,42 @@ public sealed class MainViewModel : ObservableObject
                 row.Proposal.OrganizerTypeLabel,
                 row.Proposal.Source,
                 row.Proposal.NeedsReview)).ToArray(),
+            MetadataEdits = Mods
+                .Select(row => (row.StableScanId, Edit: row.BuildMetadataEdit()))
+                .Where(item => item.Edit is not null)
+                .Select(item => new OrganizerSessionMetadataEdit(
+                    item.StableScanId,
+                    item.Edit!.Name,
+                    item.Edit.Author,
+                    item.Edit.Description,
+                    item.Edit.Version,
+                    item.Edit.Website,
+                    item.Edit.ModTags,
+                    item.Edit.Favorite,
+                    item.Edit.LocalTags,
+                    item.Edit.Note))
+                .ToArray(),
         };
     }
 
     private void RestoreSession(OrganizerSessionDocument session)
     {
         var savedById = session.Mods.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+        var editsById = session.MetadataEdits.ToDictionary(edit => edit.StableScanId, StringComparer.Ordinal);
         foreach (var row in Mods)
         {
-            if (!savedById.TryGetValue(row.StableScanId, out var saved))
-                continue;
-            row.Proposal.ProposedVirtualFolder = saved.ProposedVirtualFolder;
-            row.Proposal.Protected = saved.Protected;
-            row.Proposal.OrganizerCreatorLabel = saved.OrganizerCreatorLabel;
-            row.Proposal.OrganizerTypeLabel = saved.OrganizerTypeLabel;
-            row.Proposal.Source = saved.ProposalSource;
-            row.Proposal.NeedsReview = saved.NeedsReview;
+            if (savedById.TryGetValue(row.StableScanId, out var saved))
+            {
+                row.Proposal.ProposedVirtualFolder = saved.ProposedVirtualFolder;
+                row.Proposal.Protected = saved.Protected;
+                row.Proposal.OrganizerCreatorLabel = saved.OrganizerCreatorLabel;
+                row.Proposal.OrganizerTypeLabel = saved.OrganizerTypeLabel;
+                row.Proposal.Source = saved.ProposalSource;
+                row.Proposal.NeedsReview = saved.NeedsReview;
+            }
+
+            if (editsById.TryGetValue(row.StableScanId, out var savedEdit))
+                row.ApplyRestoredMetadata(savedEdit);
         }
 
         _organizerFolders.Clear();
@@ -1650,15 +2024,23 @@ public sealed class MainViewModel : ObservableObject
             })
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
+
+        // TODO(metadata-editing): per-mod metadata editing (meta.json / mod_data favorite, tags,
+        // note) is DISABLED for the 0.2.0-beta release. Editing a mod's favorite corrupted the mod
+        // in Penumbra, so we no longer emit any meta.json / mod_data writes. The engine
+        // (PenumbraMetadataWriter, ModMetadataEdit, the dialog) and its tests are kept for a future
+        // fix; re-enable by collecting row.BuildMetadataEdit() here and restoring the UI entries.
+        IReadOnlyList<ModMetadataEdit>? metadataEdits = null;
         var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
         var session = BuildSessionDocument();
         return new ProposalSnapshot(
-            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
+            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences, metadataEdits),
             OrganizerSessionService.BuildSessionIdentity(session),
             preferences,
             proposals,
             folders,
-            validation);
+            validation,
+            metadataEdits);
     }
 
     private ProposalSnapshot BuildActiveProposalSnapshot()
@@ -1692,18 +2074,30 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildDryRunStatus(DryRunPlan plan)
     {
-        var fileChange = plan.FileChanges.SingleOrDefault();
-        if (fileChange is null)
-            return "No supported Penumbra virtual-folder changes need to be written.";
+        if (plan.FileChanges.Count == 0)
+            return "No supported Penumbra changes need to be written.";
 
         var controlledSummary = _controlledTestRequest is null
             ? "Workflow: standard organization review"
             : $"Workflow: Controlled Test Apply ({_controlledTestRequest.StableScanIds.Count} selected mod(s) -> {_controlledTestRequest.TestFolderName})";
         return
             $"{controlledSummary}{Environment.NewLine}" +
-            $"Authoritative target: {Path.GetFileName(fileChange.TargetPath)}{Environment.NewLine}" +
+            $"Authoritative targets: {DescribeWriteTargets(plan.FileChanges)}{Environment.NewLine}" +
             $"Affected mods: {plan.Summary.AffectedModCount}{Environment.NewLine}" +
+            $"Write operations: {plan.FileChanges.Count}{Environment.NewLine}" +
             $"Status: {plan.Validation.Status}";
+    }
+
+    private static string DescribeWriteTargets(IReadOnlyList<DryRunFileChange> fileChanges)
+    {
+        var parts = new List<string>();
+        var sortCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
+        var metaCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.ModMetaJson);
+        var localCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.LocalModDataJson);
+        if (sortCount > 0) parts.Add("sort_order.json (organization)");
+        if (metaCount > 0) parts.Add($"{metaCount} meta.json file(s)");
+        if (localCount > 0) parts.Add($"{localCount} mod_data file(s)");
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
     private string BuildApplyChecklist()
@@ -1762,7 +2156,7 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildApplyConfirmationMessage()
     {
-        var target = _currentDryRunPlan?.FileChanges.SingleOrDefault();
+        var fileChanges = _currentDryRunPlan?.FileChanges ?? Array.Empty<DryRunFileChange>();
         var operationFolder = _preparedApplyOperation is null
             ? "Backup not prepared"
             : Path.Combine(
@@ -1777,21 +2171,32 @@ public sealed class MainViewModel : ObservableObject
             .Select(row => $"{row.ModName}: {row.CurrentVirtualFolder} -> {row.ProposedVirtualFolder}")
             .ToArray();
         var exampleBlock = examples.Length == 0
-            ? "No supported changes were found."
+            ? "No folder moves were found."
             : string.Join(Environment.NewLine, examples) +
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
+        var metadataMods = MetadataEditedMods();
+        var metadataBlock = metadataMods.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}{Environment.NewLine}Metadata edits ({metadataMods.Count} mod(s)):{Environment.NewLine}" +
+              string.Join(Environment.NewLine, metadataMods.Take(8).Select(row => $"{row.Name}: {row.MetadataSummary}")) +
+              (metadataMods.Count > 8 ? $"{Environment.NewLine}+ {metadataMods.Count - 8} more" : string.Empty);
+
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
+            $"{metadataMods.Count} mod(s) will have metadata edits applied.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
-            $"Planned changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
-            "Authoritative target: sort_order.json (virtual-folder organization)" + Environment.NewLine +
-            $"Target file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
+            $"Planned folder changes:{Environment.NewLine}{exampleBlock}{metadataBlock}{Environment.NewLine}{Environment.NewLine}" +
+            $"Authoritative targets: {DescribeWriteTargets(fileChanges)}{Environment.NewLine}" +
+            $"Write operations: {fileChanges.Count}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
             $"Rollback readiness: {(_preparedApplyOperation is null ? "Will be prepared before writing" : "Prepared")}{Environment.NewLine}{Environment.NewLine}" +
             "Physical mod folders and mod files will not be moved." + Environment.NewLine +
             "FFXIV must be closed before Apply.";
     }
+
+    private IReadOnlyList<ModRowViewModel> MetadataEditedMods()
+        => Mods.Where(row => row.HasMetadataEdit).ToArray();
 
     private string BuildApplyResultSummary(ApplyResult applyResult, PostApplyVerificationResult? verification)
     {

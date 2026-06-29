@@ -51,9 +51,29 @@ Current `formatVersion` is `1`.
       "proposalSource": "Manual",
       "needsReview": false
     }
+  ],
+  "metadataEdits": [
+    {
+      "stableScanId": "stable scan id",
+      "name": "New name or null",
+      "author": null,
+      "description": null,
+      "version": null,
+      "website": null,
+      "modTags": ["tag"],
+      "favorite": true,
+      "localTags": null,
+      "note": null
+    }
   ]
 }
 ```
+
+`metadataEdits` holds pending per-mod metadata changes (added without a `formatVersion` bump
+because it is optional and defaults to empty). Each field is `null` when unchanged from the scanned
+value, mirroring `ModMetadataEdit`. `name`/`author`/`description`/`version`/`website`/`modTags`
+target the mod's `meta.json`; `favorite`/`localTags`/`note` target the per-user
+`mod_data/<id>.json`. On resume, edits are matched by stable scan ID and re-applied to the rows.
 
 ## Staleness Rules
 

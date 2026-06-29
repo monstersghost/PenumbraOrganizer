@@ -81,7 +81,7 @@ public sealed class ApplyService : IApplyService
         if (plan.FileChanges.Count == 0)
             throw new InvalidOperationException("This dry run does not contain any supported writable changes.");
 
-        EnsureSortOrderTargetsExist(plan);
+        EnsureWriteTargetsExist(plan);
 
         var inventory = new ScanInventory
         {
@@ -290,22 +290,29 @@ public sealed class ApplyService : IApplyService
         return final;
     }
 
-    // A fresh install may have no sort_order.json yet. Materialize the canonical empty baseline
-    // (byte-identical to what LoadState hashes) before backup so the proven backup/apply/rollback
-    // machinery operates on a real, captured file. Rollback restores this empty baseline, which is
+    // A fresh install may have no sort_order.json yet, and a mod may have no per-user
+    // mod_data/<id>.json. Materialize the canonical empty baseline (byte-identical to what the
+    // planner hashed as the source) before backup so the proven backup/apply/rollback machinery
+    // operates on a real, captured file. Rollback restores this empty baseline, which is
     // semantically identical to the file never having existed.
-    private static void EnsureSortOrderTargetsExist(DryRunPlan plan)
+    private static void EnsureWriteTargetsExist(DryRunPlan plan)
     {
-        var baselineBytes = System.Text.Encoding.UTF8.GetBytes(PenumbraSortOrder.EmptyDocumentJson);
         foreach (var change in plan.FileChanges)
         {
-            if (change.WriteTargetKind != PenumbraWriteTargetKind.SortOrderJson)
+            var baseline = change.WriteTargetKind switch
+            {
+                PenumbraWriteTargetKind.SortOrderJson => PenumbraSortOrder.EmptyDocumentJson,
+                PenumbraWriteTargetKind.LocalModDataJson => PenumbraMetadataWriter.EmptyLocalDataJson,
+                _ => null,
+            };
+            if (baseline is null)
                 continue;
+
             var target = RecoveryStorageLayout.ValidateAbsoluteTargetPath(change.TargetPath);
             if (File.Exists(target))
                 continue;
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            File.WriteAllBytes(target, baselineBytes);
+            File.WriteAllBytes(target, System.Text.Encoding.UTF8.GetBytes(baseline));
         }
     }
 

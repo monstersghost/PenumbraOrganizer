@@ -14,6 +14,12 @@ public sealed class PenumbraMetadataWriter
 {
     private static readonly System.Text.Json.JsonSerializerOptions SerializerOptions = new() { WriteIndented = true };
 
+    // Canonical empty baseline for a per-user mod_data/<id>.json that does not exist yet. Editing
+    // local data on a mod with no such file materializes this baseline (byte-identical here and in
+    // ApplyService) so the proven backup/apply/rollback machinery has a real source to capture.
+    // meta.json is intentionally not baselined: an installed mod always has one.
+    public const string EmptyLocalDataJson = "{\"FileVersion\":3,\"LocalTags\":[],\"Note\":\"\",\"Favorite\":false}";
+
     public IReadOnlyList<DryRunFileChange> BuildFileChanges(
         PenumbraInstallation installation,
         IReadOnlyList<ModMetadataEdit> edits)
@@ -39,7 +45,7 @@ public sealed class PenumbraMetadataWriter
     private static DryRunFileChange BuildMetaChange(PenumbraInstallation installation, ModMetadataEdit edit)
     {
         var path = MetaJsonPath(installation, edit.StableScanId);
-        var root = LoadObject(path, $"meta.json is missing for mod {edit.StableScanId}.", out var sourceBytes);
+        var root = LoadObject(path, $"meta.json is missing for mod {edit.StableScanId}.", baselineWhenMissing: null, out var sourceBytes);
 
         if (edit.Name is not null) root["Name"] = edit.Name;
         if (edit.Author is not null) root["Author"] = edit.Author;
@@ -55,7 +61,7 @@ public sealed class PenumbraMetadataWriter
     private static DryRunFileChange BuildLocalDataChange(PenumbraInstallation installation, ModMetadataEdit edit)
     {
         var path = LocalDataPath(installation, edit.StableScanId);
-        var root = LoadObject(path, $"Local mod data is missing for mod {edit.StableScanId}.", out var sourceBytes);
+        var root = LoadObject(path, $"Local mod data is missing for mod {edit.StableScanId}.", EmptyLocalDataJson, out var sourceBytes);
 
         if (edit.Favorite is not null) root["Favorite"] = edit.Favorite.Value;
         if (edit.LocalTags is not null) root["LocalTags"] = ToArray(edit.LocalTags);
@@ -65,10 +71,16 @@ public sealed class PenumbraMetadataWriter
             $"mod_data:{edit.StableScanId}", "Update local mod data (favorite, tags, note).");
     }
 
-    private static JsonObject LoadObject(string path, string missingMessage, out byte[] sourceBytes)
+    private static JsonObject LoadObject(string path, string missingMessage, string? baselineWhenMissing, out byte[] sourceBytes)
     {
         if (!File.Exists(path))
-            throw new InvalidOperationException(missingMessage);
+        {
+            if (baselineWhenMissing is null)
+                throw new InvalidOperationException(missingMessage);
+
+            sourceBytes = Encoding.UTF8.GetBytes(baselineWhenMissing);
+            return JsonNode.Parse(baselineWhenMissing) as JsonObject ?? new JsonObject();
+        }
 
         sourceBytes = File.ReadAllBytes(path);
         return JsonNode.Parse(File.ReadAllText(path)) as JsonObject
