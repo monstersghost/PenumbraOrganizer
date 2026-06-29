@@ -11,6 +11,7 @@ public sealed class WritePermissionPreflightService : IWritePermissionPreflightS
     [
         "ffxiv",
         "ffxiv_dx11",
+        "ffxivlauncher",
         "ffxivboot",
         "XIVLauncher",
         "XIVLauncherCN",

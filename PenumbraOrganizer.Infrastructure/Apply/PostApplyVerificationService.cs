@@ -14,63 +14,91 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
 
         var errors = new List<string>();
         var warnings = new List<string>();
-        var appliedTargets = applyResult.Files.Where(file => file.WriteCompleted).Select(file => file.TargetPath).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var resultsByTarget = applyResult.Files.ToDictionary(file => file.TargetPath, StringComparer.OrdinalIgnoreCase);
 
         foreach (var fileChange in plan.FileChanges)
         {
-            if (!appliedTargets.Contains(fileChange.TargetPath))
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!resultsByTarget.TryGetValue(fileChange.TargetPath, out var result))
             {
-                errors.Add($"Expected write target was not completed: {fileChange.TargetPath}");
+                errors.Add($"Expected write target was not processed: {fileChange.TargetPath}");
                 continue;
             }
 
-            var sourceBytes = File.ReadAllBytes(fileChange.TargetPath);
-            var liveHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(sourceBytes));
-            if (!string.Equals(liveHash, fileChange.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
-                errors.Add($"The applied hash does not match the planned hash for {fileChange.TargetPath}.");
+            if (result.Status == ApplyResultStatus.Failed)
+                errors.Add($"Apply failed for {fileChange.TargetPath}: {result.Message}");
+
+            if (fileChange.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson && result.WriteCompleted)
+            {
+                var sourceBytes = File.ReadAllBytes(fileChange.TargetPath);
+                var liveHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(sourceBytes));
+                if (!string.Equals(liveHash, fileChange.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
+                    errors.Add($"The applied organization.json hash does not match the planned hash for {fileChange.TargetPath}.");
+            }
         }
 
-        var targetPath = plan.FileChanges.SingleOrDefault()?.TargetPath;
-        if (string.IsNullOrWhiteSpace(targetPath))
+        var databasePath = plan.FileChanges.SingleOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.ModDataDatabase)?.TargetPath;
+        var organizationPath = plan.FileChanges.SingleOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson)?.TargetPath;
+        if (string.IsNullOrWhiteSpace(databasePath) || string.IsNullOrWhiteSpace(organizationPath))
         {
-            errors.Add("The post-Apply verification plan does not identify an authoritative target.");
+            errors.Add("The post-Apply verification plan does not identify both authoritative Penumbra targets.");
             return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
         }
 
-        PenumbraModDataState state;
+        PenumbraModDataState modState;
+        PenumbraOrganizationState organizationState;
         try
         {
-            state = PenumbraVirtualFolderWriter.LoadState(targetPath);
+            modState = PenumbraVirtualFolderWriter.LoadState(databasePath);
+            organizationState = PenumbraOrganizationStore.LoadState(organizationPath);
         }
         catch (Exception ex)
         {
-            errors.Add("The authoritative Penumbra database could not be reloaded after Apply: " + ex.Message);
+            errors.Add("The authoritative Penumbra state could not be reloaded after Apply: " + ex.Message);
             return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
+        }
+
+        var plannedOrganizationChange = plan.FileChanges.Single(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        PenumbraOrganizationState plannedOrganizationState;
+        try
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerVerify", Guid.NewGuid().ToString("N"), "organization.json");
+            Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
+            File.WriteAllBytes(tempPath, Convert.FromBase64String(plannedOrganizationChange.ExpectedBytesBase64));
+            plannedOrganizationState = PenumbraOrganizationStore.LoadState(tempPath);
+            File.Delete(tempPath);
+            Directory.Delete(Path.GetDirectoryName(tempPath)!, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            errors.Add("The planned organization.json payload is invalid: " + ex.Message);
+            return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
+        }
+
+        foreach (var folder in plannedOrganizationState.Folders.Keys)
+        {
+            if (!organizationState.Folders.ContainsKey(folder))
+                errors.Add($"The required organization folder {folder} is missing after Apply.");
         }
 
         foreach (var entry in plan.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!state.Entries.TryGetValue(entry.StableScanId, out var current))
+            if (!modState.Entries.TryGetValue(entry.RecordKey, out var current))
             {
-                errors.Add($"The authoritative entry for {entry.StableScanId} is missing after Apply.");
+                errors.Add($"The authoritative entry for {entry.StableScanId} ({entry.RecordKey}) is missing after Apply.");
                 continue;
             }
 
-            if (entry.RequiresWrite)
+            var expectedFolder = entry.Protected ? entry.CurrentVirtualFolder : entry.ProposedVirtualFolder;
+            if (!string.Equals(current.Folder, expectedFolder, StringComparison.Ordinal))
+                errors.Add($"The applied folder for {entry.StableScanId} does not match the planned folder.");
+
+            if (!entry.Protected &&
+                !string.IsNullOrWhiteSpace(expectedFolder) &&
+                !organizationState.Folders.ContainsKey(expectedFolder))
             {
-                if (!string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal))
-                    errors.Add($"The applied folder for {entry.StableScanId} does not match the planned folder.");
-            }
-            else if (entry.Protected)
-            {
-                if (!string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
-                    errors.Add($"Protected row {entry.StableScanId} changed unexpectedly.");
-            }
-            else if (entry.ValidationStatus == OrganizerRowStatus.Unchanged &&
-                     !string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
-            {
-                errors.Add($"Unrelated row {entry.StableScanId} changed unexpectedly.");
+                errors.Add($"The destination folder {expectedFolder} does not exist in organization.json for {entry.StableScanId}.");
             }
         }
 
@@ -79,11 +107,12 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             Succeeded: errors.Count == 0,
             VerifiedChangedModCount: plan.Entries.Count(entry =>
                 entry.RequiresWrite &&
-                state.Entries.TryGetValue(entry.StableScanId, out var current) &&
-                string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal)),
+                modState.Entries.TryGetValue(entry.RecordKey, out var current) &&
+                string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal) &&
+                organizationState.Folders.ContainsKey(entry.ProposedVirtualFolder)),
             VerifiedProtectedModCount: plan.Entries.Count(entry =>
                 entry.Protected &&
-                state.Entries.TryGetValue(entry.StableScanId, out var current) &&
+                modState.Entries.TryGetValue(entry.RecordKey, out var current) &&
                 string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal)),
             Errors: errors,
             Warnings: warnings));

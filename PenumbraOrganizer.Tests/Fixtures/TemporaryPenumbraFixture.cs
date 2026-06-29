@@ -44,6 +44,8 @@ public sealed class TemporaryPenumbraFixture : IDisposable
         }
         """.Replace("__MOD_ROOT__", ModRoot.Replace("\\", "\\\\", StringComparison.Ordinal));
         File.WriteAllText(PenumbraJsonPath, json);
+        if (!File.Exists(OrganizationJsonPath))
+            WriteOrganizationJson("""{"Folders":{},"Separators":{}}""");
     }
 
     public void WritePluginManifest(string version = "1.6.1.10")

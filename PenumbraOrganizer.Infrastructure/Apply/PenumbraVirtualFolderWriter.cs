@@ -2,6 +2,7 @@ namespace PenumbraOrganizer.Infrastructure.Apply;
 
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using LiteDB;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
@@ -11,19 +12,22 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
     private const string CollectionName = "LocalModData";
     private const string FolderFieldName = "Folder";
     private const string SchemaFileName = "mod_data.db:LocalModData";
+    private const string ProtectedRoot = ".Character specific mods";
 
     public Task<IReadOnlyList<DryRunSourceFileSnapshot>> CaptureSourceFilesAsync(PenumbraInstallation installation, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var state = LoadState(installation);
-        return Task.FromResult<IReadOnlyList<DryRunSourceFileSnapshot>>([state.SourceFile]);
+        var modState = LoadState(installation);
+        var organizationState = PenumbraOrganizationStore.LoadState(installation);
+        return Task.FromResult<IReadOnlyList<DryRunSourceFileSnapshot>>([modState.SourceFile, organizationState.SourceFile]);
     }
 
     public Task<IReadOnlyList<SchemaFingerprint>> CaptureSchemaFingerprintsAsync(PenumbraInstallation installation, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var state = LoadState(installation);
-        return Task.FromResult<IReadOnlyList<SchemaFingerprint>>([state.SchemaFingerprint]);
+        var modState = LoadState(installation);
+        var organizationState = PenumbraOrganizationStore.LoadState(installation);
+        return Task.FromResult<IReadOnlyList<SchemaFingerprint>>([modState.SchemaFingerprint, organizationState.SchemaFingerprint]);
     }
 
     public Task<IReadOnlyList<DryRunPlanEntry>> MapPlanEntriesAsync(
@@ -53,9 +57,9 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
             var requiresWrite =
                 row.Status == OrganizerRowStatus.ValidChange &&
                 !effectiveProtected &&
-                state.Entries.ContainsKey(mod.StableScanId);
+                state.Entries.ContainsKey(mod.PhysicalDirectoryName);
 
-            if (!state.Entries.TryGetValue(mod.StableScanId, out var mapping))
+            if (!state.Entries.TryGetValue(mod.PhysicalDirectoryName, out var mapping))
             {
                 warnings.Add("No authoritative LocalModData entry exists for this installed mod.");
                 entries.Add(new DryRunPlanEntry(
@@ -105,7 +109,8 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var state = LoadState(installation);
+        var modState = LoadState(installation);
+        var organizationState = PenumbraOrganizationStore.LoadState(installation);
         var changedEntries = planEntries.Where(entry => entry.RequiresWrite).ToArray();
         if (changedEntries.Length == 0)
             return Array.Empty<DryRunFileChange>();
@@ -120,44 +125,49 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
 
         var tempDirectory = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerDryRun", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDirectory);
-        var tempDatabasePath = Path.Combine(tempDirectory, Path.GetFileName(state.DatabasePath));
+        var tempDatabasePath = Path.Combine(tempDirectory, Path.GetFileName(modState.DatabasePath));
         try
         {
-            File.Copy(state.DatabasePath, tempDatabasePath, overwrite: true);
-            using (var db = new LiteDatabase($"Filename={tempDatabasePath};Connection=Direct"))
-            {
-                var collection = db.GetCollection(CollectionName);
-                foreach (var entry in changedEntries.OrderBy(entry => entry.RecordKey, StringComparer.Ordinal))
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var document = collection.FindById(entry.RecordKey)
-                        ?? throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} is missing.");
-                    document[FolderFieldName] = entry.ProposedVirtualFolder;
-                    if (!collection.Update(document))
-                        throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} could not be updated.");
-                }
-                db.Checkpoint();
-            }
-
-            ValidateUpdatedDatabase(tempDatabasePath, state, changedEntries);
+            File.Copy(modState.DatabasePath, tempDatabasePath, overwrite: true);
+            ApplyExpectedDatabaseChanges(tempDatabasePath, changedEntries, cancellationToken);
+            ValidateUpdatedDatabase(tempDatabasePath, modState, changedEntries);
             var expectedBytes = await File.ReadAllBytesAsync(tempDatabasePath, cancellationToken);
             var expectedHash = Convert.ToHexString(SHA256.HashData(expectedBytes));
+            var finalFolders = PenumbraOrganizationStore.BuildFinalFolderSet(planEntries, organizationState);
+            var organizationDocument = PenumbraOrganizationStore.BuildOrganizationDocument(organizationState, finalFolders);
+            PenumbraOrganizationStore.ValidatePlannedDocument(organizationDocument, finalFolders);
+            var organizationJson = PenumbraOrganizationStore.Serialize(organizationDocument);
+            var organizationBytes = Encoding.UTF8.GetBytes(organizationJson);
+            var organizationHash = Convert.ToHexString(SHA256.HashData(organizationBytes));
 
             return
             [
                 new DryRunFileChange(
-                    state.DatabasePath,
+                    modState.DatabasePath,
                     PenumbraWriteTargetKind.ModDataDatabase,
                     $"{CollectionName}.{FolderFieldName}",
-                    state.SourceFile.Sha256,
-                    state.SourceFile.Length,
+                    modState.SourceFile.Sha256,
+                    modState.SourceFile.Length,
                     expectedHash,
                     expectedBytes.LongLength,
                     Convert.ToBase64String(expectedBytes),
                     changedEntries.Select(entry => entry.RecordKey).OrderBy(id => id, StringComparer.Ordinal).ToArray(),
                     [$"{CollectionName}.{FolderFieldName}"],
                     AtomicReplaceSupported: true,
-                    "Update Penumbra LocalModData folder mappings in mod_data.db.")
+                    "Update Penumbra LocalModData folder mappings in mod_data.db."),
+                new DryRunFileChange(
+                    organizationState.OrganizationPath,
+                    PenumbraWriteTargetKind.OrganizationJson,
+                    "Folders",
+                    organizationState.SourceFile.Sha256,
+                    organizationState.SourceFile.Length,
+                    organizationHash,
+                    organizationBytes.LongLength,
+                    Convert.ToBase64String(organizationBytes),
+                    finalFolders.OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase).ToArray(),
+                    ["Folders", "Separators"],
+                    AtomicReplaceSupported: true,
+                    "Rebuild Penumbra mod_filesystem\\organization.json to match the planned LocalModData folder assignments.")
             ];
         }
         finally
@@ -178,7 +188,7 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         if (!File.Exists(databasePath))
             throw new InvalidOperationException("The authoritative Penumbra state file mod_data.db is missing.");
 
-        var entries = new Dictionary<string, PenumbraModDataEntry>(StringComparer.Ordinal);
+        var entries = new Dictionary<string, PenumbraModDataEntry>(StringComparer.OrdinalIgnoreCase);
         var fingerprintInput = new StringBuilder();
         var notes = new List<string>();
         var differenceKind = SchemaDifferenceKind.None;
@@ -227,6 +237,41 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         return new PenumbraModDataState(databasePath, sourceFile, schemaFingerprint, entries, entries.Count);
     }
 
+    internal static void ApplyExpectedDatabaseChanges(
+        string databasePath,
+        IReadOnlyList<DryRunPlanEntry> changedEntries,
+        CancellationToken cancellationToken)
+    {
+        using var db = new LiteDatabase($"Filename={databasePath};Connection=Direct");
+        var collection = db.GetCollection(CollectionName);
+        if (!db.BeginTrans())
+            throw new InvalidOperationException("Could not start the expected-result LiteDB transaction.");
+
+        try
+        {
+            foreach (var entry in changedEntries.OrderBy(entry => entry.RecordKey, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var document = collection.FindById(entry.RecordKey)
+                    ?? throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} is missing.");
+                if (!document.TryGetValue(FolderFieldName, out var folderValue) || folderValue.Type != BsonType.String)
+                    throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} has an invalid Folder field.");
+
+                document[FolderFieldName] = entry.ProposedVirtualFolder;
+                if (!collection.Update(document))
+                    throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} could not be updated.");
+            }
+
+            db.Commit();
+            db.Checkpoint();
+        }
+        catch
+        {
+            db.Rollback();
+            throw;
+        }
+    }
+
     private static DryRunSourceFileSnapshot BuildSourceFileSnapshot(string path, string fingerprintInput)
     {
         var bytes = File.ReadAllBytes(path);
@@ -245,7 +290,7 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         var changedLookup = changedEntries.ToDictionary(entry => entry.RecordKey, StringComparer.Ordinal);
         using var db = new LiteDatabase($"Filename={updatedDatabasePath};Connection=Direct");
         var collection = db.GetCollection(CollectionName);
-        var updated = collection.FindAll().ToDictionary(doc => doc["_id"].AsString, doc => new BsonDocument(doc), StringComparer.Ordinal);
+        var updated = collection.FindAll().ToDictionary(doc => doc["_id"].AsString, doc => new BsonDocument(doc), StringComparer.OrdinalIgnoreCase);
 
         if (updated.Count != originalState.RecordCount)
             throw new InvalidOperationException("The expected-result copy changed the authoritative record count.");

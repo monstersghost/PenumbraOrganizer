@@ -161,8 +161,8 @@ public sealed class ControlledLiveTestAndRecoveryTests
         var history = await context.HistoryService.GetOperationsAsync(CancellationToken.None);
 
         history.Single(entry => entry.OperationId == operation.OperationId).ObservationStatus.Should().Be(PenumbraUiObservationStatus.AppearedAfterReloadOrRestart);
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
-        plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.OrganizationJsonPath);
     }
 
     [Fact]

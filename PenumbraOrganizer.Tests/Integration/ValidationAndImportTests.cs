@@ -17,20 +17,20 @@ using PenumbraOrganizer.Tests.Fixtures;
 public sealed class ValidationAndImportTests
 {
     [Fact]
-    public async Task OrganizationJson_IsIgnoredForAuthoritativeMapping_AndNoWriteTargetsPointToIt()
+    public async Task OrganizationJson_IsPairedWithLocalModData_ForWritablePlans()
     {
         using var context = await ValidationContext.CreateAsync();
         context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
         context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
-        context.Fixture.WriteOrganizationJson("""{"Folders":[{"Name":"Stale/Presentation","Identifier":"Mapped Mod"}]}""");
+        context.Fixture.WriteOrganizationJson("""{"Folders":{"Current/FromDb":{"Existing":true}},"Separators":{}}""");
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
         var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
         context.Inventory!.Mods.Single().CurrentVirtualFolder.Should().Be("Current/FromDb");
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
-        plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.OrganizationJsonPath);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed class ValidationAndImportTests
             new RealInstallationValidationOptions(Authorized: true, CreateVerifiedBackup: false),
             CancellationToken.None);
 
-        result.Plan.FileChanges.Should().ContainSingle();
+        result.Plan.FileChanges.Should().HaveCount(2);
         HashFile(context.Fixture.ModDataDbPath).Should().Be(beforeHash);
         Directory.Exists(context.BackupsRoot).Should().BeTrue();
         Directory.EnumerateDirectories(context.BackupsRoot).Should().BeEmpty();
