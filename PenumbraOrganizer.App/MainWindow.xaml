@@ -504,8 +504,6 @@
                                         <DataGridTextColumn Header="Creator" Binding="{Binding EffectiveCreator, UpdateSourceTrigger=PropertyChanged}" Width="1.2*" />
                                         <DataGridTextColumn Header="Type" Binding="{Binding DetectedType, UpdateSourceTrigger=PropertyChanged}" Width="1.1*" />
                                         <DataGridCheckBoxColumn Header="Protected" Binding="{Binding Protected}" Width="95" />
-                                        <DataGridCheckBoxColumn Header="Fav" Binding="{Binding Favorite, UpdateSourceTrigger=PropertyChanged}" Width="50" />
-                                        <DataGridTextColumn Header="Edits" Binding="{Binding MetadataSummary}" Width="130" IsReadOnly="True" />
                                         <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
                                     </DataGrid.Columns>
                                 </DataGrid>
@@ -518,7 +516,6 @@
                                     <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding EditMetadataCommand}" Content="Edit Metadata…" MinWidth="135" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                             </Grid>
                         </Border>

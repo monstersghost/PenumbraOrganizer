@@ -1997,11 +1997,13 @@ public sealed class MainViewModel : ObservableObject
             })
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
-        var metadataEdits = Mods
-            .Select(row => row.BuildMetadataEdit())
-            .Where(edit => edit is not null)
-            .Select(edit => edit!)
-            .ToArray();
+
+        // TODO(metadata-editing): per-mod metadata editing (meta.json / mod_data favorite, tags,
+        // note) is DISABLED for the 0.2.0-beta release. Editing a mod's favorite corrupted the mod
+        // in Penumbra, so we no longer emit any meta.json / mod_data writes. The engine
+        // (PenumbraMetadataWriter, ModMetadataEdit, the dialog) and its tests are kept for a future
+        // fix; re-enable by collecting row.BuildMetadataEdit() here and restoring the UI entries.
+        IReadOnlyList<ModMetadataEdit>? metadataEdits = null;
         var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
         var session = BuildSessionDocument();
         return new ProposalSnapshot(
