@@ -204,4 +204,7 @@ It does not expose:
 * public rollback execution
 * force restore
 
-Live Apply is now guarded from the Review Changes workflow, but only for the proven `mod_data.db` `LocalModData.Folder` target.
+Live Apply is now guarded from the Review Changes workflow, for the proven file-based targets:
+`sort_order.json` virtual-folder organization plus per-mod `meta.json` / `mod_data/<id>.json`
+metadata edits. A single operation can back up and roll back all of these files together (N-file
+backup).
