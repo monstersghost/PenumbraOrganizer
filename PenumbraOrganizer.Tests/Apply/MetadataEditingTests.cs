@@ -165,6 +165,37 @@ public sealed class MetadataEditingTests
     }
 
     [Fact]
+    public async Task LocalDataEdit_WhenModDataFileAbsent_MaterializesBaselineAndApplies()
+    {
+        using var context = await Context.CreateAsync();
+        context.Fixture.CreateMod("NoLocal", """{"FileVersion":3,"Name":"NoLocal","Author":"A"}""");
+        context.Fixture.WriteModData(("NoLocal", "Folder"));
+        // Deliberately do NOT write a mod_data/<id>.json file for this mod.
+        await context.ScanAsync();
+        File.Exists(context.Fixture.LocalModDataPathOf("NoLocal")).Should().BeFalse();
+
+        var snapshot = context.BuildSnapshotWithMetadata(
+            Array.Empty<(string, string)>(),
+            new ModMetadataEdit("NoLocal", Favorite: true, Note: "added"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        plan.ApplyPermitted.Should().BeTrue();
+        plan.FileChanges.Should().ContainSingle(change => change.WriteTargetKind == PenumbraWriteTargetKind.LocalModDataJson);
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+        result.Status.Should().Be(ApplyStatus.Completed);
+
+        using var document = JsonDocument.Parse(context.Fixture.ReadLocalModData("NoLocal"));
+        document.RootElement.GetProperty("Favorite").GetBoolean().Should().BeTrue();
+        document.RootElement.GetProperty("Note").GetString().Should().Be("added");
+
+        // Rollback returns the file to its materialized empty baseline.
+        var rollback = await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+        rollback.Status.Should().Be(RollbackTransactionStatus.Completed);
+        JsonDocument.Parse(context.Fixture.ReadLocalModData("NoLocal")).RootElement.GetProperty("Favorite").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
     public void SnapshotIdentity_ChangesWhenMetadataEditChanges()
     {
         var proposals = new[]
