@@ -181,7 +181,26 @@ public sealed class OrganizerSessionDocument
 
     [JsonPropertyName("mods")]
     public required IReadOnlyList<OrganizerSessionMod> Mods { get; init; }
+
+    [JsonPropertyName("metadataEdits")]
+    public IReadOnlyList<OrganizerSessionMetadataEdit> MetadataEdits { get; init; } = Array.Empty<OrganizerSessionMetadataEdit>();
 }
+
+/// <summary>
+/// A pending metadata edit persisted in a saved session. Mirrors <see cref="ModMetadataEdit"/>:
+/// each field is null when unchanged from the scanned value.
+/// </summary>
+public sealed record OrganizerSessionMetadataEdit(
+    [property: JsonPropertyName("stableScanId")] string StableScanId,
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("author")] string? Author,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("version")] string? Version,
+    [property: JsonPropertyName("website")] string? Website,
+    [property: JsonPropertyName("modTags")] IReadOnlyList<string>? ModTags,
+    [property: JsonPropertyName("favorite")] bool? Favorite,
+    [property: JsonPropertyName("localTags")] IReadOnlyList<string>? LocalTags,
+    [property: JsonPropertyName("note")] string? Note);
 
 public sealed record OrganizerSessionFolder(
     [property: JsonPropertyName("path")] string Path,

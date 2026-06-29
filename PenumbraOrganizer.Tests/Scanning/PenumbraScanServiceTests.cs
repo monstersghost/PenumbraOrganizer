@@ -82,6 +82,39 @@ public sealed class PenumbraScanServiceTests
     }
 
     [Fact]
+    public async Task ScanAsync_ReadsLocalModData_FavoriteTagsAndNote()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod("Fav Mod", """{"FileVersion":3,"Name":"Fav Mod","Author":"Author"}""");
+        fixture.CreateMod("Plain Mod", """{"FileVersion":3,"Name":"Plain Mod"}""");
+        fixture.WriteModData(("Fav Mod", "Folder"), ("Plain Mod", "Folder"));
+        fixture.WriteLocalModData("Fav Mod",
+            """{"FileVersion":3,"ImportDate":1,"LocalTags":["cute","wip"],"Note":"keep me","Favorite":true}""");
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath, fixture.PenumbraConfigPath, fixture.ModRoot,
+            fixture.PluginAssemblyPath, fixture.PluginManifestPath, "1.6.1.10",
+            DiscoveryConfidence.High, Array.Empty<DiscoveryEvidence>(), Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var fav = inventory.Mods.Single(m => m.StableScanId == "Fav Mod");
+        fav.Favorite.Should().BeTrue();
+        fav.LocalTags.Should().Equal("cute", "wip");
+        fav.Note.Should().Be("keep me");
+        fav.HasLocalData.Should().BeTrue();
+
+        var plain = inventory.Mods.Single(m => m.StableScanId == "Plain Mod");
+        plain.Favorite.Should().BeFalse();
+        plain.LocalTags.Should().BeEmpty();
+        plain.Note.Should().BeEmpty();
+        plain.HasLocalData.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ScanAsync_ModWithoutSortOrderEntry_IsAtRootWithoutWarning()
     {
         using var fixture = new TemporaryPenumbraFixture();

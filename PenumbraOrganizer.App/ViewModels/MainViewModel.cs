@@ -154,6 +154,7 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand = new RelayCommand(_ => ResetAllVisibleToCurrentFolder(), _ => FilteredMods.Cast<object>().Any());
         MarkSelectedProtectedCommand = new RelayCommand(_ => MarkSelectedProtected(), _ => SelectedOrganizerMods.Count > 0);
         UnprotectSelectedCommand = new RelayCommand(_ => UnprotectSelected(), _ => SelectedOrganizerMods.Count > 0);
+        EditMetadataCommand = new RelayCommand(_ => EditSelectedMetadata(), _ => SelectedOrganizerMods.Count > 0);
         RenameFolderCommand = new RelayCommand(_ => RenameSelectedFolder(), _ => SelectedProposedFolder is not null && !string.IsNullOrWhiteSpace(RenameFolderName));
         DeleteEmptyFolderCommand = new RelayCommand(_ => DeleteSelectedEmptyFolder(), _ => SelectedProposedFolder is not null);
         SaveSessionCommand = new AsyncRelayCommand(SaveSessionAsync, () => _inventory is not null);
@@ -196,6 +197,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetAllVisibleToCurrentFolderCommand { get; }
     public RelayCommand MarkSelectedProtectedCommand { get; }
     public RelayCommand UnprotectSelectedCommand { get; }
+    public RelayCommand EditMetadataCommand { get; }
     public RelayCommand RenameFolderCommand { get; }
     public RelayCommand DeleteEmptyFolderCommand { get; }
     public AsyncRelayCommand SaveSessionCommand { get; }
@@ -574,6 +576,7 @@ public sealed class MainViewModel : ObservableObject
             {
                 var row = new ModRowViewModel(mod);
                 row.PropertyChanged += ModRowPropertyChanged;
+                row.MetadataEdited += OnRowMetadataEdited;
                 Mods.Add(row);
             }
 
@@ -1232,6 +1235,38 @@ public sealed class MainViewModel : ObservableObject
             RefreshOrganizerViews();
     }
 
+    private void OnRowMetadataEdited()
+    {
+        // A staged metadata change makes any existing dry run stale; the edit is written only
+        // through the standard Backup and Apply path.
+        InvalidateDryRunState("Mod metadata edits changed.");
+        DebouncedSaveSession();
+    }
+
+    private void EditSelectedMetadata()
+    {
+        var row = SelectedOrganizerMods.FirstOrDefault();
+        if (row is null)
+            return;
+
+        if (SelectedOrganizerMods.Count > 1)
+            ProgressMessage = $"Editing metadata for {row.Name}. Select a single mod to edit a different one.";
+
+        var dialog = new ModMetadataDialog(row)
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        if (dialog.ShowDialog() != true)
+            return;
+
+        // The dialog committed edits live; surface them and refresh review state.
+        AppendLog(row.HasMetadataEdit
+            ? $"Staged metadata edits for {row.Name}: {row.MetadataSummary}."
+            : $"Cleared metadata edits for {row.Name}.");
+        RefreshReviewChanges();
+        RefreshOrganizerViews();
+    }
+
     private void ResetOrganizerHistory()
     {
         _undoStack.Clear();
@@ -1248,6 +1283,7 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand.RaiseCanExecuteChanged();
         MarkSelectedProtectedCommand.RaiseCanExecuteChanged();
         UnprotectSelectedCommand.RaiseCanExecuteChanged();
+        EditMetadataCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteEmptyFolderCommand.RaiseCanExecuteChanged();
     }
@@ -1346,22 +1382,42 @@ public sealed class MainViewModel : ObservableObject
                 row.Proposal.OrganizerTypeLabel,
                 row.Proposal.Source,
                 row.Proposal.NeedsReview)).ToArray(),
+            MetadataEdits = Mods
+                .Select(row => (row.StableScanId, Edit: row.BuildMetadataEdit()))
+                .Where(item => item.Edit is not null)
+                .Select(item => new OrganizerSessionMetadataEdit(
+                    item.StableScanId,
+                    item.Edit!.Name,
+                    item.Edit.Author,
+                    item.Edit.Description,
+                    item.Edit.Version,
+                    item.Edit.Website,
+                    item.Edit.ModTags,
+                    item.Edit.Favorite,
+                    item.Edit.LocalTags,
+                    item.Edit.Note))
+                .ToArray(),
         };
     }
 
     private void RestoreSession(OrganizerSessionDocument session)
     {
         var savedById = session.Mods.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+        var editsById = session.MetadataEdits.ToDictionary(edit => edit.StableScanId, StringComparer.Ordinal);
         foreach (var row in Mods)
         {
-            if (!savedById.TryGetValue(row.StableScanId, out var saved))
-                continue;
-            row.Proposal.ProposedVirtualFolder = saved.ProposedVirtualFolder;
-            row.Proposal.Protected = saved.Protected;
-            row.Proposal.OrganizerCreatorLabel = saved.OrganizerCreatorLabel;
-            row.Proposal.OrganizerTypeLabel = saved.OrganizerTypeLabel;
-            row.Proposal.Source = saved.ProposalSource;
-            row.Proposal.NeedsReview = saved.NeedsReview;
+            if (savedById.TryGetValue(row.StableScanId, out var saved))
+            {
+                row.Proposal.ProposedVirtualFolder = saved.ProposedVirtualFolder;
+                row.Proposal.Protected = saved.Protected;
+                row.Proposal.OrganizerCreatorLabel = saved.OrganizerCreatorLabel;
+                row.Proposal.OrganizerTypeLabel = saved.OrganizerTypeLabel;
+                row.Proposal.Source = saved.ProposalSource;
+                row.Proposal.NeedsReview = saved.NeedsReview;
+            }
+
+            if (editsById.TryGetValue(row.StableScanId, out var savedEdit))
+                row.ApplyRestoredMetadata(savedEdit);
         }
 
         _organizerFolders.Clear();
@@ -1650,15 +1706,21 @@ public sealed class MainViewModel : ObservableObject
             })
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
+        var metadataEdits = Mods
+            .Select(row => row.BuildMetadataEdit())
+            .Where(edit => edit is not null)
+            .Select(edit => edit!)
+            .ToArray();
         var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
         var session = BuildSessionDocument();
         return new ProposalSnapshot(
-            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
+            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences, metadataEdits),
             OrganizerSessionService.BuildSessionIdentity(session),
             preferences,
             proposals,
             folders,
-            validation);
+            validation,
+            metadataEdits);
     }
 
     private ProposalSnapshot BuildActiveProposalSnapshot()

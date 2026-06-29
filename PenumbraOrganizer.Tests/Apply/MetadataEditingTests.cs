@@ -115,6 +115,79 @@ public sealed class MetadataEditingTests
         JsonDocument.Parse(context.Fixture.ReadLocalModData("Combo")).RootElement.GetProperty("Favorite").GetBoolean().Should().BeFalse();
     }
 
+    [Fact]
+    public async Task NameEdit_OnPlacedMod_RewritesSortOrderDisplayLeaf()
+    {
+        using var context = await Context.CreateAsync();
+        context.Fixture.CreateMod("Placed", """{"FileVersion":3,"Name":"Old Name","Author":"A"}""");
+        context.Fixture.WriteModData(("Placed", "Clothing"));
+        await context.ScanAsync();
+
+        // Name edit only, no folder move: the mod stays in "Clothing" but its display leaf changes.
+        var snapshot = context.BuildSnapshotWithMetadata(
+            Array.Empty<(string, string)>(),
+            new ModMetadataEdit("Placed", Name: "New Name"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.FileChanges.Select(c => c.WriteTargetKind).Should().Contain(PenumbraWriteTargetKind.SortOrderJson);
+        plan.FileChanges.Select(c => c.WriteTargetKind).Should().Contain(PenumbraWriteTargetKind.ModMetaJson);
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        // Folder unchanged, leaf rewritten to the new name; meta.json Name updated too.
+        context.Fixture.CurrentFolderOf("Placed").Should().Be("Clothing");
+        context.Fixture.CurrentSortPathOf("Placed").Should().Be("Clothing/New Name");
+        JsonDocument.Parse(context.Fixture.ReadMetaJson("Placed")).RootElement.GetProperty("Name").GetString().Should().Be("New Name");
+    }
+
+    [Fact]
+    public async Task NameEdit_OnRootMod_DoesNotCreateSortOrderEntry()
+    {
+        using var context = await Context.CreateAsync();
+        context.Fixture.CreateMod("Rooted", """{"FileVersion":3,"Name":"Root Old","Author":"A"}""");
+        // No sort_order entry: the mod sits at the root.
+        context.Fixture.WriteSortOrder();
+        await context.ScanAsync();
+
+        var snapshot = context.BuildSnapshotWithMetadata(
+            Array.Empty<(string, string)>(),
+            new ModMetadataEdit("Rooted", Name: "Root New"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        // Only meta.json changes; no sort_order leaf is fabricated for a root mod.
+        plan.FileChanges.Select(c => c.WriteTargetKind).Should().NotContain(PenumbraWriteTargetKind.SortOrderJson);
+        plan.FileChanges.Select(c => c.WriteTargetKind).Should().Contain(PenumbraWriteTargetKind.ModMetaJson);
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+        context.Fixture.CurrentSortPathOf("Rooted").Should().BeNull();
+    }
+
+    [Fact]
+    public void SnapshotIdentity_ChangesWhenMetadataEditChanges()
+    {
+        var proposals = new[]
+        {
+            new OrganizerModProposal
+            {
+                StableScanId = "Mod", Name = "Mod", CurrentVirtualFolder = "Folder",
+                ProposedVirtualFolder = "Folder", OriginalCreator = "A",
+            },
+        };
+        var folders = new[] { new OrganizerFolder("Folder", true, false) };
+        var preferences = OrganizationPreferences.DefaultManual;
+
+        var baseline = OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences);
+        var withEdit = OrganizerSessionService.BuildProposalSnapshotIdentity(
+            proposals, folders, preferences, new[] { new ModMetadataEdit("Mod", Favorite: true) });
+        var withDifferentEdit = OrganizerSessionService.BuildProposalSnapshotIdentity(
+            proposals, folders, preferences, new[] { new ModMetadataEdit("Mod", Note: "x") });
+
+        withEdit.Should().NotBe(baseline);
+        withDifferentEdit.Should().NotBe(withEdit);
+    }
+
     private sealed class Context : IDisposable
     {
         private Context(TemporaryPenumbraFixture fixture)
