@@ -67,7 +67,7 @@ public sealed class ModRowViewModel : ObservableObject
             ProposedVirtualFolder = mod.CurrentVirtualFolder,
             OriginalCreator = mod.Author,
             OrganizerCreatorLabel = string.IsNullOrWhiteSpace(mod.Author) ? "Unknown creator" : mod.Author,
-            OrganizerTypeLabel = DetectType(mod),
+            OrganizerTypeLabel = WorkbookCategoryCatalog.Detect(mod).Name,
             Protected = mod.Protected,
             OriginalProtected = mod.Protected,
             Source = OrganizerProposalSource.PreservedCurrent,
@@ -82,7 +82,7 @@ public sealed class ModRowViewModel : ObservableObject
         ContentSignalSummary = mod.ContentSignalSummary;
         CollectionCount = mod.CollectionStates.Count;
         WarningSummary = mod.Warnings.Count == 0 ? string.Empty : string.Join(" | ", mod.Warnings.Take(3));
-        _detectedType = DetectType(mod);
+        _detectedType = WorkbookCategoryCatalog.Detect(mod).Name;
     }
 
     public OrganizerModProposal Proposal { get; }
@@ -348,23 +348,4 @@ public sealed class ModRowViewModel : ObservableObject
             _ => source.ToString(),
         };
 
-    private static string DetectType(ModScanResult mod)
-    {
-        var haystack = string.Join(' ', mod.Tags.Append(mod.ContentSignalSummary).Append(mod.Name));
-        if (haystack.Contains("hair", StringComparison.OrdinalIgnoreCase))
-            return "Hair";
-        if (haystack.Contains("animation", StringComparison.OrdinalIgnoreCase) || haystack.Contains("pap", StringComparison.OrdinalIgnoreCase))
-            return "Animation";
-        if (haystack.Contains("accessory", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("horn", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("ear", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("tail", StringComparison.OrdinalIgnoreCase))
-            return "Accessory";
-        if (haystack.Contains("cloth", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("outfit", StringComparison.OrdinalIgnoreCase) ||
-            haystack.Contains("dress", StringComparison.OrdinalIgnoreCase))
-            return "Clothing";
-
-        return "Unknown type";
-    }
 }
