@@ -87,7 +87,6 @@ public sealed class MainViewModel : ObservableObject
     private ICollectionView _changedMods = null!;
     private bool _suspendOrganizerRefresh;
     private bool _suspendSelectedFolderRefresh;
-    private bool _suspendCollectionViewRefresh;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -1318,9 +1317,6 @@ public sealed class MainViewModel : ObservableObject
     // Recreating the view recovers cleanly, so guard every refresh and rebuild on NRE.
     private void RefreshCollectionViews()
     {
-        if (_suspendCollectionViewRefresh)
-            return;
-
         try
         {
             FilteredMods.Refresh();
@@ -1339,9 +1335,6 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshSelectedFolderView()
     {
-        if (_suspendCollectionViewRefresh)
-            return;
-
         try
         {
             SelectedFolderMods.Refresh();
