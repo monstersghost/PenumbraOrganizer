@@ -1754,18 +1754,30 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildDryRunStatus(DryRunPlan plan)
     {
-        var fileChange = plan.FileChanges.SingleOrDefault();
-        if (fileChange is null)
-            return "No supported Penumbra virtual-folder changes need to be written.";
+        if (plan.FileChanges.Count == 0)
+            return "No supported Penumbra changes need to be written.";
 
         var controlledSummary = _controlledTestRequest is null
             ? "Workflow: standard organization review"
             : $"Workflow: Controlled Test Apply ({_controlledTestRequest.StableScanIds.Count} selected mod(s) -> {_controlledTestRequest.TestFolderName})";
         return
             $"{controlledSummary}{Environment.NewLine}" +
-            $"Authoritative target: {Path.GetFileName(fileChange.TargetPath)}{Environment.NewLine}" +
+            $"Authoritative targets: {DescribeWriteTargets(plan.FileChanges)}{Environment.NewLine}" +
             $"Affected mods: {plan.Summary.AffectedModCount}{Environment.NewLine}" +
+            $"Write operations: {plan.FileChanges.Count}{Environment.NewLine}" +
             $"Status: {plan.Validation.Status}";
+    }
+
+    private static string DescribeWriteTargets(IReadOnlyList<DryRunFileChange> fileChanges)
+    {
+        var parts = new List<string>();
+        var sortCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
+        var metaCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.ModMetaJson);
+        var localCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.LocalModDataJson);
+        if (sortCount > 0) parts.Add("sort_order.json (organization)");
+        if (metaCount > 0) parts.Add($"{metaCount} meta.json file(s)");
+        if (localCount > 0) parts.Add($"{localCount} mod_data file(s)");
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
     private string BuildApplyChecklist()
@@ -1824,7 +1836,7 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildApplyConfirmationMessage()
     {
-        var target = _currentDryRunPlan?.FileChanges.SingleOrDefault();
+        var fileChanges = _currentDryRunPlan?.FileChanges ?? Array.Empty<DryRunFileChange>();
         var operationFolder = _preparedApplyOperation is null
             ? "Backup not prepared"
             : Path.Combine(
@@ -1839,21 +1851,32 @@ public sealed class MainViewModel : ObservableObject
             .Select(row => $"{row.ModName}: {row.CurrentVirtualFolder} -> {row.ProposedVirtualFolder}")
             .ToArray();
         var exampleBlock = examples.Length == 0
-            ? "No supported changes were found."
+            ? "No folder moves were found."
             : string.Join(Environment.NewLine, examples) +
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
+        var metadataMods = MetadataEditedMods();
+        var metadataBlock = metadataMods.Count == 0
+            ? string.Empty
+            : $"{Environment.NewLine}{Environment.NewLine}Metadata edits ({metadataMods.Count} mod(s)):{Environment.NewLine}" +
+              string.Join(Environment.NewLine, metadataMods.Take(8).Select(row => $"{row.Name}: {row.MetadataSummary}")) +
+              (metadataMods.Count > 8 ? $"{Environment.NewLine}+ {metadataMods.Count - 8} more" : string.Empty);
+
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
+            $"{metadataMods.Count} mod(s) will have metadata edits applied.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
-            $"Planned changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
-            "Authoritative target: sort_order.json (virtual-folder organization)" + Environment.NewLine +
-            $"Target file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
+            $"Planned folder changes:{Environment.NewLine}{exampleBlock}{metadataBlock}{Environment.NewLine}{Environment.NewLine}" +
+            $"Authoritative targets: {DescribeWriteTargets(fileChanges)}{Environment.NewLine}" +
+            $"Write operations: {fileChanges.Count}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
             $"Rollback readiness: {(_preparedApplyOperation is null ? "Will be prepared before writing" : "Prepared")}{Environment.NewLine}{Environment.NewLine}" +
             "Physical mod folders and mod files will not be moved." + Environment.NewLine +
             "FFXIV must be closed before Apply.";
     }
+
+    private IReadOnlyList<ModRowViewModel> MetadataEditedMods()
+        => Mods.Where(row => row.HasMetadataEdit).ToArray();
 
     private string BuildApplyResultSummary(ApplyResult applyResult, PostApplyVerificationResult? verification)
     {
