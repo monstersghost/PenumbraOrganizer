@@ -36,6 +36,31 @@ public enum OrganizerRowStatus
     StaleScan,
 }
 
+/// <summary>
+/// A proposed edit to a mod's metadata. Each field is null when that value should be left
+/// unchanged. Author fields target the mod's <c>meta.json</c>; local fields target the per-user
+/// <c>mod_data/&lt;id&gt;.json</c>.
+/// </summary>
+public sealed record ModMetadataEdit(
+    string StableScanId,
+    // meta.json (author metadata)
+    string? Name = null,
+    string? Author = null,
+    string? Description = null,
+    string? Version = null,
+    string? Website = null,
+    IReadOnlyList<string>? ModTags = null,
+    // mod_data/<id>.json (per-user local data)
+    bool? Favorite = null,
+    IReadOnlyList<string>? LocalTags = null,
+    string? Note = null)
+{
+    public bool TouchesMetaJson => Name is not null || Author is not null || Description is not null
+        || Version is not null || Website is not null || ModTags is not null;
+
+    public bool TouchesLocalData => Favorite is not null || LocalTags is not null || Note is not null;
+}
+
 public sealed class OrganizerModProposal
 {
     public required string StableScanId { get; init; }

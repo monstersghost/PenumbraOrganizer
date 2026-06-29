@@ -94,7 +94,7 @@ public partial class ControlledTestDialog : Window, INotifyPropertyChanged
                $"Current folder: {SelectedCandidate.CurrentVirtualFolder}{Environment.NewLine}" +
                $"Current proposal: {SelectedCandidate.CurrentProposedFolder}{Environment.NewLine}" +
                $"Controlled test folder: {SelectedCandidate.ProposedTestFolder}{Environment.NewLine}" +
-               $"Authoritative target: mod_data.db / LocalModData.Folder{Environment.NewLine}" +
+               $"Authoritative target: sort_order.json (virtual-folder organization){Environment.NewLine}" +
                $"Target record key: {SelectedCandidate.RecordKey}{Environment.NewLine}" +
                $"Target path: {SelectedCandidate.TargetPath}{Environment.NewLine}" +
                $"Physical mod path: {SelectedCandidate.PhysicalDirectory}{Environment.NewLine}" +

@@ -590,6 +590,8 @@ public sealed class MainViewModel : ObservableObject
                     _organizerFolders.Add(new OrganizerFolder(node.Path, ManuallyCreated: false, node.Protected));
             }
 
+            SeedExistingEmptyFolders();
+
             ScanWarnings.Clear();
             foreach (var warning in _inventory.Warnings.Concat(_inventory.Mods.SelectMany(m => m.Warnings)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(w => w, StringComparer.OrdinalIgnoreCase))
                 ScanWarnings.Add(warning);
@@ -1305,6 +1307,21 @@ public sealed class MainViewModel : ObservableObject
         AppendLog("Discarded saved organizer session.");
     }
 
+    private void SeedExistingEmptyFolders()
+    {
+        if (_inventory is null)
+            return;
+
+        foreach (var path in _inventory.EmptyFolders)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                continue;
+            if (_organizerFolders.Any(folder => folder.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            _organizerFolders.Add(new OrganizerFolder(path, ManuallyCreated: true, Protected: false));
+        }
+    }
+
     private OrganizerSessionDocument BuildSessionDocument()
     {
         if (_inventory is null)
@@ -1350,6 +1367,10 @@ public sealed class MainViewModel : ObservableObject
         _organizerFolders.Clear();
         foreach (var folder in session.ProposedFolders)
             _organizerFolders.Add(new OrganizerFolder(folder.Path, folder.ManuallyCreated, folder.Protected));
+
+        // Never silently drop empty folders that still exist on disk just because an older
+        // saved session predates them; re-seed any that the restored session is missing.
+        SeedExistingEmptyFolders();
 
         InvalidateDryRunState("A saved organizer session was restored.");
         RefreshRowsFromProposals();
@@ -1732,7 +1753,7 @@ public sealed class MainViewModel : ObservableObject
                 : $"Apply finished with status {_latestApplyResult.Status}.";
 
         return _preparedApplyOperation.Preflight.Succeeded
-            ? "Ready to write supported virtual-folder changes to mod_data.db."
+            ? "Ready to write supported virtual-folder changes to sort_order.json."
             : string.Join(Environment.NewLine, _preparedApplyOperation.Preflight.Errors);
     }
 
@@ -1764,8 +1785,8 @@ public sealed class MainViewModel : ObservableObject
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
             $"Planned changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
-            "Authoritative target: mod_data.db / LocalModData.Folder" + Environment.NewLine +
-            $"Database file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
+            "Authoritative target: sort_order.json (virtual-folder organization)" + Environment.NewLine +
+            $"Target file: {target?.TargetPath ?? "Unknown"}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
             $"Rollback readiness: {(_preparedApplyOperation is null ? "Will be prepared before writing" : "Prepared")}{Environment.NewLine}{Environment.NewLine}" +
             "Physical mod folders and mod files will not be moved." + Environment.NewLine +
@@ -1872,9 +1893,9 @@ public sealed class MainViewModel : ObservableObject
     {
         return exception switch
         {
-            UnauthorizedAccessException => "Windows blocked access to mod_data.db." + Environment.NewLine + "No files were changed.",
+            UnauthorizedAccessException => "Windows blocked access to sort_order.json." + Environment.NewLine + "No files were changed.",
             IOException ioException when ioException.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
-                => "Penumbra's data is locked right now." + Environment.NewLine + "Close FFXIV and any tool that may be holding mod_data.db open, then try again.",
+                => "Penumbra's data is locked right now." + Environment.NewLine + "Close FFXIV and any tool that may be holding sort_order.json open, then try again.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("blocking process", StringComparison.OrdinalIgnoreCase)
                 => "FFXIV is currently running." + Environment.NewLine + "Close the game before applying changes.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("authoritative target", StringComparison.OrdinalIgnoreCase)
