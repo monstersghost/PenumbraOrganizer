@@ -143,6 +143,7 @@ public interface IPenumbraVirtualFolderWriter
     Task<IReadOnlyList<DryRunFileChange>> BuildExpectedFileChangesAsync(
         PenumbraInstallation installation,
         IReadOnlyList<DryRunPlanEntry> planEntries,
+        ProposalSnapshot proposalSnapshot,
         CancellationToken cancellationToken);
 }
 

@@ -30,45 +30,44 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
                 errors.Add($"The applied hash does not match the planned hash for {fileChange.TargetPath}.");
         }
 
-        var targetPath = plan.FileChanges.SingleOrDefault()?.TargetPath;
-        if (string.IsNullOrWhiteSpace(targetPath))
+        // Folder verification only applies when this operation actually changed the
+        // organization file. A metadata-only operation is fully verified by the per-file hash
+        // checks above.
+        var sortOrderChange = plan.FileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
+        if (sortOrderChange is null)
         {
-            errors.Add("The post-Apply verification plan does not identify an authoritative target.");
-            return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
+            return Task.FromResult(new PostApplyVerificationResult(
+                applyResult.OperationId, Succeeded: errors.Count == 0, 0, 0, errors, warnings));
         }
 
         PenumbraModDataState state;
         try
         {
-            state = PenumbraVirtualFolderWriter.LoadState(targetPath);
+            state = PenumbraVirtualFolderWriter.LoadState(sortOrderChange.TargetPath);
         }
         catch (Exception ex)
         {
-            errors.Add("The authoritative Penumbra database could not be reloaded after Apply: " + ex.Message);
+            errors.Add("The authoritative Penumbra organization file could not be reloaded after Apply: " + ex.Message);
             return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
         }
 
         foreach (var entry in plan.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!state.Entries.TryGetValue(entry.StableScanId, out var current))
-            {
-                errors.Add($"The authoritative entry for {entry.StableScanId} is missing after Apply.");
-                continue;
-            }
+            var currentFolder = state.CurrentFolderFor(entry.StableScanId);
 
             if (entry.RequiresWrite)
             {
-                if (!string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal))
+                if (!string.Equals(currentFolder, entry.ProposedVirtualFolder, StringComparison.Ordinal))
                     errors.Add($"The applied folder for {entry.StableScanId} does not match the planned folder.");
             }
             else if (entry.Protected)
             {
-                if (!string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
+                if (!string.Equals(currentFolder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
                     errors.Add($"Protected row {entry.StableScanId} changed unexpectedly.");
             }
             else if (entry.ValidationStatus == OrganizerRowStatus.Unchanged &&
-                     !string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
+                     !string.Equals(currentFolder, entry.CurrentVirtualFolder, StringComparison.Ordinal))
             {
                 errors.Add($"Unrelated row {entry.StableScanId} changed unexpectedly.");
             }
@@ -79,12 +78,10 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             Succeeded: errors.Count == 0,
             VerifiedChangedModCount: plan.Entries.Count(entry =>
                 entry.RequiresWrite &&
-                state.Entries.TryGetValue(entry.StableScanId, out var current) &&
-                string.Equals(current.Folder, entry.ProposedVirtualFolder, StringComparison.Ordinal)),
+                string.Equals(state.CurrentFolderFor(entry.StableScanId), entry.ProposedVirtualFolder, StringComparison.Ordinal)),
             VerifiedProtectedModCount: plan.Entries.Count(entry =>
                 entry.Protected &&
-                state.Entries.TryGetValue(entry.StableScanId, out var current) &&
-                string.Equals(current.Folder, entry.CurrentVirtualFolder, StringComparison.Ordinal)),
+                string.Equals(state.CurrentFolderFor(entry.StableScanId), entry.CurrentVirtualFolder, StringComparison.Ordinal)),
             Errors: errors,
             Warnings: warnings));
     }

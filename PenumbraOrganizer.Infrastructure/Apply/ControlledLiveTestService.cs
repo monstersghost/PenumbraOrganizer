@@ -38,7 +38,7 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
             {
                 proposalById.TryGetValue(mod.StableScanId, out var proposal);
                 var proposedFolder = string.IsNullOrWhiteSpace(normalizedFolder) ? options.TestFolderName : normalizedFolder;
-                var status = GetStatus(mod, proposal, state);
+                var status = GetStatus(mod, proposal);
                 return new ControlledTestCandidate(
                     mod.StableScanId,
                     mod.Name,
@@ -46,7 +46,7 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
                     proposal?.ProposedVirtualFolder ?? mod.CurrentVirtualFolder,
                     proposedFolder,
                     mod.PhysicalDirectory,
-                    state.DatabasePath,
+                    state.SourcePath,
                     mod.StableScanId,
                     status.Status,
                     status.Message,
@@ -128,11 +128,16 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
             throw new InvalidOperationException("At least one selected mod must move to a different Penumbra folder for a controlled live test.");
         }
 
-        var folders = proposals
-            .Select(proposal => proposal.ProposedVirtualFolder)
-            .Where(folder => !string.IsNullOrWhiteSpace(folder))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(folder => new OrganizerFolder(folder, ManuallyCreated: true, Protected: false))
+        // Preserve the base snapshot's folder set (which includes existing empty folders) and add
+        // the controlled test folder. Rebuilding from proposals alone would drop empty folders,
+        // which the authoritative writer would then delete from sort_order.json.
+        var folders = proposalSnapshot.Folders
+            .Concat(proposals
+                .Select(proposal => proposal.ProposedVirtualFolder)
+                .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                .Select(folder => new OrganizerFolder(folder, ManuallyCreated: true, Protected: false)))
+            .GroupBy(folder => folder.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToArray();
         var validation = _validationService.Validate(inventory, proposals, folders, proposalSnapshot.OrganizationPreferences);
 
@@ -147,8 +152,7 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
 
     private static (ControlledTestCandidateStatus Status, string Message) GetStatus(
         ModScanResult mod,
-        OrganizerModProposal? proposal,
-        PenumbraModDataState state)
+        OrganizerModProposal? proposal)
     {
         if (mod.Protected || proposal?.Protected == true || proposal?.OriginalProtected == true)
             return (ControlledTestCandidateStatus.Protected, "Protected mods stay in their current Penumbra folder.");
@@ -161,9 +165,8 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
             return (ControlledTestCandidateStatus.Ambiguous, "This mod has ambiguous identity signals in the current scan.");
         }
 
-        if (!state.Entries.ContainsKey(mod.StableScanId))
-            return (ControlledTestCandidateStatus.Unsupported, "No authoritative LocalModData record is available for this installed mod.");
-
+        // Under the sort_order.json model every installed mod is organizable (a mod with no
+        // entry simply lives at the root), so there is no "missing record" exclusion.
         return (ControlledTestCandidateStatus.Eligible, "Ready for a controlled live test.");
     }
 

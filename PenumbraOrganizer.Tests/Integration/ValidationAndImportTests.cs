@@ -30,7 +30,7 @@ public sealed class ValidationAndImportTests
         var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
         context.Inventory!.Mods.Single().CurrentVirtualFolder.Should().Be("Current/FromDb");
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.SortOrderPath);
         plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
     }
 
@@ -58,7 +58,7 @@ public sealed class ValidationAndImportTests
         context.Fixture.WriteModData(("Validation Mod", "Current/Folder"));
         await context.ScanAsync();
 
-        var beforeHash = HashFile(context.Fixture.ModDataDbPath);
+        var beforeHash = HashFile(context.Fixture.SortOrderPath);
         var snapshot = context.BuildSnapshot(("Validation Mod", "Target/Folder"));
         var result = await context.RealValidationService.ValidateAsync(
             context.Installation,
@@ -67,7 +67,7 @@ public sealed class ValidationAndImportTests
             CancellationToken.None);
 
         result.Plan.FileChanges.Should().ContainSingle();
-        HashFile(context.Fixture.ModDataDbPath).Should().Be(beforeHash);
+        HashFile(context.Fixture.SortOrderPath).Should().Be(beforeHash);
         Directory.Exists(context.BackupsRoot).Should().BeTrue();
         Directory.EnumerateDirectories(context.BackupsRoot).Should().BeEmpty();
     }
@@ -210,7 +210,7 @@ public sealed class ValidationAndImportTests
                 ApplyResult: null,
                 RealInstallationValidation: null,
                 Operations: Array.Empty<OperationHistoryEntry>(),
-                ActivityLog: $"Log path {context.Fixture.ModDataDbPath} under {context.Fixture.ModRoot}"),
+                ActivityLog: $"Log path {context.Fixture.SortOrderPath} under {context.Fixture.ModRoot}"),
             CancellationToken.None);
 
         File.Exists(summary.ZipPath).Should().BeTrue();
@@ -222,11 +222,11 @@ public sealed class ValidationAndImportTests
                 return reader.ReadToEnd();
             }));
 
-        combined.Should().NotContain(context.Fixture.ModDataDbPath.Replace('\\', '/'));
+        combined.Should().NotContain(context.Fixture.SortOrderPath.Replace('\\', '/'));
         combined.Should().NotContain(context.Fixture.ModRoot.Replace('\\', '/'));
         combined.Should().Contain("[penumbra-state]");
         combined.Should().Contain("[mod-library]");
-        combined.Should().NotContain("mod_data.db");
+        combined.Should().NotContain("sort_order.json");
     }
 
     [Fact]
