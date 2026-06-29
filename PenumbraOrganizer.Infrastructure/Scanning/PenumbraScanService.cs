@@ -43,12 +43,13 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         var duplicateNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var mods = new List<ModScanResult>(physicalDirectories.Count);
+        var modDataDirectory = Path.Combine(installation.ConfigDirectory, "mod_data");
 
         foreach (var physicalDirectory in physicalDirectories.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, duplicateNames);
+            var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, duplicateNames, modDataDirectory);
             if (mod is not null)
                 mods.Add(mod);
         }
@@ -78,7 +79,8 @@ public sealed class PenumbraScanService : IPenumbraScanService
         string physicalDirectory,
         IReadOnlyDictionary<string, string> dbFolders,
         IReadOnlyDictionary<string, IReadOnlyList<ModCollectionState>> collectionStatesByName,
-        IDictionary<string, int> duplicateNames)
+        IDictionary<string, int> duplicateNames,
+        string modDataDirectory)
     {
         var directoryName = Path.GetFileName(physicalDirectory);
         if (string.IsNullOrWhiteSpace(directoryName))
@@ -157,6 +159,8 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         collectionStatesByName.TryGetValue(name, out var collectionStates);
 
+        var localData = ReadLocalModData(modDataDirectory, directoryName, warnings);
+
         return new ModScanResult
         {
             StableScanId = directoryName,
@@ -169,6 +173,10 @@ public sealed class PenumbraScanService : IPenumbraScanService
             Website = website,
             Description = description,
             Tags = tags,
+            Favorite = localData.Favorite,
+            LocalTags = localData.LocalTags,
+            Note = localData.Note,
+            HasLocalData = localData.Exists,
             RecognizedMetadataFiles = recognized,
             UnknownMetadataFiles = unknown,
             MalformedMetadataFiles = malformed,
@@ -179,6 +187,30 @@ public sealed class PenumbraScanService : IPenumbraScanService
             SchemaFingerprints = schemaFingerprints,
             RawMetadata = new JsonReadOnlyMemory(rawFiles),
         };
+    }
+
+    private readonly record struct LocalModData(bool Exists, bool Favorite, IReadOnlyList<string> LocalTags, string Note);
+
+    private static LocalModData ReadLocalModData(string modDataDirectory, string stableScanId, ICollection<string> warnings)
+    {
+        var path = Path.Combine(modDataDirectory, stableScanId + ".json");
+        if (!File.Exists(path))
+            return new LocalModData(false, false, Array.Empty<string>(), string.Empty);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path, Encoding.UTF8));
+            var root = doc.RootElement;
+            var favorite = root.TryGetProperty("Favorite", out var fav)
+                           && (fav.ValueKind == JsonValueKind.True || fav.ValueKind == JsonValueKind.False)
+                           && fav.GetBoolean();
+            return new LocalModData(true, favorite, GetStringArray(root, "LocalTags"), GetString(root, "Note"));
+        }
+        catch (JsonException ex)
+        {
+            warnings.Add("Local mod data (mod_data) is damaged and was skipped: " + ex.Message);
+            return new LocalModData(false, false, Array.Empty<string>(), string.Empty);
+        }
     }
 
     private static List<CollectionInventory> LoadCollections(PenumbraInstallation installation, CancellationToken cancellationToken)

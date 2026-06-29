@@ -9,8 +9,8 @@ When explicitly triggered in the GUI, the app may:
 * detect the Penumbra state directory
 * detect the mod-library root
 * read the installed Penumbra version
-* scan installed mods from `mod_data.db`
-* map proposed changes to authoritative `LocalModData` records
+* scan installed mods and their `sort_order.json` virtual-folder entries
+* map proposed changes to authoritative `sort_order.json` entries (and any `meta.json` / `mod_data/<id>.json` metadata edits)
 * create a fresh immutable dry run
 * run exact-target permission checks
 * detect likely FFXIV/XIVLauncher/Dalamud blockers

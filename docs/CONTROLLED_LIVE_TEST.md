@@ -6,13 +6,12 @@
 
 It exists to validate the proven authoritative write path:
 
-* `mod_data.db`
-* collection `LocalModData`
-* field `Folder`
+* `sort_order.json` — the mod's entry in `Data` (folder + display leaf)
 
-It does not widen the write target.
+It does not widen the write target. (Metadata edits, when present, additionally touch the mod's
+`meta.json` / `mod_data/<id>.json`; the controlled test focuses on the folder move.)
 
-`mod_filesystem\organization.json` remains read-only and observational only.
+The legacy `mod_filesystem\organization.json` is not authoritative and is not written.
 
 ## Default workflow
 
@@ -35,7 +34,7 @@ It does not widen the write target.
 Selectable candidates must:
 
 * be chosen explicitly by the user
-* have an authoritative `LocalModData` record
+* have an authoritative `sort_order.json` entry (or be a root mod that will get one)
 * not be protected
 * not be flagged ambiguous by the current scan
 * not be unsupported for the narrow write path
@@ -68,7 +67,7 @@ The final modal must include:
 * selected mod count
 * current folders
 * proposed folders
-* authoritative target `mod_data.db / LocalModData.Folder`
+* authoritative target `sort_order.json`
 * verified backup location
 * rollback readiness
 * confirmation that physical mod files will not move
@@ -82,12 +81,12 @@ Buttons:
 
 ## Verification
 
-After Apply, the app re-reads `mod_data.db` and checks:
+After Apply, the app re-reads `sort_order.json` and checks:
 
 * selected rows now match the planned folder
 * unrelated rows remain unchanged
 * protected rows remain unchanged
-* the database still parses cleanly
+* the file still parses cleanly
 
 Success is not reported only because no exception occurred.
 

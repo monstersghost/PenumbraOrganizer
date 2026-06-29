@@ -181,6 +181,12 @@ public sealed class ModScanResult
     public string Website { get; init; } = string.Empty;
     public string Description { get; init; } = string.Empty;
     public IReadOnlyList<string> Tags { get; init; } = Array.Empty<string>();
+
+    // Per-user local data from mod_data/<id>.json. Absent file leaves these at their defaults.
+    public bool Favorite { get; init; }
+    public IReadOnlyList<string> LocalTags { get; init; } = Array.Empty<string>();
+    public string Note { get; init; } = string.Empty;
+    public bool HasLocalData { get; init; }
     public IReadOnlyList<string> RecognizedMetadataFiles { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> UnknownMetadataFiles { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> MalformedMetadataFiles { get; init; } = Array.Empty<string>();
@@ -223,15 +229,6 @@ public sealed record CompatibilityReport(
     string ScannedVersion,
     IReadOnlyList<SchemaFingerprint> SchemaFingerprints,
     IReadOnlyList<string> Warnings);
-
-public sealed record InventoryExportResult(
-    string ExportFolder,
-    string InventoryPath,
-    string InstructionsPath,
-    string HowToUsePath,
-    string ZipPath,
-    string SourceExportId,
-    int ModRowCount);
 
 public sealed record OrganizationRuleCondition(string Field, string Operator, string Value);
 

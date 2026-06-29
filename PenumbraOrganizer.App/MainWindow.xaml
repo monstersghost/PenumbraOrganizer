@@ -111,6 +111,12 @@
                                             MinWidth="150"
                                             Height="40"
                                             Margin="0,0,10,10" />
+                                    <Button Command="{Binding BackupNowCommand}"
+                                            Content="Back Up My Penumbra"
+                                            MinWidth="160"
+                                            Height="40"
+                                            Margin="0,0,10,10"
+                                            ToolTip="Save a full copy of your Penumbra configuration (sort_order.json, mod_data, collections) before making changes." />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -285,8 +291,8 @@
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Creator then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve and clean" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export inventory for AI" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding ImportAiProposalCommand}" Content="Import AI proposal" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ExportWorkbookCommand}" Content="Export Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ImportWorkbookCommand}" Content="Import Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                             </WrapPanel>
                             <TextBlock Margin="0,10,0,0"
                                        Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
@@ -819,16 +825,29 @@
                                 CornerRadius="8"
                                 Padding="18">
                             <StackPanel>
-                                <TextBlock Text="AI Proposal Import"
+                                <TextBlock Text="Workbook Export / Import"
                                            FontSize="18"
                                            FontWeight="SemiBold" />
                                 <TextBlock Margin="0,12,0,0"
-                                           Text="{Binding AiImportStatus}"
+                                           Text="Export a spreadsheet, edit the mod type, protected, and destination columns, then import it back to stage your changes for review."
+                                           TextWrapping="Wrap"
+                                           Foreground="#FF556171" />
+                                <TextBlock Margin="0,8,0,0"
+                                           Text="{Binding WorkbookCategorySummary}"
+                                           TextWrapping="Wrap"
+                                           Foreground="#FF556171" />
+                                <TextBlock Margin="0,10,0,0"
+                                           Text="{Binding WorkbookStatus}"
                                            TextWrapping="Wrap" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Text="{Binding WorkbookImportStatus}"
+                                           TextWrapping="Wrap"
+                                           Foreground="#FF245C9A" />
                                 <WrapPanel Margin="0,12,0,0">
-                                    <Button Command="{Binding CreateAiReviewPackageCommand}" Content="Export Inventory Package" MinWidth="165" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ImportAiProposalCommand}" Content="Import Proposal JSON" MinWidth="155" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding OpenExportFolderCommand}" Content="Open Export Folder" MinWidth="145" Height="34" />
+                                    <Button Command="{Binding ExportWorkbookCommand}" Content="Export Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding ImportWorkbookCommand}" Content="Import Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding OpenWorkbookCommand}" Content="Open Workbook" MinWidth="135" Height="34" Margin="0,0,10,10" />
+                                    <Button Command="{Binding OpenWorkbookFolderCommand}" Content="Open Export Folder" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>

@@ -50,6 +50,19 @@ public enum WritePermissionStatus
     Blocked,
 }
 
+/// <param name="Folders">
+/// The authoritative proposed folder set. <b>Footgun:</b> the writer treats the
+/// <see cref="OrganizerFolder.ManuallyCreated"/> folders here as the complete empty-folder list for
+/// <c>sort_order.json</c>. Any builder MUST include the scan's existing empty folders
+/// (<see cref="ScanInventory.EmptyFolders"/>) in this list, or the writer will delete them. Both
+/// production builders seed them (MainViewModel via SeedExistingEmptyFolders; the controlled-test
+/// builder inherits the seeded base snapshot). New builders must do the same.
+/// </param>
+/// <param name="MetadataEdits">
+/// Pending per-mod metadata edits. Each touches the mod's <c>meta.json</c> and/or
+/// <c>mod_data/&lt;id&gt;.json</c>. These are part of the snapshot identity, so changing an edit
+/// invalidates a stale dry run.
+/// </param>
 public sealed record ProposalSnapshot(
     string SnapshotIdentity,
     string OrganizationSessionIdentity,
