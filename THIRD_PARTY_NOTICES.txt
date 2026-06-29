@@ -18,8 +18,4 @@ This project currently uses:
    License: Apache 2.0
    Source: https://github.com/fluentassertions/fluentassertions
 
-5. LiteDB.dll
-   License: MIT
-   Source: https://www.litedb.org/
-
 Review the upstream repositories for complete license texts before public release packaging.

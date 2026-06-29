@@ -140,7 +140,6 @@ public sealed class DiagnosticExportService : IDiagnosticExportService
 
         sanitized = sanitized.Replace(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).Replace('\\', '/'), "[profile]", StringComparison.OrdinalIgnoreCase);
         sanitized = sanitized.Replace("sort_order.json", "[state-file]", StringComparison.OrdinalIgnoreCase);
-        sanitized = sanitized.Replace("mod_data.db", "[state-db]", StringComparison.OrdinalIgnoreCase);
         return sanitized;
     }
 }
