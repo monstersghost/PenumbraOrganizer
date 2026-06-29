@@ -40,6 +40,7 @@ public sealed class MainViewModel : ObservableObject
     private ScanInventory? _inventory;
     private WorkbookExportResult? _lastWorkbookExport;
     private WorkbookImportResult? _lastWorkbookImport;
+    private string? _lastManualBackupPath;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
@@ -145,6 +146,7 @@ public sealed class MainViewModel : ObservableObject
         OpenWorkbookFolderCommand = new AsyncRelayCommand(OpenWorkbookFolderAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
         ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
+        BackupNowCommand = new AsyncRelayCommand(CreateManualBackupAsync, () => !IsBusy);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
         CreateProposedFolderCommand = new RelayCommand(_ => CreateProposedFolder(), _ => CanCreateProposedFolder());
         AssignSelectedToSelectedFolderCommand = new RelayCommand(_ => AssignSelectedToSelectedFolder(), _ => SelectedProposedFolder is not null && SelectedOrganizerMods.Count > 0);
@@ -186,6 +188,7 @@ public sealed class MainViewModel : ObservableObject
     public AsyncRelayCommand OpenWorkbookFolderCommand { get; }
     public AsyncRelayCommand ValidateInstallationCommand { get; }
     public AsyncRelayCommand CreateDiagnosticPackageCommand { get; }
+    public AsyncRelayCommand BackupNowCommand { get; }
     public RelayCommand SelectStrategyCommand { get; }
     public RelayCommand CreateProposedFolderCommand { get; }
     public RelayCommand AssignSelectedToSelectedFolderCommand { get; }
@@ -477,6 +480,9 @@ public sealed class MainViewModel : ObservableObject
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
                 BackupAndApplyCommand.RaiseCanExecuteChanged();
                 ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+                ExportWorkbookCommand.RaiseCanExecuteChanged();
+                ImportWorkbookCommand.RaiseCanExecuteChanged();
+                BackupNowCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -1036,6 +1042,66 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    private async Task CreateManualBackupAsync()
+    {
+        if (_installation is null)
+            await DetectAsync();
+        if (_installation is null)
+        {
+            MessageBox.Show("Penumbra was not found yet. Detect or choose Penumbra.json first.", "Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var configDirectory = _installation.ConfigDirectory;
+        if (string.IsNullOrWhiteSpace(configDirectory) || !Directory.Exists(configDirectory))
+        {
+            MessageBox.Show("The Penumbra configuration folder could not be found.", "Backup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await RunBusyAsync("Backing up your Penumbra configuration.", () => Task.Run(() =>
+            {
+                var destinationRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "PenumbraOrganizer",
+                    "ManualBackups",
+                    DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss"));
+                CopyDirectory(configDirectory, Path.Combine(destinationRoot, "Penumbra"));
+                _lastManualBackupPath = destinationRoot;
+            }));
+
+            ProgressMessage = "Manual backup created.";
+            AppendLog($"Created a manual Penumbra configuration backup at {_lastManualBackupPath}.");
+            if (MessageBox.Show(
+                    $"A full copy of your Penumbra configuration (sort_order.json, mod_data, collections, …) was saved to:{Environment.NewLine}{Environment.NewLine}{_lastManualBackupPath}{Environment.NewLine}{Environment.NewLine}Open the backup folder now?",
+                    "Backup created",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information) == MessageBoxResult.Yes
+                && _lastManualBackupPath is not null)
+            {
+                Process.Start(new ProcessStartInfo { FileName = _lastManualBackupPath, UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manual backup failed");
+            ProgressMessage = "Manual backup failed.";
+            AppendLog("Manual backup failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Backup failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private static void CopyDirectory(string sourceDir, string targetDir)
+    {
+        Directory.CreateDirectory(targetDir);
+        foreach (var file in Directory.EnumerateFiles(sourceDir))
+            File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)), overwrite: true);
+        foreach (var directory in Directory.EnumerateDirectories(sourceDir))
+            CopyDirectory(directory, Path.Combine(targetDir, Path.GetFileName(directory)!));
+    }
+
     private string BuildCompatibilitySummary(CompatibilityReport compatibility)
     {
         if (compatibility.Warnings.Count == 0)
@@ -1093,8 +1159,96 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         SelectedStrategy = strategy;
-        InvalidateDryRunState("Organization strategy changed.");
         AppendLog($"Selected organization strategy: {strategy}.");
+
+        if (_inventory is null || Mods.Count == 0)
+        {
+            ProgressMessage = "Scan your mods first, then choose how to organize them.";
+            return;
+        }
+
+        ApplyDeterministicStrategy(strategy);
+    }
+
+    /// <summary>
+    /// Computes a proposed destination for every mod from the chosen strategy and the deterministic
+    /// 0-8 type classifier, then surfaces the plan so the user can review it before applying.
+    /// Protected mods stay put; "Start Manually" resets proposals to the current folders.
+    /// </summary>
+    private void ApplyDeterministicStrategy(string strategy)
+    {
+        var changed = 0;
+        foreach (var row in Mods)
+        {
+            var proposal = row.Proposal;
+            if (proposal.Protected)
+            {
+                proposal.ProposedVirtualFolder = proposal.CurrentVirtualFolder;
+                proposal.Source = OrganizerProposalSource.PreservedCurrent;
+                continue;
+            }
+
+            var destination = BuildStrategyDestination(strategy, row);
+            proposal.ProposedVirtualFolder = destination;
+            proposal.Source = strategy == "Start Manually"
+                ? OrganizerProposalSource.PreservedCurrent
+                : OrganizerProposalSource.DeterministicRule;
+            proposal.NeedsReview = row.DetectedType.Equals("Review", StringComparison.OrdinalIgnoreCase)
+                                   || destination.Contains("Review", StringComparison.OrdinalIgnoreCase);
+            if (!string.Equals(destination, proposal.CurrentVirtualFolder, StringComparison.Ordinal))
+                changed++;
+        }
+
+        _organizerFolders.Clear();
+        foreach (var folder in Mods
+                     .Select(row => row.Proposal.ProposedVirtualFolder)
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            _organizerFolders.Add(new OrganizerFolder(folder, ManuallyCreated: true));
+        }
+
+        SeedExistingEmptyFolders();
+        InvalidateDryRunState($"Applied the '{strategy}' organization plan.");
+        ResetOrganizerHistory();
+        RefreshRowsFromProposals();
+        RefreshOrganizerViews();
+        RefreshReviewChanges();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
+
+        ProgressMessage = strategy == "Start Manually"
+            ? "Cleared the plan. Organize manually or export a workbook, then Backup and Apply."
+            : $"Applied '{strategy}'. {changed} mod(s) have a new proposed folder — review, then Backup and Apply.";
+        AppendLog(ProgressMessage);
+    }
+
+    private static string BuildStrategyDestination(string strategy, ModRowViewModel row)
+    {
+        var type = string.IsNullOrWhiteSpace(row.DetectedType) ? "Others" : row.DetectedType.Trim();
+        var creator = SanitizeFolderSegment(row.EffectiveCreator);
+        var hasCreator = !string.IsNullOrWhiteSpace(creator)
+                         && !creator.Equals("Unknown creator", StringComparison.OrdinalIgnoreCase);
+
+        return strategy switch
+        {
+            "By creator" => hasCreator ? creator : "Review",
+            "By mod type" => type,
+            "By type and creator" => hasCreator ? $"{type}/{creator}" : type,
+            "By creator and type" => hasCreator ? $"{creator}/{type}" : type,
+            "Custom" => hasCreator ? $"{type}/{creator}" : type,
+            "Keep my current layout and clean it" => row.CurrentVirtualFolder,
+            _ => row.CurrentVirtualFolder,
+        };
+    }
+
+    private static string SanitizeFolderSegment(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var invalid = Path.GetInvalidFileNameChars().Append('/').Append('\\').Distinct().ToArray();
+        return string.Join(" ", value.Split(invalid, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 
     private bool CanCreateProposedFolder()
