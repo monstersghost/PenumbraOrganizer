@@ -9,11 +9,11 @@ The organizer is read-only until:
 - dry-run validation passes
 - a verified backup completes
 
-The current repository now includes a guarded Apply foundation for one proven target:
+The current repository now includes a guarded Apply foundation for these proven file-based targets:
 
-- `mod_data.db`
-- `LocalModData`
-- `Folder`
+- `sort_order.json` (virtual-folder organization; `Data` entries + `EmptyFolders`)
+- `meta.json` (author metadata, for metadata edits)
+- `mod_data/<id>.json` (per-user local data, for metadata edits)
 
 Physical mod folders, collections, option groups, priorities, enabled states, `.pmp` files, plugin binaries, and FFXIV files remain outside this write path.
 
@@ -31,9 +31,9 @@ This foundation remains fixture-tested and does not expose live Apply or public 
 The first live write path now adds:
 
 - immutable dry-run planning
-- exact expected-result generation for `mod_data.db`
-- verified-backup integration before Apply
-- atomic database replacement for supported virtual-folder changes
+- exact expected-result generation for `sort_order.json`, `meta.json`, and `mod_data/<id>.json`
+- verified-backup integration before Apply (N-file backup across every touched file)
+- atomic file replacement for supported virtual-folder and metadata changes
 - post-Apply verification
 - guarded rollback availability after Apply
 - controlled live-test selection before the first real Apply
@@ -47,9 +47,9 @@ The first live write path now adds:
 - no mod assets are rewritten
 - no `.pmp` packages are handled
 - no collections are modified
-- no `organization.json` writes are performed in this milestone
-  Confirmed source of truth: `mod_data.db` -> `LocalModData` -> `Folder`
-  Current inference boundary: `organization.json` appears to persist presentation or tree-state data, not the authoritative mod-to-folder mapping
+- no legacy `mod_filesystem\organization.json` writes are performed
+  Source of truth: `sort_order.json` (`Data` entry = folder + display leaf; `EmptyFolders` = empty folders)
+  The legacy `organization.json` is not authoritative and is not written.
 - scanning remains read-only
 - in-memory proposals do not write to Penumbra
 - protected items are immutable
@@ -162,14 +162,12 @@ If backup preparation, Apply, verification, or rollback is interrupted, the inco
 
 ## Next rollback milestone
 
-The rollback foundation milestone is complete and the first guarded Apply foundation is now implemented for `mod_data.db`.
+The rollback foundation milestone is complete and the guarded Apply foundation is now implemented for `sort_order.json` plus per-mod `meta.json` / `mod_data/<id>.json` metadata edits.
 
 Remaining blockers before wider public Apply exposure are:
 
-- proving whether `mod_filesystem\organization.json` is ever required for immediate Penumbra UI consistency instead of remaining read-only
-- deciding whether Penumbra rebuilds any derived folder-tree presentation automatically
+- confirming Penumbra reloads `sort_order.json` cleanly after external edits across versions
 - expanding real-installation validation coverage without widening automated test scope
-- expanding safe UI beyond the narrow `LocalModData.Folder` path
 - deliberate public-release validation beyond fixture-only automation
 
 Future write milestones must continue using temporary fixtures for automated verification and must not access the user's real Penumbra installation during development tests.

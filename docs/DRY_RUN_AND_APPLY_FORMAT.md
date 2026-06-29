@@ -1,29 +1,28 @@
 # Dry Run And Apply Format
 
-## Authoritative write target
+## Authoritative write targets
 
-The first write-enabled milestone updates only one proven Penumbra structure:
+Apply updates these proven, file-based Penumbra structures (verified live):
 
-* `mod_data.db`
-* collection: `LocalModData`
-* stable key: `_id`
-* changed field: `Folder`
+* **`sort_order.json`** — authoritative virtual-folder organization.
+  Shape: `{ "Data": { "<mod dir name>": "<full path incl. display leaf>" }, "EmptyFolders": [ ... ] }`.
+  The `Data` value encodes both the containing folder (everything before the last `/`) and the
+  mod's display/sort name (the final segment). `EmptyFolders` is authoritative for empty folders.
+* **`<ModDirectory>\<mod dir name>\meta.json`** — author metadata (`Name`, `Author`,
+  `Description`, `Version`, `Website`, `ModTags`), touched only by metadata edits.
+* **`mod_data\<mod dir name>.json`** — per-user local data (`Favorite`, `LocalTags`, `Note`),
+  touched only by metadata edits. Unknown fields and `FileVersion` are preserved.
 
-In the current project and fixtures, `_id` matches the installed top-level physical mod directory name. Penumbra Organizer uses that value as the stable mapping between an installed mod and its authoritative virtual-folder entry.
+The installed top-level physical mod directory name is the stable scan ID. The same string is the
+physical folder name, the `sort_order.json` `Data` key, and the `mod_data/<id>.json` filename.
 
-Confirmed behavior from the current scanner, fixtures, and upstream Penumbra source:
+> There is **no** `mod_data.db` (LiteDB) file on a real Penumbra install. Earlier drafts of this
+> project assumed one; the real format is the file-based layout above. The legacy
+> `mod_filesystem\organization.json` is not authoritative and is not written.
 
-* Penumbra Organizer reads the current virtual folder from `mod_data.db`, collection `LocalModData`, field `Folder`.
-* Penumbra's `LocalModDatabase.Data.Update(Mod mod)` and `ApplyToMod(Mod mod)` map `mod.Path.Folder` to that same `Folder` value.
-* Penumbra's `ModFileSystemSaver.CreateDataNodes()` rebuilds non-empty folder nodes from `mod.Path.Folder`.
-
-Current inference boundary:
-
-* `mod_filesystem\organization.json` is not used by this project's scanner or planner.
-* It appears to persist presentation or file-system tree state beyond the authoritative mod-to-folder mapping.
-* It is still not proven safe or necessary to write for the first guarded Apply path.
-
-Because of that boundary, the app continues not to write `mod_filesystem\organization.json` in this milestone.
+A mod with no `sort_order.json` entry sits at the Penumbra root under its `meta.json` `Name`.
+Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf so the
+rename is visible in Penumbra; a root mod is renamed by `meta.json` alone.
 
 ## Dry-run plan
 
@@ -45,7 +44,10 @@ Each finalized dry run is immutable and contains:
 * summary counts
 * warnings
 
-Only supported writable entries produce `fileChanges`.
+Only supported writable entries produce `fileChanges`. A single plan can contain multiple
+`fileChanges`: one for `sort_order.json` plus one `meta.json` and/or one `mod_data/<id>.json`
+per edited mod. Each has its own `WriteTargetKind` (`SortOrderJson`, `ModMetaJson`,
+`LocalModDataJson`).
 
 Protected rows never produce writable operations.
 
@@ -69,16 +71,16 @@ The Review Changes UI shows:
 
 ## Expected-result generation
 
-Planning never writes the live authoritative database.
+Planning never writes the live authoritative files.
 
-For `mod_data.db` planning:
+For each target file (`sort_order.json`, `meta.json`, `mod_data/<id>.json`):
 
-1. copy the live database to a temporary working file
-2. update only `LocalModData.Folder` for approved stable IDs
-3. preserve unrelated documents and unknown fields
-4. validate record counts and unaffected rows
-5. compute deterministic SHA-256 for the expected result
-6. store the exact expected bytes in the plan
+1. round-trip the live JSON through a `JsonNode` so unknown keys are preserved
+2. apply only the approved changes (the mod's `Data` entry / `EmptyFolders`, or the specific
+   edited metadata fields), preserving the display leaf and `FileVersion`
+3. validate that unrelated entries are byte-for-byte unchanged
+4. compute deterministic SHA-256 for the expected result
+5. store the exact expected bytes in the plan
 
 ## Permission preflight
 
@@ -119,24 +121,22 @@ Before each write:
 4. confirm the Penumbra version still matches
 5. confirm the backup package is verified
 
-For `mod_data.db`:
+For each target JSON file:
 
 1. write the expected bytes to a same-directory temporary file
-2. open the temp copy with LiteDB
-3. validate the targeted `LocalModData.Folder` values
-4. flush to disk
-5. atomically replace the live database
-6. re-read the final file and verify the planned hash
+2. flush to disk
+3. atomically replace the live file
+4. re-read the final file and verify the planned hash
 
 ## Post-Apply verification
 
 Post-Apply verification checks:
 
-* every completed target file hash equals the planned hash
-* the authoritative database still parses
-* every changed mod now matches the planned folder
-* protected rows remain unchanged
-* unchanged rows remain unchanged
+* every completed target file hash equals the planned hash (covers `sort_order.json`,
+  `meta.json`, and `mod_data/<id>.json`)
+* when a `sort_order.json` change was applied, the file still parses, every changed mod now
+  matches the planned folder, protected rows remain unchanged, and unchanged rows remain unchanged
+* a metadata-only operation is fully verified by the per-file hash checks
 
 Rollback becomes available only when Apply completed enough live writes to restore safely.
 
@@ -159,7 +159,7 @@ The Review Changes screen now exposes:
 
 The guarded apply path is intentionally narrow:
 
-* only supported `mod_data.db` virtual-folder changes
+* only supported `sort_order.json` virtual-folder changes plus per-mod `meta.json` / `mod_data/<id>.json` metadata edits
 * no physical mod movement
 * no collection editing
 * no `.pmp` handling
@@ -178,7 +178,7 @@ Before any live write, the confirmation modal must state:
 * selected mod count
 * current folders
 * proposed folders
-* authoritative target `mod_data.db / LocalModData.Folder`
+* authoritative targets (`sort_order.json`, and any `meta.json` / `mod_data/<id>.json`)
 * verified backup location
 * rollback readiness
 * that physical mod files will not move

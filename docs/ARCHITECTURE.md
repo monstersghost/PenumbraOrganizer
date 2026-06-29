@@ -31,8 +31,8 @@
 - Penumbra discovery
 - config and metadata parsing
 - filesystem scanning
-- LiteDB access for `mod_data.db`
-- future backup, rollback, atomic write, CSV/JSON export
+- `sort_order.json` read/write for virtual-folder organization, plus `meta.json` and `mod_data/<id>.json` metadata editing
+- backup, rollback, atomic write, CSV/JSON export
 - versioned AI inventory package generation and validation
 - read-only AI proposal validation
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
@@ -87,7 +87,7 @@ Penumbra `.pmp` files are import/export packages and are outside the installed-l
 
 The application must not parse, extract, modify, repack, import, restore, or otherwise operate on `.pmp` files during these milestones. It must not scan export/download directories for `.pmp` files and must not infer installed mods from `.pmp` packages.
 
-The source of truth for organization is the currently installed Penumbra state and installed mod metadata: recognized state/configuration files, `mod_data.db`, installed mod directories, `meta.json`, `default_mod.json`, and `group_*.json`.
+The source of truth for organization is the currently installed Penumbra state and installed mod metadata: recognized state/configuration files, `sort_order.json` (authoritative virtual-folder organization), per-user `mod_data/<id>.json` files, installed mod directories, `meta.json`, `default_mod.json`, and `group_*.json`.
 
 A future read-only "Inspect uninstalled package" feature may support `.pmp`, but it must remain separate and must not shape the organizer architecture now.
 
@@ -95,12 +95,16 @@ A future read-only "Inspect uninstalled package" feature may support `.pmp`, but
 
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra.json`
   carries Penumbra's configured `ModDirectory`
-- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_data.db`
-  stores the authoritative per-mod virtual-folder mapping used by the first write-enabled milestone
-- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_filesystem\organization.json`
-  is currently treated as presentation or tree-state persistence only
-  Confirmed: the authoritative mod-to-folder mapping is still `LocalModData.Folder`
-  Current inference: Penumbra can rebuild non-empty folder nodes from `mod.Path.Folder`, but immediate UI consistency requirements for stale `organization.json` are not yet proven
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\sort_order.json`
+  stores the authoritative per-mod virtual-folder mapping. Shape:
+  `{ "Data": { "<mod dir name>": "<full path incl. display leaf>" }, "EmptyFolders": [ ... ] }`.
+  The `Data` value encodes both the containing folder (everything before the last `/`) and the
+  mod's display/sort name (the final segment). A mod with no entry sits at the root under its
+  `meta.json` name.
+- `%AppData%\XIVLauncher\pluginConfigs\Penumbra\mod_data\<mod dir name>.json`
+  stores per-user local data: `FileVersion`, `ImportDate`, `LocalTags`, `Note`, `Favorite`
+- `<ModDirectory>\<mod dir name>\meta.json`
+  stores author metadata: `Name`, `Author`, `Description`, `Version`, `Website`, `ModTags`
 - `%AppData%\XIVLauncher\pluginConfigs\Penumbra\collections\*.json`
   stores collection state and enabled information
 - installed plugin manifests and assemblies under `%AppData%\XIVLauncher\installedPlugins\Penumbra`
@@ -224,7 +228,7 @@ For the first real-installation live test, the app now provides a dedicated `Con
 - protected, ambiguous, and unsupported candidates stay unavailable
 - unselected proposals are excluded from the controlled dry run
 - the default test folder is `PenumbraOrganizer Test`
-- the final write target remains only `mod_data.db` `LocalModData.Folder`
+- the final write target remains only the mod's entry in `sort_order.json`
 
 ## Rollback-first write architecture
 
@@ -241,10 +245,10 @@ The current recovery slice includes:
 - operation-history rebuilding from operation packages
 - read-only `Backups` UI foundation
 - immutable dry-run planner and plan invalidation service
-- exact expected-result generation for `mod_data.db`
+- exact expected-result generation for `sort_order.json`, `meta.json`, and `mod_data/<id>.json`
 - write-permission preflight and `asInvoker` execution level
 - user-authorized real-installation validation workflow
-- guarded Apply executor that writes only `LocalModData.Folder`
+- guarded Apply executor that writes only `sort_order.json` entries and (for metadata edits) `meta.json` / `mod_data/<id>.json`
 - post-Apply verification and rollback availability tracking
 - privacy-conscious diagnostic export
 - post-Apply Penumbra UI observation capture
@@ -261,16 +265,15 @@ If the app closes or crashes mid-operation, the next launch keeps the operation 
 
 The package layout and schema details are documented in `docs/BACKUP_AND_ROLLBACK_FORMAT.md`.
 
-The currently proven authoritative write target is:
+The currently proven authoritative write targets are:
 
-* file: `mod_data.db`
-* collection: `LocalModData`
-* key: `_id`
-* field: `Folder`
+* organization: `sort_order.json`, key = mod directory name, value = full path (folder + display leaf); `EmptyFolders` is authoritative for empty folders
+* author metadata: `<ModDirectory>\<mod dir name>\meta.json`
+* per-user local data: `mod_data\<mod dir name>.json`
 
-The top-level physical mod directory name is the stable `_id` used to map an installed mod to its authoritative virtual-folder record.
+The top-level physical mod directory name is the stable scan ID used to map an installed mod to its `sort_order.json` entry, its `meta.json`, and its `mod_data/<id>.json` file. The same string is the physical folder name, the `Data` key, and the `mod_data/<id>.json` filename.
 
-The next required write milestone is no longer generic Apply plumbing. It is proving or deliberately declining any additional Penumbra structures, especially `mod_filesystem\organization.json`, before widening live writes.
+Writes are multi-file: a single Apply can touch `sort_order.json` plus one `meta.json` and/or one `mod_data/<id>.json` per edited mod, all captured by one N-file backup and rolled back together. Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf so the rename is visible in Penumbra; root mods are renamed by `meta.json` alone.
 
 ## Milestone 1
 

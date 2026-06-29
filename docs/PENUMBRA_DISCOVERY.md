@@ -52,8 +52,8 @@ This mode is user-authorized and does not run during automated tests. When trigg
 
 - detect Penumbra state paths
 - read installed Penumbra version
-- rescan `mod_data.db`
-- resolve installed mods and authoritative `LocalModData` records
+- rescan `sort_order.json` and per-mod `mod_data/<id>.json`
+- resolve installed mods and their authoritative `sort_order.json` entries
 - build a fresh dry run from the current proposal snapshot
 - run exact-target permission and running-process checks
 - report whether the installation currently appears safe for guarded Apply
