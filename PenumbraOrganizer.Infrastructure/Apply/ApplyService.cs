@@ -1,15 +1,13 @@
 namespace PenumbraOrganizer.Infrastructure.Apply;
 
 using System.Security.Cryptography;
-using LiteDB;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 using PenumbraOrganizer.Infrastructure.Recovery;
 
 public sealed class ApplyService : IApplyService
 {
-    private const string CollectionName = "LocalModData";
-    private const string FolderFieldName = "Folder";
 
     private readonly IDryRunValidationService _validationService;
     private readonly IWritePermissionPreflightService _preflightService;
@@ -82,6 +80,8 @@ public sealed class ApplyService : IApplyService
     {
         if (plan.FileChanges.Count == 0)
             throw new InvalidOperationException("This dry run does not contain any supported writable changes.");
+
+        EnsureSortOrderTargetsExist(plan);
 
         var inventory = new ScanInventory
         {
@@ -290,6 +290,25 @@ public sealed class ApplyService : IApplyService
         return final;
     }
 
+    // A fresh install may have no sort_order.json yet. Materialize the canonical empty baseline
+    // (byte-identical to what LoadState hashes) before backup so the proven backup/apply/rollback
+    // machinery operates on a real, captured file. Rollback restores this empty baseline, which is
+    // semantically identical to the file never having existed.
+    private static void EnsureSortOrderTargetsExist(DryRunPlan plan)
+    {
+        var baselineBytes = System.Text.Encoding.UTF8.GetBytes(PenumbraSortOrder.EmptyDocumentJson);
+        foreach (var change in plan.FileChanges)
+        {
+            if (change.WriteTargetKind != PenumbraWriteTargetKind.SortOrderJson)
+                continue;
+            var target = RecoveryStorageLayout.ValidateAbsoluteTargetPath(change.TargetPath);
+            if (File.Exists(target))
+                continue;
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.WriteAllBytes(target, baselineBytes);
+        }
+    }
+
     private static ScanInventory BuildInventory(
         DryRunPlan plan,
         ProposalSnapshot proposalSnapshot,
@@ -368,7 +387,7 @@ public sealed class ApplyService : IApplyService
         try
         {
             await File.WriteAllBytesAsync(tempPath, expectedBytes, cancellationToken);
-            await ValidateTemporaryOutputAsync(tempPath, plan, cancellationToken);
+            await ValidateTemporaryOutputAsync(tempPath, fileChange, plan, cancellationToken);
             await FlushFileAsync(tempPath, cancellationToken);
 
             File.Move(tempPath, targetPath, overwrite: true);
@@ -417,24 +436,27 @@ public sealed class ApplyService : IApplyService
         }
     }
 
-    private static async Task ValidateTemporaryOutputAsync(string tempPath, DryRunPlan plan, CancellationToken cancellationToken)
+    private static async Task ValidateTemporaryOutputAsync(string tempPath, DryRunFileChange fileChange, DryRunPlan plan, CancellationToken cancellationToken)
     {
-        using var db = new LiteDatabase($"Filename={tempPath};Connection=Direct");
-        var collection = db.GetCollection(CollectionName);
-        var documents = collection.FindAll().ToDictionary(document => document["_id"].AsString, document => document, StringComparer.Ordinal);
+        var text = await File.ReadAllTextAsync(tempPath, cancellationToken);
 
-        foreach (var entry in plan.Entries.Where(entry => entry.RequiresWrite))
+        if (fileChange.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!documents.TryGetValue(entry.RecordKey, out var document))
-                throw new InvalidOperationException($"The expected-result database is missing authoritative record {entry.RecordKey}.");
-            if (!document.TryGetValue(FolderFieldName, out var folderValue) || folderValue.Type != BsonType.String)
-                throw new InvalidOperationException($"The expected-result database has an invalid Folder field for {entry.RecordKey}.");
-            if (!string.Equals(folderValue.AsString, entry.ProposedVirtualFolder, StringComparison.Ordinal))
-                throw new InvalidOperationException($"The expected-result database does not contain the planned folder for {entry.RecordKey}.");
+            var sortOrder = PenumbraSortOrder.Parse(text);
+            foreach (var entry in plan.Entries.Where(entry => entry.RequiresWrite))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!string.Equals(sortOrder.GetFolderFor(entry.RecordKey), entry.ProposedVirtualFolder, StringComparison.Ordinal))
+                    throw new InvalidOperationException($"The expected-result sort_order.json does not contain the planned folder for {entry.RecordKey}.");
+            }
+
+            return;
         }
 
-        await Task.CompletedTask;
+        // Metadata files (meta.json, mod_data/<id>.json) must remain well-formed JSON objects.
+        using var document = System.Text.Json.JsonDocument.Parse(text);
+        if (document.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            throw new InvalidOperationException($"The expected-result metadata file is not a JSON object: {fileChange.TargetPath}");
     }
 
     private async Task PersistApplyProgressAsync(

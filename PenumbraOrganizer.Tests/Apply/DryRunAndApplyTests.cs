@@ -1,6 +1,7 @@
 namespace PenumbraOrganizer.Tests.Apply;
 
-using LiteDB;
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using PenumbraOrganizer.Core.Interfaces;
@@ -15,7 +16,7 @@ using PenumbraOrganizer.Tests.Fixtures;
 public sealed class DryRunAndApplyTests
 {
     [Fact]
-    public async Task Mapping_UsesModDataAsAuthoritativeTarget_AndDisambiguatesDuplicateNames()
+    public async Task Mapping_UsesSortOrderAsAuthoritativeTarget_AndDisambiguatesDuplicateNames()
     {
         using var context = await ApplyTestContext.CreateAsync();
         context.Fixture.CreateMod("Alpha One", """{"FileVersion":3,"Name":"Duplicate Name","Author":"Author A"}""");
@@ -29,31 +30,117 @@ public sealed class DryRunAndApplyTests
         plan.Entries.Should().HaveCount(2);
         plan.Entries.Should().Contain(entry =>
             entry.StableScanId == "Alpha One" &&
-            entry.AuthoritativeStateEntryIdentity == "LocalModData:Alpha One:Folder" &&
-            entry.TargetPath == context.Fixture.ModDataDbPath &&
-            entry.RecordKey == "Alpha One");
+            entry.AuthoritativeStateEntryIdentity == "sort_order.json:Alpha One" &&
+            entry.TargetPath == context.Fixture.SortOrderPath &&
+            entry.RecordKey == "Alpha One" &&
+            entry.ProposedSortPath == "Moves/One/Alpha One");
         plan.Entries.Should().Contain(entry =>
             entry.StableScanId == "Alpha Two" &&
-            entry.AuthoritativeStateEntryIdentity == "LocalModData:Alpha Two:Folder" &&
+            entry.AuthoritativeStateEntryIdentity == "sort_order.json:Alpha Two" &&
             entry.RecordKey == "Alpha Two");
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().ContainSingle(change =>
+            change.TargetPath == context.Fixture.SortOrderPath &&
+            change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
     }
 
     [Fact]
-    public async Task MissingStateEntry_BlocksPlanning()
+    public async Task ModWithoutSortEntry_MapsAsRootMod_AndCanMove()
     {
         using var context = await ApplyTestContext.CreateAsync();
-        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
-        context.Fixture.CreateMod("Missing Mod", """{"FileVersion":3,"Name":"Missing Mod","Author":"Author"}""");
-        context.Fixture.WriteModData(("Mapped Mod", "Current/Mapped"));
+        context.Fixture.CreateMod("Placed Mod", """{"FileVersion":3,"Name":"Placed Mod","Author":"Author"}""");
+        context.Fixture.CreateMod("Root Mod", """{"FileVersion":3,"Name":"Root Mod","Author":"Author"}""");
+        // Only "Placed Mod" has an explicit entry; "Root Mod" lives at the root with no entry.
+        context.Fixture.WriteModData(("Placed Mod", "Current/Mapped"));
 
         await context.ScanAsync();
-        var snapshot = context.BuildSnapshot(("Mapped Mod", "Target/Mapped"), ("Missing Mod", "Target/Missing"));
+        var snapshot = context.BuildSnapshot(("Placed Mod", "Target/Mapped"), ("Root Mod", "Target/Root"));
         var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
-        plan.ApplyPermitted.Should().BeFalse();
-        plan.Entries.Single(entry => entry.StableScanId == "Missing Mod").ValidationStatus.Should().Be(OrganizerRowStatus.MissingMod);
-        plan.Entries.Single(entry => entry.StableScanId == "Missing Mod").RequiresWrite.Should().BeFalse();
+        plan.ApplyPermitted.Should().BeTrue();
+        var rootEntry = plan.Entries.Single(entry => entry.StableScanId == "Root Mod");
+        rootEntry.CurrentVirtualFolder.Should().BeEmpty();
+        rootEntry.RequiresWrite.Should().BeTrue();
+        rootEntry.ProposedSortPath.Should().Be("Target/Root/Root Mod");
+    }
+
+    [Fact]
+    public async Task EmptyFolder_IsPersisted_EvenWithoutModMoves()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Stay Mod", """{"FileVersion":3,"Name":"Stay Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Stay Mod", "Current/Folder"));
+        await context.ScanAsync();
+
+        // The mod does not move, but the user created a new empty folder.
+        var snapshot = context.BuildSnapshotWithEmptyFolders(
+            [("Stay Mod", "Current/Folder")],
+            ["Brand New Empty"]);
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.FileChanges.Should().ContainSingle();
+        var expectedJson = Encoding.UTF8.GetString(Convert.FromBase64String(plan.FileChanges.Single().ExpectedBytesBase64));
+        using var document = JsonDocument.Parse(expectedJson);
+        document.RootElement.GetProperty("EmptyFolders").EnumerateArray()
+            .Select(element => element.GetString())
+            .Should().Contain("Brand New Empty");
+    }
+
+    [Fact]
+    public async Task EmptyFolder_IsDropped_WhenAModMovesIntoIt()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Mover", """{"FileVersion":3,"Name":"Mover","Author":"Author"}""");
+        // "Reserved" starts as an explicitly empty folder.
+        context.Fixture.WriteSortOrder([("Mover", "Current/Mover")], ["Reserved"]);
+        await context.ScanAsync();
+
+        // The mod moves into the previously-empty folder, which must no longer be listed as empty.
+        var snapshot = context.BuildSnapshotWithEmptyFolders([("Mover", "Reserved")], ["Reserved"]);
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var expectedJson = Encoding.UTF8.GetString(Convert.FromBase64String(plan.FileChanges.Single().ExpectedBytesBase64));
+        using var document = JsonDocument.Parse(expectedJson);
+        document.RootElement.GetProperty("EmptyFolders").EnumerateArray()
+            .Select(element => element.GetString())
+            .Should().NotContain("Reserved");
+        document.RootElement.GetProperty("Data").GetProperty("Mover").GetString().Should().Be("Reserved/Mover");
+    }
+
+    [Fact]
+    public async Task EmptyFolder_Deletion_Persists()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Stay Mod", """{"FileVersion":3,"Name":"Stay Mod","Author":"Author"}""");
+        context.Fixture.WriteSortOrder([("Stay Mod", "Current/Folder")], ["ToDelete", "ToKeep"]);
+        await context.ScanAsync();
+
+        // The proposed folder set keeps "ToKeep" but omits "ToDelete" (the user deleted it).
+        var snapshot = context.BuildSnapshotWithEmptyFolders([("Stay Mod", "Current/Folder")], ["ToKeep"]);
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var expectedJson = Encoding.UTF8.GetString(Convert.FromBase64String(plan.FileChanges.Single().ExpectedBytesBase64));
+        using var document = JsonDocument.Parse(expectedJson);
+        var empty = document.RootElement.GetProperty("EmptyFolders").EnumerateArray().Select(e => e.GetString()).ToArray();
+        empty.Should().Contain("ToKeep");
+        empty.Should().NotContain("ToDelete");
+    }
+
+    [Fact]
+    public async Task EmptyFolder_Rename_Persists()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Stay Mod", """{"FileVersion":3,"Name":"Stay Mod","Author":"Author"}""");
+        context.Fixture.WriteSortOrder([("Stay Mod", "Current/Folder")], ["OldName"]);
+        await context.ScanAsync();
+
+        var snapshot = context.BuildSnapshotWithEmptyFolders([("Stay Mod", "Current/Folder")], ["NewName"]);
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var expectedJson = Encoding.UTF8.GetString(Convert.FromBase64String(plan.FileChanges.Single().ExpectedBytesBase64));
+        using var document = JsonDocument.Parse(expectedJson);
+        var empty = document.RootElement.GetProperty("EmptyFolders").EnumerateArray().Select(e => e.GetString()).ToArray();
+        empty.Should().Contain("NewName");
+        empty.Should().NotContain("OldName");
     }
 
     [Fact]
@@ -77,18 +164,14 @@ public sealed class DryRunAndApplyTests
     {
         using var context = await ApplyTestContext.CreateAsync();
         context.Fixture.CreateMod("Broken Schema", """{"FileVersion":3,"Name":"Broken Schema","Author":"Author"}""");
-        context.Fixture.WriteModDataDocument(new BsonDocument
-        {
-            ["_id"] = "Broken Schema",
-            ["Folder"] = 42,
-        });
+        context.Fixture.WriteSortOrderRaw("""{"Data":{"Broken Schema":42},"EmptyFolders":[]}""");
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Broken Schema", "Target/Folder"));
 
         var act = () => context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*missing a string Folder field*");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*string folder path*");
     }
 
     [Fact]
@@ -97,18 +180,14 @@ public sealed class DryRunAndApplyTests
         using var context = await ApplyTestContext.CreateAsync();
         context.Fixture.CreateMod("Preserve Mod", """{"FileVersion":3,"Name":"Preserve Mod","Author":"Author"}""");
         context.Fixture.CreateMod("Other Mod", """{"FileVersion":3,"Name":"Other Mod","Author":"Author"}""");
-        context.Fixture.WriteModDataDocument(new BsonDocument
+        // An unknown top-level property (e.g. a future Penumbra key) must survive a rewrite.
+        context.Fixture.WriteSortOrderRaw("""
         {
-            ["_id"] = "Preserve Mod",
-            ["Folder"] = "Current/Preserve",
-            ["CustomField"] = "keep-me",
-        });
-        context.Fixture.WriteModDataDocument(new BsonDocument
-        {
-            ["_id"] = "Other Mod",
-            ["Folder"] = "Current/Other",
-            ["CustomField"] = "other-value",
-        });
+          "Data": { "Preserve Mod": "Current/Preserve/Preserve Mod", "Other Mod": "Current/Other/Other Mod" },
+          "EmptyFolders": [],
+          "FutureKey": "keep-me"
+        }
+        """);
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Preserve Mod", "Target/Preserve"), ("Other Mod", "Current/Other"));
@@ -117,14 +196,12 @@ public sealed class DryRunAndApplyTests
 
         first.FileChanges.Single().ExpectedSha256.Should().Be(second.FileChanges.Single().ExpectedSha256);
 
-        var tempPath = Path.Combine(context.RootPath, "expected.db");
-        await File.WriteAllBytesAsync(tempPath, Convert.FromBase64String(first.FileChanges.Single().ExpectedBytesBase64));
-        using var db = new LiteDatabase($"Filename={tempPath};Connection=Direct");
-        var collection = db.GetCollection("LocalModData");
-        collection.FindById("Preserve Mod")!["CustomField"].AsString.Should().Be("keep-me");
-        collection.FindById("Other Mod")!["CustomField"].AsString.Should().Be("other-value");
-        collection.FindById("Preserve Mod")!["Folder"].AsString.Should().Be("Target/Preserve");
-        collection.FindById("Other Mod")!["Folder"].AsString.Should().Be("Current/Other");
+        var expectedJson = Encoding.UTF8.GetString(Convert.FromBase64String(first.FileChanges.Single().ExpectedBytesBase64));
+        using var document = JsonDocument.Parse(expectedJson);
+        var data = document.RootElement.GetProperty("Data");
+        data.GetProperty("Preserve Mod").GetString().Should().Be("Target/Preserve/Preserve Mod");
+        data.GetProperty("Other Mod").GetString().Should().Be("Current/Other/Other Mod");
+        document.RootElement.GetProperty("FutureKey").GetString().Should().Be("keep-me");
     }
 
     [Fact]
@@ -138,11 +215,7 @@ public sealed class DryRunAndApplyTests
         var snapshot = context.BuildSnapshot(("Plan Mod", "Target/Folder"));
         var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
-        context.Fixture.WriteModDataDocument(new BsonDocument
-        {
-            ["_id"] = "Plan Mod",
-            ["Folder"] = "Changed/OutsidePlan",
-        });
+        context.Fixture.WriteModData(("Plan Mod", "Changed/OutsidePlan"));
 
         var validation = await context.ValidationService.ValidateAsync(plan, context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
@@ -212,11 +285,12 @@ public sealed class DryRunAndApplyTests
         await context.ScanAsync();
         var entries = new[]
         {
-            new DryRunPlanEntry("Duplicate", "Duplicate", "Current/Folder", "Target/One", OrganizerProposalSource.Manual, false, OrganizerRowStatus.ValidChange, "LocalModData:Duplicate:Folder", context.Fixture.ModDataDbPath, "Duplicate", "A", "B", Array.Empty<string>(), true),
-            new DryRunPlanEntry("Duplicate", "Duplicate", "Current/Folder", "Target/Two", OrganizerProposalSource.Manual, false, OrganizerRowStatus.ValidChange, "LocalModData:Duplicate:Folder", context.Fixture.ModDataDbPath, "Duplicate", "A", "C", Array.Empty<string>(), true),
+            new DryRunPlanEntry("Duplicate", "Duplicate", "Current/Folder", "Target/One", OrganizerProposalSource.Manual, false, OrganizerRowStatus.ValidChange, "sort_order.json:Duplicate", context.Fixture.SortOrderPath, "Duplicate", "A", "B", Array.Empty<string>(), true, "Target/One/Duplicate"),
+            new DryRunPlanEntry("Duplicate", "Duplicate", "Current/Folder", "Target/Two", OrganizerProposalSource.Manual, false, OrganizerRowStatus.ValidChange, "sort_order.json:Duplicate", context.Fixture.SortOrderPath, "Duplicate", "A", "C", Array.Empty<string>(), true, "Target/Two/Duplicate"),
         };
 
-        var act = () => context.Writer.BuildExpectedFileChangesAsync(context.Installation, entries, CancellationToken.None);
+        var snapshot = context.BuildSnapshot(("Duplicate", "Target/One"));
+        var act = () => context.Writer.BuildExpectedFileChangesAsync(context.Installation, entries, snapshot, CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Duplicate authoritative state operations*");
     }
@@ -249,7 +323,7 @@ public sealed class DryRunAndApplyTests
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("ReadOnly Mod", "Target/Folder"));
         var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
-        File.SetAttributes(context.Fixture.ModDataDbPath, File.GetAttributes(context.Fixture.ModDataDbPath) | FileAttributes.ReadOnly);
+        File.SetAttributes(context.Fixture.SortOrderPath, File.GetAttributes(context.Fixture.SortOrderPath) | FileAttributes.ReadOnly);
         try
         {
             var result = await context.PreflightService.CheckAsync(plan, CancellationToken.None);
@@ -259,7 +333,7 @@ public sealed class DryRunAndApplyTests
         }
         finally
         {
-            File.SetAttributes(context.Fixture.ModDataDbPath, FileAttributes.Normal);
+            File.SetAttributes(context.Fixture.SortOrderPath, FileAttributes.Normal);
         }
     }
 
@@ -282,7 +356,7 @@ public sealed class DryRunAndApplyTests
         details.Operation.ApplyStatus.Should().Be(ApplyStatus.Ready);
         details.RollbackTransaction.Should().NotBeNull();
         details.RollbackTransaction!.Files.Single().ExpectedAppliedSha256.Should().Be(plan.FileChanges.Single().ExpectedSha256);
-        details.Manifest!.Files.Single().SourceTargetPath.Should().Be(context.Fixture.ModDataDbPath);
+        details.Manifest!.Files.Single().SourceTargetPath.Should().Be(context.Fixture.SortOrderPath);
         details.Operation.OperationFolder.Should().StartWith(context.BackupsRoot);
     }
 
@@ -292,18 +366,7 @@ public sealed class DryRunAndApplyTests
         using var context = await ApplyTestContext.CreateAsync();
         context.Fixture.CreateMod("Apply Mod", """{"FileVersion":3,"Name":"Apply Mod","Author":"Author"}""");
         context.Fixture.CreateMod("Other Mod", """{"FileVersion":3,"Name":"Other Mod","Author":"Author"}""");
-        context.Fixture.WriteModDataDocument(new BsonDocument
-        {
-            ["_id"] = "Apply Mod",
-            ["Folder"] = "Current/Apply",
-            ["Extra"] = "preserve",
-        });
-        context.Fixture.WriteModDataDocument(new BsonDocument
-        {
-            ["_id"] = "Other Mod",
-            ["Folder"] = "Current/Other",
-            ["Extra"] = "other",
-        });
+        context.Fixture.WriteModData(("Apply Mod", "Current/Apply"), ("Other Mod", "Current/Other"));
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Apply Mod", "Target/Apply"), ("Other Mod", "Current/Other"));
@@ -318,12 +381,39 @@ public sealed class DryRunAndApplyTests
         result.Files.Should().ContainSingle(file => file.Status == ApplyResultStatus.Applied);
         history.Should().ContainSingle(entry => entry.OperationId == operation.OperationId && entry.ApplyStatus == ApplyStatus.Completed && entry.RollbackAvailable);
 
-        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
-        var collection = db.GetCollection("LocalModData");
-        collection.FindById("Apply Mod")!["Folder"].AsString.Should().Be("Target/Apply");
-        collection.FindById("Apply Mod")!["Extra"].AsString.Should().Be("preserve");
-        collection.FindById("Other Mod")!["Folder"].AsString.Should().Be("Current/Other");
-        collection.FindById("Other Mod")!["Extra"].AsString.Should().Be("other");
+        // The moved mod lands in its new folder with the display leaf preserved, and the
+        // unrelated entry is untouched.
+        context.Fixture.CurrentFolderOf("Apply Mod").Should().Be("Target/Apply");
+        context.Fixture.CurrentSortPathOf("Apply Mod").Should().Be("Target/Apply/Apply Mod");
+        context.Fixture.CurrentFolderOf("Other Mod").Should().Be("Current/Other");
+    }
+
+    [Fact]
+    public async Task Apply_CreatesSortOrderJson_WhenAbsent_AndRollbackRestoresEmptyBaseline()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("New Mod", """{"FileVersion":3,"Name":"New Mod","Author":"Author"}""");
+        // Fresh install: no sort_order.json yet, so the mod sits at the root.
+        File.Exists(context.Fixture.SortOrderPath).Should().BeFalse();
+
+        await context.ScanAsync();
+        context.Inventory!.Mods.Single().CurrentVirtualFolder.Should().BeEmpty();
+
+        var snapshot = context.BuildSnapshot(("New Mod", "Clothing"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        plan.ApplyPermitted.Should().BeTrue();
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Completed);
+        File.Exists(context.Fixture.SortOrderPath).Should().BeTrue();
+        context.Fixture.CurrentSortPathOf("New Mod").Should().Be("Clothing/New Mod");
+
+        var rollback = await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+        rollback.Status.Should().Be(RollbackTransactionStatus.Completed);
+        // Rolled back to the empty baseline: the mod is no longer placed (back at root).
+        context.Fixture.CurrentSortPathOf("New Mod").Should().BeNull();
     }
 
     [Fact]
@@ -343,8 +433,7 @@ public sealed class DryRunAndApplyTests
 
         result.Status.Should().Be(ApplyStatus.Failed);
         result.Files.Should().ContainSingle(file => file.Status == ApplyResultStatus.Failed && file.Message.Contains("source hash", StringComparison.OrdinalIgnoreCase));
-        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
-        db.GetCollection("LocalModData").FindById("Hash Mod")!["Folder"].AsString.Should().Be("Changed/OutsideApply");
+        context.Fixture.CurrentFolderOf("Hash Mod").Should().Be("Changed/OutsideApply");
     }
 
     [Fact]
@@ -363,8 +452,7 @@ public sealed class DryRunAndApplyTests
         var rollback = await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
 
         rollback.Status.Should().Be(RollbackTransactionStatus.Completed);
-        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
-        db.GetCollection("LocalModData").FindById("Rollback Mod")!["Folder"].AsString.Should().Be("Current/Folder");
+        context.Fixture.CurrentFolderOf("Rollback Mod").Should().Be("Current/Folder");
     }
 
     [Fact]
@@ -384,8 +472,7 @@ public sealed class DryRunAndApplyTests
         var rollback = await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
 
         rollback.Status.Should().Be(RollbackTransactionStatus.CompletedWithConflicts);
-        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
-        db.GetCollection("LocalModData").FindById("Conflict Mod")!["Folder"].AsString.Should().Be("External/Change");
+        context.Fixture.CurrentFolderOf("Conflict Mod").Should().Be("External/Change");
     }
 
     private sealed class ApplyTestContext : IDisposable
@@ -456,6 +543,25 @@ public sealed class DryRunAndApplyTests
 
         public ProposalSnapshot BuildSnapshot(IReadOnlyList<string> protectIds, params (string StableScanId, string ProposedFolder)[] changes)
             => BuildSnapshot(changes, protectIds);
+
+        public ProposalSnapshot BuildSnapshotWithMetadata(
+            (string StableScanId, string ProposedFolder)[] changes,
+            params ModMetadataEdit[] edits)
+        {
+            var baseSnapshot = BuildSnapshot(changes, Array.Empty<string>());
+            return baseSnapshot with { MetadataEdits = edits };
+        }
+
+        public ProposalSnapshot BuildSnapshotWithEmptyFolders(
+            (string StableScanId, string ProposedFolder)[] changes,
+            string[] emptyFolders)
+        {
+            var baseSnapshot = BuildSnapshot(changes, Array.Empty<string>());
+            var folders = baseSnapshot.Folders
+                .Concat(emptyFolders.Select(path => new OrganizerFolder(path, ManuallyCreated: true, Protected: false)))
+                .ToArray();
+            return baseSnapshot with { Folders = folders };
+        }
 
         public ProposalSnapshot BuildSnapshot((string StableScanId, string ProposedFolder)[] changes, IReadOnlyList<string> protectIds)
         {
