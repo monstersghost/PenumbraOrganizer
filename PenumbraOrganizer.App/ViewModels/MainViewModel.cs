@@ -22,7 +22,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IPenumbraDiscoveryService _discoveryService;
     private readonly IPenumbraScanService _scanService;
     private readonly IPenumbraCompatibilityService _compatibilityService;
-    private readonly IInventoryExportService _inventoryExportService;
+    private readonly IWorkbookWorkflowService _workbookWorkflowService;
     private readonly IOrganizerMutationService _organizerMutationService;
     private readonly IOrganizerProposalValidationService _organizerValidationService;
     private readonly IOrganizerSessionService _organizerSessionService;
@@ -32,14 +32,14 @@ public sealed class MainViewModel : ObservableObject
     private readonly IRealInstallationValidationService _realInstallationValidationService;
     private readonly IOperationRecoveryService _operationRecoveryService;
     private readonly IOperationObservationService _operationObservationService;
-    private readonly IAiProposalImportService _aiProposalImportService;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
     private ScanInventory? _inventory;
-    private InventoryExportResult? _lastExport;
+    private WorkbookExportResult? _lastWorkbookExport;
+    private WorkbookImportResult? _lastWorkbookImport;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
@@ -77,7 +77,8 @@ public sealed class MainViewModel : ObservableObject
     private int _collectionCount;
     private int _warningCount;
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
-    private string _aiImportStatus = "AI proposal import is available after creating an AI review package.";
+    private string _workbookStatus = "Scan your mods, then export one workbook, edit mod type / protected / destination, and import it back for review.";
+    private string _workbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
     private bool _showAdvancedTools;
     private bool _isBusy;
@@ -92,8 +93,7 @@ public sealed class MainViewModel : ObservableObject
         IPenumbraDiscoveryService discoveryService,
         IPenumbraScanService scanService,
         IPenumbraCompatibilityService compatibilityService,
-        IInventoryExportService inventoryExportService,
-        IAiProposalImportService aiProposalImportService,
+        IWorkbookWorkflowService workbookWorkflowService,
         IOrganizerMutationService organizerMutationService,
         IOrganizerProposalValidationService organizerValidationService,
         IOrganizerSessionService organizerSessionService,
@@ -111,8 +111,7 @@ public sealed class MainViewModel : ObservableObject
         _discoveryService = discoveryService;
         _scanService = scanService;
         _compatibilityService = compatibilityService;
-        _inventoryExportService = inventoryExportService;
-        _aiProposalImportService = aiProposalImportService;
+        _workbookWorkflowService = workbookWorkflowService;
         _organizerMutationService = organizerMutationService;
         _organizerValidationService = organizerValidationService;
         _organizerSessionService = organizerSessionService;
@@ -141,12 +140,10 @@ public sealed class MainViewModel : ObservableObject
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
         ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
-        CreateAiReviewPackageCommand = new AsyncRelayCommand(CreateAiReviewPackageAsync, () => _inventory is not null);
-        ImportAiProposalCommand = new AsyncRelayCommand(ImportAiProposalAsync, () => _inventory is not null && _lastExport is not null);
-        OpenExportFolderCommand = new AsyncRelayCommand(OpenExportFolderAsync, () => _lastExport is not null);
-        CopyMasterPromptCommand = new AsyncRelayCommand(CopyMasterPromptAsync, () => _lastExport is not null);
-        CopyInventoryFilePathCommand = new AsyncRelayCommand(CopyInventoryFilePathAsync, () => _lastExport is not null);
-        CopyCompleteAiRequestCommand = new AsyncRelayCommand(CopyCompleteAiRequestAsync, () => _lastExport is not null);
+        ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
+        OpenWorkbookCommand = new AsyncRelayCommand(OpenWorkbookAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
+        OpenWorkbookFolderCommand = new AsyncRelayCommand(OpenWorkbookFolderAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
         ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
@@ -184,12 +181,10 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
-    public AsyncRelayCommand CreateAiReviewPackageCommand { get; }
-    public AsyncRelayCommand ImportAiProposalCommand { get; }
-    public AsyncRelayCommand OpenExportFolderCommand { get; }
-    public AsyncRelayCommand CopyMasterPromptCommand { get; }
-    public AsyncRelayCommand CopyInventoryFilePathCommand { get; }
-    public AsyncRelayCommand CopyCompleteAiRequestCommand { get; }
+    public AsyncRelayCommand ExportWorkbookCommand { get; }
+    public AsyncRelayCommand ImportWorkbookCommand { get; }
+    public AsyncRelayCommand OpenWorkbookCommand { get; }
+    public AsyncRelayCommand OpenWorkbookFolderCommand { get; }
     public AsyncRelayCommand ValidateInstallationCommand { get; }
     public AsyncRelayCommand CreateDiagnosticPackageCommand { get; }
     public RelayCommand SelectStrategyCommand { get; }
@@ -439,11 +434,22 @@ public sealed class MainViewModel : ObservableObject
         private set => SetProperty(ref _installationValidationStatus, value);
     }
 
-    public string AiImportStatus
+    public string WorkbookStatus
     {
-        get => _aiImportStatus;
-        private set => SetProperty(ref _aiImportStatus, value);
+        get => _workbookStatus;
+        private set => SetProperty(ref _workbookStatus, value);
     }
+
+    public string WorkbookImportStatus
+    {
+        get => _workbookImportStatus;
+        private set => SetProperty(ref _workbookImportStatus, value);
+    }
+
+    public string WorkbookPath => _lastWorkbookExport?.WorkbookPath ?? string.Empty;
+
+    public string WorkbookCategorySummary
+        => "Mod type codes: " + string.Join("  •  ", WorkbookCategoryCatalog.Definitions.Select(category => $"{category.Code} = {category.Name}"));
 
     public string DiagnosticStatus
     {
@@ -621,6 +627,11 @@ public sealed class MainViewModel : ObservableObject
             CollectionCount = _inventory.Collections.Count;
             WarningCount = ScanWarnings.Count;
             _controlledTestRequest = null;
+            _lastWorkbookExport = null;
+            _lastWorkbookImport = null;
+            RaisePropertyChanged(nameof(WorkbookPath));
+            WorkbookStatus = "Scan complete. Export one workbook, edit mod type / protected / destination, and import it back for review.";
+            WorkbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
             ControlledTestStatus = "Controlled Test Apply is not configured yet.";
             ControlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
             ClearControlledTestCommand.RaiseCanExecuteChanged();
@@ -632,8 +643,10 @@ public sealed class MainViewModel : ObservableObject
             DetectionSummary = BuildHomeSummary(_installation, _inventory);
             ProgressMessage = $"Scan complete. {_inventory.Mods.Count} mods loaded.";
             AppendLog($"Scan finished with {_inventory.Mods.Count} mods and {ScanWarnings.Count} warnings.");
-            CreateAiReviewPackageCommand.RaiseCanExecuteChanged();
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
+            ExportWorkbookCommand.RaiseCanExecuteChanged();
+            ImportWorkbookCommand.RaiseCanExecuteChanged();
+            OpenWorkbookCommand.RaiseCanExecuteChanged();
+            OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
             ConfigureControlledTestCommand.RaiseCanExecuteChanged();
             BackupAndApplyCommand.RaiseCanExecuteChanged();
             RaiseInstallationChanged();
@@ -691,109 +704,186 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    private async Task CreateAiReviewPackageAsync()
+    private async Task ExportWorkbookAsync()
     {
         if (_inventory is null)
             return;
 
         try
         {
-            ProgressMessage = "Creating AI review package";
-            _lastExport = await _inventoryExportService.CreateAiReviewPackageAsync(_inventory, CancellationToken.None, BuildOrganizationPreferences());
-            ImportAiProposalCommand.RaiseCanExecuteChanged();
-            OpenExportFolderCommand.RaiseCanExecuteChanged();
-            CopyMasterPromptCommand.RaiseCanExecuteChanged();
-            CopyInventoryFilePathCommand.RaiseCanExecuteChanged();
-            CopyCompleteAiRequestCommand.RaiseCanExecuteChanged();
-            AppendLog($"Created AI review package at {_lastExport.ExportFolder}");
-            AiImportStatus = "AI review package ready. Import a Penumbra_AI_Proposal.json file to merge validated suggestions into this session.";
-            ProgressMessage = "AI review package created.";
-
-            var dialog = new ExportPackageDialog(_lastExport, this)
+            await RunBusyAsync("Exporting your workbook.", async () =>
             {
-                Owner = Application.Current.MainWindow,
-            };
-            dialog.ShowDialog();
+                var workbookPath = ResolveWorkbookExportPath();
+                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), workbookPath, CancellationToken.None);
+                _lastWorkbookImport = null;
+                RaisePropertyChanged(nameof(WorkbookPath));
+                WorkbookStatus = $"{_lastWorkbookExport.Summary}{Environment.NewLine}Saved to: {_lastWorkbookExport.WorkbookPath}";
+                WorkbookImportStatus = $"Edit the 'mod type', 'protected', and 'destination' columns, save the file, then click Import Workbook. {WorkbookCategoryCatalog.BlankDestinationRule}";
+                OpenWorkbookCommand.RaiseCanExecuteChanged();
+                OpenWorkbookFolderCommand.RaiseCanExecuteChanged();
+                AppendLog($"Exported workbook to {_lastWorkbookExport.WorkbookPath}.");
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressMessage = "Workbook export cancelled.";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI review package creation failed");
-            ProgressMessage = "AI review package creation failed.";
-            AppendLog("AI review package creation failed: " + ex.Message);
-            MessageBox.Show(
-                "The AI review package could not be created. Please try again after a successful scan.",
-                "Export failed",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            _logger.LogError(ex, "Workbook export failed");
+            WorkbookStatus = "Workbook export failed.";
+            ProgressMessage = "Workbook export failed.";
+            AppendLog("Workbook export failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Workbook export failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
-    private async Task ImportAiProposalAsync()
+    private async Task ImportWorkbookAsync()
     {
-        if (_inventory is null || _lastExport is null)
+        if (_inventory is null)
             return;
 
         var dialog = new OpenFileDialog
         {
-            Filter = "JSON files (*.json)|*.json|All files (*.*)|*.*",
-            Title = "Import Penumbra_AI_Proposal.json",
-            FileName = "Penumbra_AI_Proposal.json",
+            Title = "Import Edited Workbook",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
             CheckFileExists = true,
+            Multiselect = false,
         };
         if (dialog.ShowDialog(Application.Current.MainWindow) != true)
             return;
 
         try
         {
-            ProgressMessage = "Importing AI proposal.";
-            var import = await _aiProposalImportService.ImportAsync(
-                dialog.FileName,
-                _lastExport.InventoryPath,
-                CurrentProposalRows().ToArray(),
-                CancellationToken.None);
-
-            if (import.Errors.Count > 0 && import.ImportedRows.Count == 0)
+            await RunBusyAsync("Importing workbook destinations.", async () =>
             {
-                AiImportStatus = import.Summary;
-                ProgressMessage = "AI proposal import blocked.";
-                AppendLog("AI proposal import blocked: " + string.Join(" | ", import.Errors.Select(error => error.Message).Distinct(StringComparer.OrdinalIgnoreCase)));
-                MessageBox.Show(import.Summary, "AI proposal blocked", MessageBoxButton.OK, MessageBoxImage.Warning);
+                _lastWorkbookImport = await _workbookWorkflowService.ImportAsync(dialog.FileName, _inventory!, CancellationToken.None);
+            });
+
+            if (_lastWorkbookImport is null)
+                return;
+
+            if (_lastWorkbookImport.Errors.Count > 0)
+            {
+                WorkbookImportStatus = _lastWorkbookImport.Summary;
+                ProgressMessage = "Workbook import blocked.";
+                AppendLog("Workbook import blocked: " + string.Join(" | ", _lastWorkbookImport.Errors.Take(8)));
+                MessageBox.Show(
+                    _lastWorkbookImport.Summary + Environment.NewLine + Environment.NewLine +
+                    string.Join(Environment.NewLine, _lastWorkbookImport.Errors.Take(12)),
+                    "Workbook import blocked",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
                 return;
             }
 
-            foreach (var imported in import.ImportedRows)
-            {
-                var row = Mods.FirstOrDefault(candidate => candidate.StableScanId == imported.StableScanId);
-                if (row is null)
-                    continue;
-
-                row.Proposal.ProposedVirtualFolder = imported.ProposedVirtualFolder;
-                row.Proposal.OrganizerCreatorLabel = imported.OrganizerCreatorLabel;
-                row.Proposal.OrganizerTypeLabel = imported.OrganizerTypeLabel;
-                row.Proposal.Protected = imported.Protected;
-                row.Proposal.Source = imported.Source;
-                row.Proposal.NeedsReview = imported.NeedsReview;
-
-                if (!_organizerFolders.Any(folder => folder.Path.Equals(imported.ProposedVirtualFolder, StringComparison.OrdinalIgnoreCase)))
-                    _organizerFolders.Add(new OrganizerFolder(imported.ProposedVirtualFolder, true, false));
-            }
-
-            InvalidateDryRunState("Imported AI suggestions changed the proposal snapshot.");
-            RefreshRowsFromProposals();
-            RefreshOrganizerViews();
-            RefreshReviewChanges();
-            AiImportStatus = import.Summary;
-            ProgressMessage = "AI proposal imported.";
-            AppendLog(import.Summary);
+            ApplyWorkbookImport(_lastWorkbookImport);
+            WorkbookImportStatus = _lastWorkbookImport.Summary;
+            WorkbookStatus = $"Imported workbook: {Path.GetFileName(_lastWorkbookImport.WorkbookPath)}";
+            ProgressMessage = "Workbook imported.";
+            AppendLog($"Imported workbook from {_lastWorkbookImport.WorkbookPath}.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI proposal import failed");
-            AiImportStatus = "AI proposal import failed.";
-            ProgressMessage = "AI proposal import failed.";
-            AppendLog("AI proposal import failed: " + ex.Message);
-            MessageBox.Show(ex.Message, "AI proposal import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _logger.LogError(ex, "Workbook import failed");
+            WorkbookImportStatus = "Workbook import failed.";
+            ProgressMessage = "Workbook import failed.";
+            AppendLog("Workbook import failed: " + ex.Message);
+            MessageBox.Show(ToUserMessage(ex), "Workbook import failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private Task OpenWorkbookAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = _lastWorkbookExport.WorkbookPath,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private Task OpenWorkbookFolderAsync()
+    {
+        if (_lastWorkbookExport is null || !File.Exists(_lastWorkbookExport.WorkbookPath))
+            return Task.CompletedTask;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = Path.GetDirectoryName(_lastWorkbookExport.WorkbookPath)!,
+            UseShellExecute = true,
+        });
+        return Task.CompletedTask;
+    }
+
+    private void ApplyWorkbookImport(WorkbookImportResult import)
+    {
+        _suspendOrganizerRefresh = true;
+        try
+        {
+            var importById = import.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
+            foreach (var mod in Mods)
+            {
+                if (!importById.TryGetValue(mod.StableScanId, out var row))
+                    continue;
+
+                var originalType = mod.DetectedType;
+                mod.Protected = row.Protected;
+                mod.DetectedType = row.ResolvedModType;
+                mod.EffectiveCreator = string.IsNullOrWhiteSpace(row.Author) ? mod.Author : row.Author;
+                mod.ProposalSource =
+                    string.Equals(row.ResolvedDestination, mod.CurrentVirtualFolder, StringComparison.Ordinal) &&
+                    string.Equals(row.ResolvedModType, originalType, StringComparison.OrdinalIgnoreCase)
+                        ? "Preserved current"
+                        : "Manual";
+                mod.ProposedVirtualFolder = row.ResolvedDestination ?? mod.CurrentVirtualFolder;
+                mod.Proposal.NeedsReview =
+                    string.Equals(row.ResolvedModType, "Review", StringComparison.OrdinalIgnoreCase)
+                    || mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase);
+            }
+
+            _organizerFolders.Clear();
+            foreach (var folder in Mods
+                         .Select(mod => mod.ProposedVirtualFolder)
+                         .Where(path => !string.IsNullOrWhiteSpace(path))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                _organizerFolders.Add(new OrganizerFolder(folder));
+            }
+
+            SeedExistingEmptyFolders();
+        }
+        finally
+        {
+            _suspendOrganizerRefresh = false;
+        }
+
+        InvalidateDryRunState("Workbook import updated the proposed destinations.");
+        RefreshOrganizerViews();
+        RefreshReviewChanges();
+        BackupAndApplyCommand.RaiseCanExecuteChanged();
+    }
+
+    private string ResolveWorkbookExportPath()
+    {
+        var fileName = $"PenumbraOrganizer-Workbook-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.xlsx";
+        var dialog = new SaveFileDialog
+        {
+            Title = "Choose Workbook Export Location",
+            Filter = "Excel workbook (*.xlsx)|*.xlsx",
+            FileName = fileName,
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
+            throw new OperationCanceledException("Workbook export was cancelled.");
+
+        return dialog.FileName;
     }
 
     private async Task ValidateInstallationAsync()
@@ -945,47 +1035,6 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Diagnostic export failed.";
             AppendLog("Diagnostic export failed: " + ex.Message);
         }
-    }
-
-    private async Task OpenExportFolderAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = _lastExport.ExportFolder,
-            UseShellExecute = true,
-        });
-    }
-
-    private async Task CopyMasterPromptAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(await File.ReadAllTextAsync(_lastExport.InstructionsPath));
-    }
-
-    private async Task CopyInventoryFilePathAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        Clipboard.SetText(_lastExport.InventoryPath);
-    }
-
-    private async Task CopyCompleteAiRequestAsync()
-    {
-        if (_lastExport is null)
-            return;
-
-        await _inventoryExportService.ValidateExportPackageAsync(_lastExport.ExportFolder, CancellationToken.None);
-        var prompt = await File.ReadAllTextAsync(_lastExport.InstructionsPath);
-        Clipboard.SetText($"Upload Penumbra_AI_Review_Package.zip to your AI assistant first, then paste the prompt below.{Environment.NewLine}{Environment.NewLine}{prompt}");
     }
 
     private string BuildCompatibilitySummary(CompatibilityReport compatibility)
