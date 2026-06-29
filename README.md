@@ -1,28 +1,37 @@
 # Penumbra Organizer
 
-A beginner-friendly, unofficial Windows utility for viewing and organizing Penumbra virtual mod folders without physically moving mod files.
+A beginner-friendly, unofficial Windows utility for viewing and reorganizing Penumbra virtual mod folders without physically moving mod files.
 
 ## Current status
 
-**Early alpha preview**
+**0.2.0-beta**
+
+The current build can apply organization changes to Penumbra. It reads Penumbra's
+file-based config (`sort_order.json`, `mod_data`, collections), lets you reorganize
+your virtual folders, and writes the changes back behind a verified backup.
 
 The current build includes:
 
 * automatic Penumbra discovery
 * distinction between Penumbra state directory and mod-library root
-* installed-mod scanning
+* installed-mod scanning (read-only)
 * current Penumbra-folder inventory
 * manual in-memory folder proposals
-* organization strategy selection
+* one-click organization strategies that produce a full plan
 * selected-row and bulk proposal actions
 * proposed folder creation and rename
 * protected mods
 * undo and redo
 * organizer session saving
 * Review Changes validation
-* external AI inventory export
+* verified backup and restore (rollback)
+* dry run and guarded Apply
+* controlled live-test Apply
+* incomplete-operation recovery
+* workbook (Excel) export and import for offline/AI-assisted review
 
-This alpha does **not** apply changes to Penumbra yet. It previews and validates organization proposals only.
+Per-mod metadata editing exists in the engine but its UI is disabled in
+0.2.0-beta pending a fix.
 
 ## What the application does not do
 
@@ -32,57 +41,61 @@ Penumbra Organizer does not:
 * move physical mod directories
 * rewrite textures, models, animations, sounds, or VFX
 * edit `.pmp` packages
+* edit Penumbra collections, priorities, enabled states, or option groups
+* write `organization.json`
 * require AI
 * require command-line knowledge
-* currently apply virtual-folder changes in this alpha
 
 ## Download
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.1.0-alpha-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.2.0-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
-4. Windows SmartScreen may warn about an unsigned early build. Check that the file came from this repository's Releases page before running it.
+4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
 
 The app is self-contained and requires no separate .NET installation.
 
-## How to use the current alpha
+## How to use
 
-1. Open the app.
-2. Let it detect Penumbra.
-3. Confirm the displayed:
-   * Penumbra state directory
-   * Mod library root
-4. Scan installed mods.
-5. Open Organize.
-6. Choose:
+1. Open the app and let it detect Penumbra.
+2. Confirm the displayed Penumbra state directory and mod library root.
+3. Click **Scan My Mods**.
+4. Open **Organize** and choose a strategy:
    * Start manually
    * By creator
    * By mod type
-   * By type and creator
-   * By creator and type
-   * Keep current layout
+   * Type then creator
+   * Creator then type
+   * Preserve and clean
    * Custom
-   * External AI review
-7. Create proposed folders and assign selected mods.
-8. Use Undo or Redo as needed.
-9. Open Review Changes.
-10. Remember that this alpha previews and validates organization proposals but does not yet apply them.
+5. Adjust proposed folders and assignments, using Undo or Redo as needed.
+6. Open **Review Changes** and resolve anything flagged.
+7. **Close FFXIV.**
+8. Create a backup, then **Backup and Apply**.
+9. If you need to undo a previous operation, open **Backups** and use **Restore Backup**.
 
-## External AI workflow
+## Workbook workflow
 
-AI is optional. The app can export a sanitized ZIP that users upload to their AI provider. The AI can suggest virtual folders only.
-
-A future app version will import and validate returned proposals. The current alpha creates the export package but does not yet provide a GUI import workflow.
+AI is optional. Instead of a built-in AI integration, the app can **Export Workbook**
+to an Excel file you can review offline or hand to any AI provider, then **Import Workbook**
+to bring the edited assignments back in. The import is validated against your live
+Penumbra inventory before anything is applied.
 
 ## Safety model
 
 * Scanning is read-only.
-* Proposal changes are held in app memory and app-owned session files.
+* Proposal changes are held in app memory and app-owned session files until you apply.
+* Apply is guarded by a verified backup and a dry run.
 * Protected mods cannot be changed.
 * Physical mod assets remain untouched.
-* Later Apply support will require validation and a verified backup.
+* Restore Backup rolls back a previous operation.
+
+## Where the app stores its data
+
+* `%LocalAppData%\PenumbraOrganizer\`
+* Sessions, settings, logs, and backups (including manual "Back Up My Penumbra" snapshots) live there.
 
 ## Screenshots
 
@@ -97,14 +110,9 @@ Screenshots are not included yet.
 
 ## Known limitations
 
-The current alpha does not yet include:
+The current beta does not yet include:
 
-* applying changes to Penumbra
-* live dry run
-* verified backup
-* post-Apply verification
-* rollback
-* GUI AI proposal import
+* per-mod metadata editing UI (engine present, UI disabled)
 * drag-and-drop
 * collection editing
 * `.pmp` handling
@@ -142,16 +150,20 @@ Technology:
 * .NET 8
 * WPF
 * xUnit
+* ClosedXML (workbook export/import)
 
 Documentation:
 
 * [Project context](docs/PROJECT_CONTEXT.md)
 * [Architecture](docs/ARCHITECTURE.md)
+* [Code guide](docs/CODE_GUIDE.md)
 * [Penumbra discovery](docs/PENUMBRA_DISCOVERY.md)
 * [Safety and rollback](docs/SAFETY_AND_ROLLBACK.md)
+* [Backup and rollback format](docs/BACKUP_AND_ROLLBACK_FORMAT.md)
+* [Dry run and apply format](docs/DRY_RUN_AND_APPLY_FORMAT.md)
 * [Compatibility model](docs/COMPATIBILITY_MODEL.md)
 * [Organizer session format](docs/ORGANIZER_SESSION_FORMAT.md)
-* [Rollback foundation handoff](docs/HANDOFF_ROLLBACK_FOUNDATION.md)
+* [Sort order and metadata handoff](docs/HANDOFF_SORT_ORDER_AND_METADATA.md)
 
 ## Disclaimer
 

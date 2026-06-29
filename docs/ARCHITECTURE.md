@@ -11,7 +11,7 @@
 - dependency injection startup
 - user-facing workflow states: `Scan`, `Review`, `Dry Run`, `Apply`
 - beginner-first visual organizer under `Organize`
-- manual folder-tree editing, drag and drop, bulk assignment, undo, redo, and before-and-after preview
+- manual folder-tree editing, bulk assignment, undo, redo, and before-and-after preview
 
 `PenumbraOrganizer.Core`
 
@@ -21,7 +21,7 @@
 - creator canonicalization
 - organization preferences and proposal source models
 - manual override models for organizer-only creator/type labels
-- versioned AI exchange models
+- workbook export/import exchange models
 - organizer mutation, history, validation, and session models
 - schema fingerprinting rules
 - dry-run and apply planning primitives
@@ -32,9 +32,8 @@
 - config and metadata parsing
 - filesystem scanning
 - `sort_order.json` read/write for virtual-folder organization, plus `meta.json` and `mod_data/<id>.json` metadata editing
-- backup, rollback, atomic write, CSV/JSON export
-- versioned AI inventory package generation and validation
-- read-only AI proposal validation
+- backup, rollback, atomic write
+- workbook (Excel) export generation and validated import
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
 - compatibility/version checks
 - application-owned persistence under `%LocalAppData%\PenumbraOrganizer`
@@ -49,21 +48,21 @@
 ## Safety boundaries
 
 - scanning is read-only
-- AI export/import is read-only
+- workbook export is read-only; workbook import is validated against the live inventory before it can affect anything
 - apply is disabled until scan, validation, backup, and dry run all succeed
 - protected paths are immutable
 - physical mod assets are never deleted or merged
 - phase 1 writes only Penumbra virtual-folder metadata
-- manual drag-and-drop changes only the in-memory proposed plan until Review, Backup, Apply, and Verify succeed
-- spreadsheet export is optional advanced reporting, not the primary editor
+- manual edits change only the in-memory proposed plan until Review, Backup, Apply, and Verify succeed
+- workbook export is optional advanced editing, not the primary editor
 - `.pmp` packages are not parsed, extracted, modified, imported, restored, or used as an organizer source
 - collections are not modified during the first write-enabled milestone unless separately proven and approved
 
-## Current alpha status
+## Current status
 
-`v0.1.0-alpha` is a public prerelease at `https://github.com/monstersghost/PenumbraOrganizer`.
+`v0.2.0-beta` is a public prerelease at `https://github.com/monstersghost/PenumbraOrganizer`.
 
-Complete foundations in the alpha include:
+Complete foundations include:
 
 - public repository, MIT license, public README, user README, contribution/security docs, and issue/PR templates
 - self-contained Windows x64 single-file release package and SHA-256 checksum generation
@@ -77,9 +76,9 @@ Complete foundations in the alpha include:
 - atomic organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions\last-session.json`
 - stable-scan-ID restoration, organization preference persistence, proposal persistence, organizer-only creator/type labels, and stale-session detection foundation
 - Review Changes screen with reusable proposal validation and statuses `ValidChange`, `Unchanged`, `Protected`, `NeedsReview`, `InvalidPath`, `BlockedProtected`, `MissingMod`, and `StaleScan`
-- sanitized external AI inventory export package with organization preferences
+- workbook (Excel) export of the inventory and plan, with organization preferences, plus validated workbook import
 
-The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. GUI AI proposal import, drag-and-drop, collection editing, `.pmp` handling, and physical mod movement remain out of scope.
+The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. Per-mod metadata editing exists in the engine but its UI is disabled in 0.2.0-beta. Drag-and-drop, collection editing, `.pmp` handling, and physical mod movement remain out of scope.
 
 ## PMP scope boundary
 
@@ -153,9 +152,8 @@ The `Organize` screen starts with "How would you like your mods organized?" and 
 - By creator and type
 - Keep my current layout and clean it
 - Custom
-- External AI review
 
-AI is optional and must not be presented as required or recommended.
+Workbook export/import is offered alongside the strategy cards as an optional offline editing path. It must not be presented as required or recommended.
 
 The visual organizer contains:
 
@@ -164,7 +162,7 @@ The visual organizer contains:
 - `Suggested`
 - `Needs Review`
 
-`Folder View` is the default. It uses a folder tree with counts and lock indicators, a mod list for the selected proposed folder, and an optional collapsible details pane. Users can create proposed folders, rename proposed folders, delete empty proposed folders, search/filter, assign selected mods, drag movable mods or folders, mark items protected, and undo/redo in-memory changes.
+`Folder View` is the default. It uses a folder tree with counts and lock indicators, a mod list for the selected proposed folder, and an optional collapsible details pane. Users can create proposed folders, rename proposed folders, delete empty proposed folders, search/filter, assign selected mods, mark items protected, and undo/redo in-memory changes.
 
 Every proposed row tracks its source:
 
@@ -178,9 +176,9 @@ Manual changes override automated or AI suggestions and must not be silently rep
 
 Primary organizer actions operate on selected rows. Filtered-but-unselected rows must remain unchanged. Any all-visible operation is exposed separately, clearly labeled, and confirmed with the exact count and destination.
 
-All in-memory proposal mutations go through `IOrganizerMutationService`, including assignment, return-to-current, protection changes, folder creation, folder rename, folder deletion, future deterministic suggestions, future AI import, and future drag-and-drop. The service creates one undo history entry per successful logical action and does not touch live Penumbra files.
+All in-memory proposal mutations go through `IOrganizerMutationService`, including assignment, return-to-current, protection changes, folder creation, folder rename, folder deletion, deterministic strategy suggestions, and workbook import. The service creates one undo history entry per successful logical action and does not touch live Penumbra files.
 
-`IOrganizerProposalValidationService` provides reusable read-only validation for Review Changes, future AI import, and future dry-run planning.
+`IOrganizerProposalValidationService` provides reusable read-only validation for Review Changes, workbook import, and dry-run planning.
 
 `IOrganizerSessionService` persists application proposal state only. The session format is documented in `docs/ORGANIZER_SESSION_FORMAT.md`.
 
@@ -193,15 +191,13 @@ The app must be able to produce proposals without AI when metadata is sufficient
 - Combined strategies resolve type and creator independently, build destinations in the selected order, and omit empty components.
 - Preserve-and-clean removes only clearly temporary wrappers and does not impose new creator/type layers unless requested.
 
-## AI export and validation
+## Workbook export and import
 
-Sanitized AI exports include `organizationPreferences` at the payload root. The generated master prompt must require the external AI to follow those preferences exactly, avoid imposing type folders when disabled, avoid imposing creator folders when disabled, skip unneeded type/creator inference for single-axis strategies, minimize changes in preserve-and-clean mode, and not replace the user's strategy with the AI's preferred structure.
+The workbook workflow replaces the earlier sanitized-AI export path. `IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human or an AI the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
 
-Imported AI proposals must validate that proposed paths conform to the selected strategy unless a row is protected or explicitly manually overridden.
+`ImportAsync` reads an edited workbook back into `WorkbookImportRow` records and validates each against the supplied `ScanInventory`: rows must map to a real installed mod, and a row that targets a protected path or fails validation is rejected rather than silently applied. The result reports accepted rows, rejected rows, and a summary.
 
-The version 1 inventory and proposal contracts are documented in `docs/AI_EXCHANGE_FORMAT.md`. Inventory exports use explicit domain models, globally unique `sourceExportId` values, sanitized path-like fields, strict package validation, and byte-identical ZIP/standalone files.
-
-The read-only proposal validator accepts the original `AiInventoryExport` plus an imported `AiProposalDocument` and returns structured errors, warnings, accepted proposals, rejected proposals, and a summary. Global validation failures now block the entire import. Successful imported rows merge into the same in-memory proposal model used by manual editing, while manual overrides keep precedence.
+Successful imported rows merge into the same in-memory proposal model used by manual editing and are tagged with the `ImportedAi` proposal source, while manual overrides keep precedence. Nothing from a workbook reaches Penumbra until it passes Review Changes, backup, dry run, and Apply like any other proposal.
 
 ## Review model
 
@@ -212,7 +208,7 @@ Normal flow:
 1. Detect Penumbra.
 2. Scan the installed library.
 3. Select an organization strategy or start manually.
-4. Generate proposals manually, deterministically, or through external AI.
+4. Generate proposals manually, deterministically, or by importing an edited workbook.
 5. Review exact virtual-folder changes.
 6. Validate the real installation if the user explicitly requests it.
 7. Create and verify a backup.
@@ -254,7 +250,7 @@ The current recovery slice includes:
 - post-Apply Penumbra UI observation capture
 - incomplete-operation detection for interrupted backup, Apply, verification, and rollback work
 
-Rollback remains independent of display names, current AI proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
+Rollback remains independent of display names, current proposals, current organizer sessions, new scans, workbooks, or reconstructing metadata from current state. It uses immutable operation records, verified backups, original hashes, applied hashes, affected file lists, and exact original bytes.
 
 If the app closes or crashes mid-operation, the next launch keeps the operation visible and offers narrow recovery actions instead of hiding it:
 
