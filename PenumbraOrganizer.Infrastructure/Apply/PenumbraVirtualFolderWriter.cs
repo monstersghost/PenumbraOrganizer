@@ -40,6 +40,10 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         var state = LoadState(installation);
         var rowsById = proposalSnapshot.ValidationResult.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
         var proposalsById = proposalSnapshot.Proposals.ToDictionary(proposal => proposal.StableScanId, StringComparer.Ordinal);
+        var nameEditsById = (proposalSnapshot.MetadataEdits ?? Array.Empty<ModMetadataEdit>())
+            .Where(edit => !string.IsNullOrEmpty(edit.Name))
+            .GroupBy(edit => edit.StableScanId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last().Name!, StringComparer.Ordinal);
         var entries = new List<DryRunPlanEntry>(inventory.Mods.Count);
 
         foreach (var mod in inventory.Mods.OrderBy(mod => mod.StableScanId, StringComparer.Ordinal))
@@ -54,7 +58,6 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
                 warnings.Add(row.Message);
 
             var effectiveProtected = mod.Protected || proposal?.Protected == true;
-            var requiresWrite = row.Status == OrganizerRowStatus.ValidChange && !effectiveProtected;
 
             // Every installed mod is organizable: it either already has a sort_order entry, or it
             // lives at the root and we will create one. Preserve the existing display leaf so a
@@ -63,9 +66,21 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
             if (!string.Equals(currentFolder, row.CurrentVirtualFolder, StringComparison.Ordinal))
                 warnings.Add("The authoritative sort_order folder no longer matches the scan snapshot.");
 
-            var displayLeaf = state.CurrentFullPathFor(mod.StableScanId) is { } existing
+            var currentLeaf = state.CurrentFullPathFor(mod.StableScanId) is { } existing
                 ? PenumbraSortOrder.DisplayLeaf(existing)
                 : DefaultDisplayName(mod);
+
+            // A meta.json Name edit only changes a root mod's display automatically; a *placed*
+            // mod's display name is the sort_order leaf, so rewrite the leaf to keep the rename
+            // visible in Penumbra. Root mods keep their leaf (the meta.json change suffices).
+            var isPlaced = !string.IsNullOrEmpty(row.ProposedVirtualFolder);
+            var displayLeaf = isPlaced && nameEditsById.TryGetValue(mod.StableScanId, out var newName)
+                ? newName
+                : currentLeaf;
+
+            var folderChanged = row.Status == OrganizerRowStatus.ValidChange;
+            var leafChanged = isPlaced && !string.Equals(displayLeaf, currentLeaf, StringComparison.Ordinal);
+            var requiresWrite = (folderChanged || leafChanged) && !effectiveProtected;
             var proposedSortPath = requiresWrite
                 ? BuildProposedSortPath(row.ProposedVirtualFolder, displayLeaf, mod)
                 : string.Empty;
