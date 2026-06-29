@@ -1471,13 +1471,18 @@ public sealed class MainViewModel : ObservableObject
     // Recreating the view recovers cleanly, so guard every refresh and rebuild on NRE.
     private void RefreshCollectionViews()
     {
+        // A DataGrid cell/row can still be mid-edit when a command fires (e.g. the Protected
+        // checkbox or an edited proposed-folder cell). Commit it first, otherwise Refresh throws
+        // "'Refresh' is not allowed during an AddNew or EditItem transaction." Rebuilding the views
+        // is the fallback: fresh views carry no edit transaction.
+        CommitPendingGridEdits();
         try
         {
             FilteredMods.Refresh();
             SelectedFolderMods.Refresh();
             ChangedMods.Refresh();
         }
-        catch (NullReferenceException ex)
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
         {
             _logger.LogWarning(ex, "Collection view refresh failed; rebuilding organizer views");
             RebuildCollectionViews();
@@ -1489,15 +1494,37 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshSelectedFolderView()
     {
+        CommitPendingGridEdits();
         try
         {
             SelectedFolderMods.Refresh();
         }
-        catch (NullReferenceException ex)
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
         {
             _logger.LogWarning(ex, "Selected folder view refresh failed; rebuilding organizer views");
             RebuildCollectionViews();
             SelectedFolderMods.Refresh();
+        }
+    }
+
+    private void CommitPendingGridEdits()
+    {
+        foreach (var view in new[] { _filteredMods, _selectedFolderMods, _changedMods })
+        {
+            if (view is not IEditableCollectionView editable)
+                continue;
+
+            try
+            {
+                if (editable.IsAddingNew)
+                    editable.CommitNew();
+                if (editable.IsEditingItem)
+                    editable.CommitEdit();
+            }
+            catch (InvalidOperationException)
+            {
+                // Some views refuse CommitEdit in certain states; the refresh fallback rebuilds.
+            }
         }
     }
 
