@@ -230,15 +230,6 @@ public sealed record CompatibilityReport(
     IReadOnlyList<SchemaFingerprint> SchemaFingerprints,
     IReadOnlyList<string> Warnings);
 
-public sealed record InventoryExportResult(
-    string ExportFolder,
-    string InventoryPath,
-    string InstructionsPath,
-    string HowToUsePath,
-    string ZipPath,
-    string SourceExportId,
-    int ModRowCount);
-
 public sealed record OrganizationRuleCondition(string Field, string Operator, string Value);
 
 public sealed record OrganizationRuleAction(RuleActionType ActionType, string Value);
