@@ -111,13 +111,14 @@ public sealed class ApplyService : IApplyService
             throw new InvalidOperationException(string.Join(Environment.NewLine, preflight.Errors));
 
         var operationId = Guid.NewGuid();
+        var configFiles = EnumerateConfigFiles(installation.ConfigDirectory);
         var backupRequest = new BackupRequest(
             operationId,
             plan.ScanIdentity,
-            plan.FileChanges.Select(change => new BackupFileRequest(
-                change.TargetPath,
+            configFiles.Select(path => new BackupFileRequest(
+                path,
                 Protected: false,
-                plan.Entries.Where(entry => entry.TargetPath.Equals(change.TargetPath, StringComparison.OrdinalIgnoreCase) && entry.RequiresWrite)
+                plan.Entries.Where(entry => entry.TargetPath.Equals(path, StringComparison.OrdinalIgnoreCase) && entry.RequiresWrite)
                     .Select(entry => entry.StableScanId)
                     .Distinct(StringComparer.Ordinal)
                     .ToArray(),
@@ -132,7 +133,7 @@ public sealed class ApplyService : IApplyService
             throw new InvalidOperationException(backupDetails.Operation.LastError ?? "Backup verification failed.");
 
         var manifest = backupDetails.Manifest ?? throw new InvalidOperationException("The verified backup manifest is missing.");
-        var manifestBySource = manifest.Files.ToDictionary(file => file.SourceTargetPath, StringComparer.OrdinalIgnoreCase);
+        var changedHashesByTarget = plan.FileChanges.ToDictionary(change => change.TargetPath, StringComparer.OrdinalIgnoreCase);
         var rollbackTransaction = new RollbackTransaction(
             operationId,
             DateTimeOffset.UtcNow,
@@ -140,21 +141,24 @@ public sealed class ApplyService : IApplyService
             plan.InstalledPenumbraVersion,
             plan.ScanIdentity,
             RollbackTransactionStatus.Available,
-            plan.FileChanges.Select(change =>
+            manifest.Files.Select(file =>
             {
-                var manifestEntry = manifestBySource[change.TargetPath];
+                var hasPlannedWrite = changedHashesByTarget.TryGetValue(file.SourceTargetPath, out var change);
+                var expectedAppliedSha = hasPlannedWrite && change is not null
+                    ? change.ExpectedSha256
+                    : file.OriginalSha256;
                 return new RollbackFileEntry(
-                    change.TargetPath,
-                    manifestEntry.RelativeBackupPath,
-                    manifestEntry.OriginalSha256,
-                    manifestEntry.OriginalLength,
-                    change.ExpectedSha256,
+                    file.SourceTargetPath,
+                    file.RelativeBackupPath,
+                    file.OriginalSha256,
+                    file.OriginalLength,
+                    expectedAppliedSha,
                     ExistedBeforeApply: true,
-                    manifestEntry.Classification,
+                    file.Classification,
                     Protected: false,
-                    ApplyResultStatus.Pending,
+                    hasPlannedWrite ? ApplyResultStatus.Pending : ApplyResultStatus.Applied,
                     RollbackFileStatus.Pending,
-                    manifestEntry.AssociatedStableScanIds,
+                    file.AssociatedStableScanIds,
                     plan.PlanId.ToString("N"),
                     null,
                     null,
@@ -258,6 +262,9 @@ public sealed class ApplyService : IApplyService
                 };
                 transaction = transaction with { Files = transactionFiles.Values.OrderBy(file => file.TargetPath, StringComparer.OrdinalIgnoreCase).ToArray() };
                 await PersistApplyProgressAsync(operation.OperationId, currentPackage.Operation!, results, transaction, cancellationToken);
+
+                if (result.Status == ApplyResultStatus.Failed)
+                    break;
             }
         }
         catch (OperationCanceledException)
@@ -323,6 +330,183 @@ public sealed class ApplyService : IApplyService
         PenumbraInstallation installation,
         CancellationToken cancellationToken)
     {
+        return fileChange.WriteTargetKind switch
+        {
+            PenumbraWriteTargetKind.ModDataDatabase => await ApplyDatabaseChangeAsync(plan, fileChange, installation, cancellationToken),
+            PenumbraWriteTargetKind.OrganizationJson => await ApplyOrganizationChangeAsync(plan, fileChange, installation, cancellationToken),
+            _ => new ApplyFileResult(
+                fileChange.TargetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Failed,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                null,
+                $"Unsupported write target kind: {fileChange.WriteTargetKind}",
+                WriteCompleted: false),
+        };
+    }
+
+    private async Task<ApplyFileResult> ApplyDatabaseChangeAsync(
+        DryRunPlan plan,
+        DryRunFileChange fileChange,
+        PenumbraInstallation installation,
+        CancellationToken cancellationToken)
+    {
+        var targetPath = RecoveryStorageLayout.ValidateAbsoluteTargetPath(fileChange.TargetPath);
+        var preflightFailure = await ValidateCommonPreconditionsAsync(plan, fileChange, installation, cancellationToken);
+        if (preflightFailure is not null)
+            return preflightFailure;
+
+        var changedEntries = plan.Entries
+            .Where(entry => entry.RequiresWrite && entry.TargetPath.Equals(targetPath, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.RecordKey, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (changedEntries.Length == 0)
+        {
+            return new ApplyFileResult(
+                targetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Skipped,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                fileChange.SourceSha256,
+                "No LocalModData rows required a live update.",
+                WriteCompleted: false);
+        }
+
+        var committed = false;
+        try
+        {
+            using (var db = new LiteDatabase($"Filename={targetPath};Connection=Shared;Timeout=00:00:02"))
+            {
+                var collection = db.GetCollection(CollectionName);
+                if (!db.BeginTrans())
+                    throw new InvalidOperationException("Could not start LiteDB transaction.");
+
+                try
+                {
+                    foreach (var entry in changedEntries)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var document = collection.FindById(new BsonValue(entry.RecordKey))
+                            ?? throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} is missing.");
+                        if (!document.TryGetValue(FolderFieldName, out var folderValue) || folderValue.Type != BsonType.String)
+                            throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} has an invalid Folder field.");
+
+                        document[FolderFieldName] = entry.ProposedVirtualFolder;
+                        if (!collection.Update(document))
+                            throw new InvalidOperationException($"The authoritative LocalModData record {entry.RecordKey} could not be updated.");
+                    }
+
+                    db.Commit();
+                    committed = true;
+                }
+                catch
+                {
+                    db.Rollback();
+                    throw;
+                }
+            }
+
+            var finalBytes = await File.ReadAllBytesAsync(targetPath, cancellationToken);
+            var finalHash = Convert.ToHexString(SHA256.HashData(finalBytes));
+            return new ApplyFileResult(
+                targetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Applied,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                finalHash,
+                "The LocalModData folder mappings were applied in one LiteDB transaction.",
+                WriteCompleted: true);
+        }
+        catch (Exception ex)
+        {
+            return new ApplyFileResult(
+                targetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Failed,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                committed ? await TryReadHashAsync(targetPath, cancellationToken) : null,
+                ex.Message,
+                WriteCompleted: committed);
+        }
+    }
+
+    private async Task<ApplyFileResult> ApplyOrganizationChangeAsync(
+        DryRunPlan plan,
+        DryRunFileChange fileChange,
+        PenumbraInstallation installation,
+        CancellationToken cancellationToken)
+    {
+        var targetPath = RecoveryStorageLayout.ValidateAbsoluteTargetPath(fileChange.TargetPath);
+        var preflightFailure = await ValidateCommonPreconditionsAsync(plan, fileChange, installation, cancellationToken);
+        if (preflightFailure is not null)
+            return preflightFailure;
+
+        var expectedBytes = Convert.FromBase64String(fileChange.ExpectedBytesBase64);
+        var tempPath = targetPath + ".apply.tmp";
+        var writeCompleted = false;
+
+        try
+        {
+            await File.WriteAllBytesAsync(tempPath, expectedBytes, cancellationToken);
+            ValidateTemporaryOrganizationJson(tempPath, fileChange);
+            await FlushFileAsync(tempPath, cancellationToken);
+
+            File.Move(tempPath, targetPath, overwrite: true);
+            writeCompleted = true;
+
+            var finalHash = await TryReadHashAsync(targetPath, cancellationToken);
+            if (!string.Equals(finalHash, fileChange.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return new ApplyFileResult(
+                    targetPath,
+                    fileChange.ExactRecordKey,
+                    ApplyResultStatus.Failed,
+                    fileChange.SourceSha256,
+                    fileChange.ExpectedSha256,
+                    finalHash,
+                    "The organization.json hash did not match the planned hash after atomic replacement.",
+                    WriteCompleted: true);
+            }
+
+            return new ApplyFileResult(
+                targetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Applied,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                finalHash,
+                "organization.json was written atomically and validated before replacement.",
+                WriteCompleted: true);
+        }
+        catch (Exception ex)
+        {
+            return new ApplyFileResult(
+                targetPath,
+                fileChange.ExactRecordKey,
+                ApplyResultStatus.Failed,
+                fileChange.SourceSha256,
+                fileChange.ExpectedSha256,
+                writeCompleted ? await TryReadHashAsync(targetPath, cancellationToken) : null,
+                ex.Message,
+                WriteCompleted: writeCompleted);
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    private static async Task<ApplyFileResult?> ValidateCommonPreconditionsAsync(
+        DryRunPlan plan,
+        DryRunFileChange fileChange,
+        PenumbraInstallation installation,
+        CancellationToken cancellationToken)
+    {
         var targetPath = RecoveryStorageLayout.ValidateAbsoluteTargetPath(fileChange.TargetPath);
         var currentInstalledVersion = PenumbraInstalledVersionReader.Read(installation) ?? installation.InstalledVersion ?? "Unknown";
         if (!string.Equals(currentInstalledVersion, plan.InstalledPenumbraVersion, StringComparison.Ordinal))
@@ -368,77 +552,17 @@ public sealed class ApplyService : IApplyService
                 WriteCompleted: false);
         }
 
-        var tempPath = targetPath + ".apply.tmp";
-        try
-        {
-            await File.WriteAllBytesAsync(tempPath, expectedBytes, cancellationToken);
-            await ValidateTemporaryOutputAsync(tempPath, plan, cancellationToken);
-            await FlushFileAsync(tempPath, cancellationToken);
-
-            File.Move(tempPath, targetPath, overwrite: true);
-
-            var finalBytes = await File.ReadAllBytesAsync(targetPath, cancellationToken);
-            var finalHash = Convert.ToHexString(SHA256.HashData(finalBytes));
-            if (!string.Equals(finalHash, fileChange.ExpectedSha256, StringComparison.OrdinalIgnoreCase))
-            {
-                return new ApplyFileResult(
-                    targetPath,
-                    fileChange.ExactRecordKey,
-                    ApplyResultStatus.Failed,
-                    fileChange.SourceSha256,
-                    fileChange.ExpectedSha256,
-                    finalHash,
-                    "The applied file hash did not match the planned hash after atomic replacement.",
-                    WriteCompleted: true);
-            }
-
-            return new ApplyFileResult(
-                targetPath,
-                fileChange.ExactRecordKey,
-                ApplyResultStatus.Applied,
-                fileChange.SourceSha256,
-                fileChange.ExpectedSha256,
-                finalHash,
-                "The virtual-folder mapping was applied atomically.",
-                WriteCompleted: true);
-        }
-        catch (Exception ex)
-        {
-            return new ApplyFileResult(
-                targetPath,
-                fileChange.ExactRecordKey,
-                ApplyResultStatus.Failed,
-                fileChange.SourceSha256,
-                fileChange.ExpectedSha256,
-                null,
-                ex.Message,
-                WriteCompleted: false);
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-        }
+        return null;
     }
 
-    private static async Task ValidateTemporaryOutputAsync(string tempPath, DryRunPlan plan, CancellationToken cancellationToken)
+    private static void ValidateTemporaryOrganizationJson(string tempPath, DryRunFileChange fileChange)
     {
-        using var db = new LiteDatabase($"Filename={tempPath};Connection=Direct");
-        var collection = db.GetCollection(CollectionName);
-        var documents = collection.FindAll().ToDictionary(document => document["_id"].AsString, document => document, StringComparer.Ordinal);
-
-        foreach (var entry in plan.Entries.Where(entry => entry.RequiresWrite))
+        var state = PenumbraOrganizationStore.LoadState(tempPath);
+        foreach (var folder in fileChange.AffectedRecordKeys)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!documents.TryGetValue(entry.RecordKey, out var document))
-                throw new InvalidOperationException($"The expected-result database is missing authoritative record {entry.RecordKey}.");
-            if (!document.TryGetValue(FolderFieldName, out var folderValue) || folderValue.Type != BsonType.String)
-                throw new InvalidOperationException($"The expected-result database has an invalid Folder field for {entry.RecordKey}.");
-            if (!string.Equals(folderValue.AsString, entry.ProposedVirtualFolder, StringComparison.Ordinal))
-                throw new InvalidOperationException($"The expected-result database does not contain the planned folder for {entry.RecordKey}.");
+            if (!state.Folders.ContainsKey(folder))
+                throw new InvalidOperationException($"The temporary organization.json is missing required folder {folder}.");
         }
-
-        await Task.CompletedTask;
     }
 
     private async Task PersistApplyProgressAsync(
@@ -607,5 +731,21 @@ public sealed class ApplyService : IApplyService
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
         await stream.FlushAsync(cancellationToken);
         stream.Flush(flushToDisk: true);
+    }
+
+    private static async Task<string> TryReadHashAsync(string path, CancellationToken cancellationToken)
+    {
+        var bytes = await File.ReadAllBytesAsync(path, cancellationToken);
+        return Convert.ToHexString(SHA256.HashData(bytes));
+    }
+
+    private static IReadOnlyList<string> EnumerateConfigFiles(string configDirectory)
+    {
+        if (!Directory.Exists(configDirectory))
+            throw new InvalidOperationException("The Penumbra configuration directory does not exist.");
+
+        return Directory.EnumerateFiles(configDirectory, "*", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

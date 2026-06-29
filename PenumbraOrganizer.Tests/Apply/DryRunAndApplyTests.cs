@@ -1,5 +1,6 @@
 namespace PenumbraOrganizer.Tests.Apply;
 
+using System.Text.Json.Nodes;
 using LiteDB;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -36,7 +37,8 @@ public sealed class DryRunAndApplyTests
             entry.StableScanId == "Alpha Two" &&
             entry.AuthoritativeStateEntryIdentity == "LocalModData:Alpha Two:Folder" &&
             entry.RecordKey == "Alpha Two");
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().Contain(change => change.TargetPath == context.Fixture.OrganizationJsonPath);
     }
 
     [Fact]
@@ -115,10 +117,11 @@ public sealed class DryRunAndApplyTests
         var first = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
         var second = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
 
-        first.FileChanges.Single().ExpectedSha256.Should().Be(second.FileChanges.Single().ExpectedSha256);
+        GetFileChange(first, PenumbraWriteTargetKind.ModDataDatabase).ExpectedSha256
+            .Should().Be(GetFileChange(second, PenumbraWriteTargetKind.ModDataDatabase).ExpectedSha256);
 
         var tempPath = Path.Combine(context.RootPath, "expected.db");
-        await File.WriteAllBytesAsync(tempPath, Convert.FromBase64String(first.FileChanges.Single().ExpectedBytesBase64));
+        await File.WriteAllBytesAsync(tempPath, Convert.FromBase64String(GetFileChange(first, PenumbraWriteTargetKind.ModDataDatabase).ExpectedBytesBase64));
         using var db = new LiteDatabase($"Filename={tempPath};Connection=Direct");
         var collection = db.GetCollection("LocalModData");
         collection.FindById("Preserve Mod")!["CustomField"].AsString.Should().Be("keep-me");
@@ -281,9 +284,121 @@ public sealed class DryRunAndApplyTests
         details!.Operation.VerificationStatus.Should().Be(OperationVerificationStatus.Verified);
         details.Operation.ApplyStatus.Should().Be(ApplyStatus.Ready);
         details.RollbackTransaction.Should().NotBeNull();
-        details.RollbackTransaction!.Files.Single().ExpectedAppliedSha256.Should().Be(plan.FileChanges.Single().ExpectedSha256);
-        details.Manifest!.Files.Single().SourceTargetPath.Should().Be(context.Fixture.ModDataDbPath);
+        details.RollbackTransaction!.Files.Single(file => file.TargetPath == context.Fixture.ModDataDbPath).ExpectedAppliedSha256
+            .Should().Be(GetFileChange(plan, PenumbraWriteTargetKind.ModDataDatabase).ExpectedSha256);
+        details.Manifest!.Files.Should().Contain(file => file.SourceTargetPath == context.Fixture.ModDataDbPath);
+        details.Manifest!.Files.Should().Contain(file => file.SourceTargetPath == context.Fixture.OrganizationJsonPath);
         details.Operation.OperationFolder.Should().StartWith(context.BackupsRoot);
+    }
+
+    [Fact]
+    public async Task Apply_CreatesNestedFolders_PreservesMetadata_AndKeepsProtectedCharacterSpecificPaths()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Nested Mod", """{"FileVersion":3,"Name":"Nested Mod","Author":"Author"}""");
+        context.Fixture.CreateMod("Protected Mod", """{"FileVersion":3,"Name":"Protected Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(
+            ("Nested Mod", "Current/Nested"),
+            ("Protected Mod", ".Character specific mods/Keep"));
+        context.Fixture.WriteOrganizationJson(
+            """{"Folders":{"Clothing":{"Color":"blue"},".Character specific mods":{"Protected":true},".Character specific mods/Keep":{"ProtectedChild":true}},"Separators":{}}""");
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(["Protected Mod"], ("Nested Mod", "Clothing/Creator"), ("Protected Mod", ".Character specific mods/Keep"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Completed);
+        using (var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct"))
+        {
+            var collection = db.GetCollection("LocalModData");
+            collection.FindById("Nested Mod")!["Folder"].AsString.Should().Be("Clothing/Creator");
+            collection.FindById("Protected Mod")!["Folder"].AsString.Should().Be(".Character specific mods/Keep");
+        }
+
+        var organization = ReadOrganizationRoot(context.Fixture.OrganizationJsonPath);
+        var folders = organization["Folders"]!.AsObject();
+        folders.ContainsKey("Clothing").Should().BeTrue();
+        folders.ContainsKey("Clothing/Creator").Should().BeTrue();
+        folders["Clothing"]!["Color"]!.GetValue<string>().Should().Be("blue");
+        folders.ContainsKey(".Character specific mods").Should().BeTrue();
+        folders.ContainsKey(".Character specific mods/Keep").Should().BeTrue();
+        folders[".Character specific mods/Keep"]!["ProtectedChild"]!.GetValue<bool>().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task InvalidOrganizationJson_BlocksPlanning()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Broken Org", """{"FileVersion":3,"Name":"Broken Org","Author":"Author"}""");
+        context.Fixture.WriteModData(("Broken Org", "Current/Folder"));
+        context.Fixture.WriteOrganizationJson("{ invalid json");
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Broken Org", "Target/Folder"));
+
+        var act = () => context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Apply_RollsBackDatabaseTransaction_WhenAPlannedRecordCannotBeFound()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Author"}""");
+        context.Fixture.CreateMod("Beta", """{"FileVersion":3,"Name":"Beta","Author":"Author"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"), ("Beta", "Current/Beta"));
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Alpha", "Target/Alpha"), ("Beta", "Target/Beta"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var tamperedPlan = plan with
+        {
+            Entries = plan.Entries.Select(entry =>
+                entry.StableScanId == "Beta"
+                    ? entry with { RecordKey = "Missing Record" }
+                    : entry).ToArray(),
+        };
+
+        var result = await context.ApplyService.ApplyAsync(tamperedPlan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Failed);
+        result.Files.Should().Contain(file => file.TargetPath == context.Fixture.ModDataDbPath && file.Status == ApplyResultStatus.Failed);
+        using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
+        var collection = db.GetCollection("LocalModData");
+        collection.FindById("Alpha")!["Folder"].AsString.Should().Be("Current/Alpha");
+        collection.FindById("Beta")!["Folder"].AsString.Should().Be("Current/Beta");
+    }
+
+    [Fact]
+    public async Task PrepareAndRollback_CoverTheFullPenumbraConfigurationSnapshot()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Rollback Mod", """{"FileVersion":3,"Name":"Rollback Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Rollback Mod", "Current/Folder"));
+        context.Fixture.WriteCollection("ActiveCollection.json", new { Name = "Active", Enabled = true });
+        context.Fixture.WriteOrganizationJson("""{"Folders":{"Current/Folder":{"Before":true}},"Separators":{}}""");
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Rollback Mod", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var details = await context.HistoryService.TryLoadOperationAsync(operation.OperationId, CancellationToken.None);
+
+        details.Should().NotBeNull();
+        details!.Manifest!.Files.Should().Contain(file => file.SourceTargetPath.EndsWith("ActiveCollection.json", StringComparison.OrdinalIgnoreCase));
+        details.RollbackTransaction!.Files.Should().Contain(file => file.TargetPath.EndsWith("ActiveCollection.json", StringComparison.OrdinalIgnoreCase));
+
+        await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+        await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+
+        File.ReadAllText(Path.Combine(context.Fixture.PenumbraConfigPath, "collections", "ActiveCollection.json"))
+            .Should().Contain("\"Enabled\":true");
+        ReadOrganizationRoot(context.Fixture.OrganizationJsonPath)["Folders"]!.AsObject().ContainsKey("Current/Folder").Should().BeTrue();
     }
 
     [Fact]
@@ -315,7 +430,8 @@ public sealed class DryRunAndApplyTests
 
         result.Status.Should().Be(ApplyStatus.Completed);
         result.RollbackAvailable.Should().BeTrue();
-        result.Files.Should().ContainSingle(file => file.Status == ApplyResultStatus.Applied);
+        result.Files.Should().HaveCount(2);
+        result.Files.Should().OnlyContain(file => file.Status == ApplyResultStatus.Applied);
         history.Should().ContainSingle(entry => entry.OperationId == operation.OperationId && entry.ApplyStatus == ApplyStatus.Completed && entry.RollbackAvailable);
 
         using var db = new LiteDatabase($"Filename={context.Fixture.ModDataDbPath};Connection=Direct");
@@ -579,4 +695,10 @@ public sealed class DryRunAndApplyTests
                 Errors: [error],
                 Warnings: Array.Empty<string>()));
     }
+
+    private static DryRunFileChange GetFileChange(DryRunPlan plan, PenumbraWriteTargetKind kind)
+        => plan.FileChanges.Single(change => change.WriteTargetKind == kind);
+
+    private static JsonObject ReadOrganizationRoot(string path)
+        => JsonNode.Parse(File.ReadAllText(path))!.AsObject();
 }

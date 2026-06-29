@@ -19,7 +19,8 @@ Important:
 - The app changes Penumbra virtual-folder organization only.
 - Physical mod folders and mod files are not moved.
 - The app does not edit FFXIV files, Penumbra collections, priorities, enabled states, option groups, or .pmp packages.
-- The app does not write organization.json.
+- The app keeps mod_data.db and mod_filesystem\organization.json in sync during Apply.
+- Apply creates a full backup of the Penumbra configuration before writing changes.
 
 Where the app stores its own data:
 - %LocalAppData%\PenumbraOrganizer\
