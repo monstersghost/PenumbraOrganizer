@@ -1,7 +1,6 @@
 namespace PenumbraOrganizer.Tests.Apply;
 
 using FluentAssertions;
-using LiteDB;
 using Microsoft.Extensions.Logging.Abstractions;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
@@ -16,14 +15,15 @@ using PenumbraOrganizer.Tests.Fixtures;
 public sealed class ControlledLiveTestAndRecoveryTests
 {
     [Fact]
-    public async Task ControlledSetup_EnforcesDefaultLimit_AndBlocksProtectedAmbiguousAndUnsupportedMods()
+    public async Task ControlledSetup_EnforcesDefaultLimit_AndBlocksProtectedAndAmbiguousMods()
     {
         using var context = await LiveWorkflowContext.CreateAsync();
         context.Fixture.CreateMod("Protected Mod", """{"FileVersion":3,"Name":"Protected Mod","Author":"Author"}""");
         context.Fixture.CreateMod("Ambiguous One", """{"FileVersion":3,"Name":"Shared Name","Author":"Author A"}""");
         context.Fixture.CreateMod("Ambiguous Two", """{"FileVersion":3,"Name":"Shared Name","Author":"Author B"}""");
-        context.Fixture.CreateMod("Unsupported Mod", """{"FileVersion":3,"Name":"Unsupported Mod","Author":"Author"}""");
+        context.Fixture.CreateMod("Rootless Mod", """{"FileVersion":3,"Name":"Rootless Mod","Author":"Author"}""");
         context.Fixture.CreateMod("Eligible Mod", """{"FileVersion":3,"Name":"Eligible Mod","Author":"Author"}""");
+        // "Rootless Mod" has no sort_order entry; under the real format it is organizable too.
         context.Fixture.WriteModData(
             ("Protected Mod", ".Character specific mods/Akako Main Files"),
             ("Ambiguous One", "Current/A"),
@@ -43,7 +43,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
         setup.Options.MaximumSelectedModCount.Should().Be(3);
         setup.Candidates.Single(candidate => candidate.StableScanId == "Protected Mod").Status.Should().Be(ControlledTestCandidateStatus.Protected);
         setup.Candidates.Single(candidate => candidate.StableScanId == "Ambiguous One").Status.Should().Be(ControlledTestCandidateStatus.Ambiguous);
-        setup.Candidates.Single(candidate => candidate.StableScanId == "Unsupported Mod").Status.Should().Be(ControlledTestCandidateStatus.Unsupported);
+        setup.Candidates.Single(candidate => candidate.StableScanId == "Rootless Mod").CanSelect.Should().BeTrue();
         setup.Candidates.Single(candidate => candidate.StableScanId == "Eligible Mod").CanSelect.Should().BeTrue();
     }
 
@@ -71,6 +71,29 @@ public sealed class ControlledLiveTestAndRecoveryTests
         plan.Summary.AffectedModCount.Should().Be(1);
         plan.Entries.Count(entry => entry.RequiresWrite).Should().Be(1);
         plan.Entries.Single(entry => entry.RequiresWrite).StableScanId.Should().Be("Beta");
+    }
+
+    [Fact]
+    public async Task ControlledSnapshot_PreservesEmptyFolders()
+    {
+        using var context = await LiveWorkflowContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Author"}""");
+        context.Fixture.WriteSortOrder([("Alpha", "Current/Alpha")], ["KeepMeEmpty"]);
+        await context.ScanAsync();
+
+        var baseSnapshot = context.BuildSnapshot(("Alpha", "Manual/Alpha"));
+        baseSnapshot = baseSnapshot with
+        {
+            Folders = baseSnapshot.Folders.Append(new OrganizerFolder("KeepMeEmpty", ManuallyCreated: true, Protected: false)).ToArray(),
+        };
+
+        var controlled = context.ControlledService.BuildControlledSnapshot(
+            context.Installation,
+            context.Inventory!,
+            baseSnapshot,
+            new ControlledTestRequest("PenumbraOrganizer Test", ["Alpha"]));
+
+        controlled.Folders.Should().Contain(folder => folder.Path == "KeepMeEmpty");
     }
 
     [Fact]
@@ -161,7 +184,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
         var history = await context.HistoryService.GetOperationsAsync(CancellationToken.None);
 
         history.Single(entry => entry.OperationId == operation.OperationId).ObservationStatus.Should().Be(PenumbraUiObservationStatus.AppearedAfterReloadOrRestart);
-        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.ModDataDbPath);
+        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.SortOrderPath);
         plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
     }
 

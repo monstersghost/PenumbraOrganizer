@@ -4,7 +4,9 @@ namespace PenumbraOrganizer.Core.Models;
 
 public enum PenumbraWriteTargetKind
 {
-    ModDataDatabase,
+    SortOrderJson,
+    ModMetaJson,
+    LocalModDataJson,
 }
 
 public enum DryRunPlanValidationStatus
@@ -54,7 +56,8 @@ public sealed record ProposalSnapshot(
     OrganizationPreferences OrganizationPreferences,
     IReadOnlyList<OrganizerModProposal> Proposals,
     IReadOnlyList<OrganizerFolder> Folders,
-    OrganizerValidationResult ValidationResult);
+    OrganizerValidationResult ValidationResult,
+    IReadOnlyList<ModMetadataEdit>? MetadataEdits = null);
 
 public sealed record DryRunSourceFileSnapshot(
     string Path,
@@ -76,7 +79,11 @@ public sealed record DryRunPlanEntry(
     string SourceHash,
     string ExpectedHash,
     IReadOnlyList<string> Warnings,
-    bool RequiresWrite);
+    bool RequiresWrite,
+    // Full sort_order.json path (folder + preserved display leaf) the mod should map to after
+    // Apply. Empty string means the entry should be removed (mod returns to root with its
+    // default display name). Only meaningful when RequiresWrite is true.
+    string ProposedSortPath = "");
 
 public sealed record DryRunFileChange(
     string TargetPath,

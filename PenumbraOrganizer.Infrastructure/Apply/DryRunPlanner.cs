@@ -8,11 +8,16 @@ public sealed class DryRunPlanner : IDryRunPlanner
 {
     private readonly IPenumbraVirtualFolderWriter _writer;
     private readonly IDryRunValidationService _validationService;
+    private readonly PenumbraMetadataWriter _metadataWriter;
 
-    public DryRunPlanner(IPenumbraVirtualFolderWriter writer, IDryRunValidationService validationService)
+    public DryRunPlanner(
+        IPenumbraVirtualFolderWriter writer,
+        IDryRunValidationService validationService,
+        PenumbraMetadataWriter? metadataWriter = null)
     {
         _writer = writer;
         _validationService = validationService;
+        _metadataWriter = metadataWriter ?? new PenumbraMetadataWriter();
     }
 
     public async Task<DryRunPlan> CreatePlanAsync(
@@ -33,7 +38,9 @@ public sealed class DryRunPlanner : IDryRunPlanner
             throw new InvalidOperationException("The authoritative Penumbra schema is unsupported for virtual-folder Apply.");
 
         var entries = await _writer.MapPlanEntriesAsync(installation, inventory, proposalSnapshot, cancellationToken);
-        var fileChanges = await _writer.BuildExpectedFileChangesAsync(installation, entries, cancellationToken);
+        var folderChanges = await _writer.BuildExpectedFileChangesAsync(installation, entries, proposalSnapshot, cancellationToken);
+        var metadataChanges = _metadataWriter.BuildFileChanges(installation, proposalSnapshot.MetadataEdits ?? Array.Empty<ModMetadataEdit>());
+        IReadOnlyList<DryRunFileChange> fileChanges = folderChanges.Concat(metadataChanges).ToArray();
 
         var warnings = new List<string>();
         warnings.AddRange(proposalSnapshot.ValidationResult.Warnings.Select(warning => warning.Message));

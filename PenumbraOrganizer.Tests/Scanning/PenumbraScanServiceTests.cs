@@ -45,9 +45,9 @@ public sealed class PenumbraScanServiceTests
               "Author": "Akako"
             }
             """);
-        fixture.WriteModData(
-            ("Sample Mod", "Clothing/Bizu Mods"),
-            ("Akako Locked", ".Character specific mods/Akako Main Files"));
+        fixture.WriteSortOrder(
+            ("Sample Mod", "Clothing/Bizu Mods/Sample Mod"),
+            ("Akako Locked", ".Character specific mods/Akako Main Files/Akako Locked"));
         fixture.WriteCollection(
             "aqua.json",
             new
@@ -82,6 +82,64 @@ public sealed class PenumbraScanServiceTests
     }
 
     [Fact]
+    public async Task ScanAsync_ModWithoutSortOrderEntry_IsAtRootWithoutWarning()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod("Placed Mod", """{"FileVersion":3,"Name":"Placed Mod"}""");
+        fixture.CreateMod("Root Mod", """{"FileVersion":3,"Name":"Root Mod"}""");
+        // Only "Placed Mod" has an explicit organization entry; "Root Mod" lives at the root.
+        fixture.WriteSortOrder(("Placed Mod", "Clothing/Placed Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var placed = inventory.Mods.Single(m => m.Name == "Placed Mod");
+        var root = inventory.Mods.Single(m => m.Name == "Root Mod");
+        placed.CurrentVirtualFolder.Should().Be("Clothing");
+        root.CurrentVirtualFolder.Should().BeEmpty();
+        root.Warnings.Should().NotContain(w => w.Contains("missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ScanAsync_SurfacesExistingEmptyFolders()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod("Placed Mod", """{"FileVersion":3,"Name":"Placed Mod"}""");
+        fixture.WriteSortOrder([("Placed Mod", "Clothing/Placed Mod")], ["telegram", "Reserved/Sub"]);
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        inventory.EmptyFolders.Should().BeEquivalentTo("telegram", "Reserved/Sub");
+    }
+
+    [Fact]
     public async Task ScanAsync_ToleratesMalformedJson()
     {
         using var fixture = new TemporaryPenumbraFixture();
@@ -89,7 +147,7 @@ public sealed class PenumbraScanServiceTests
         fixture.WritePluginManifest();
         var modPath = fixture.CreateMod("Broken Mod", "{ invalid json", null);
         File.WriteAllText(Path.Combine(modPath, "default_mod.json"), "{ }");
-        fixture.WriteModData(("Broken Mod", "Review"));
+        fixture.WriteSortOrder(("Broken Mod", "Review/Broken Mod"));
 
         var installation = new PenumbraInstallation(
             fixture.PenumbraJsonPath,

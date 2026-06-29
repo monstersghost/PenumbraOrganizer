@@ -212,6 +212,9 @@ public sealed class ScanInventory
     public required IReadOnlyList<VirtualFolderNode> CurrentFolderTree { get; init; }
     public required IReadOnlyList<CollectionInventory> Collections { get; init; }
     public required IReadOnlyList<string> Warnings { get; init; }
+
+    /// <summary>Folders Penumbra tracks (in sort_order.json) that currently contain no mods.</summary>
+    public IReadOnlyList<string> EmptyFolders { get; init; } = Array.Empty<string>();
 }
 
 public sealed record CompatibilityReport(

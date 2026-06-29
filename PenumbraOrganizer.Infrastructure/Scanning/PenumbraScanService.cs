@@ -2,11 +2,11 @@ namespace PenumbraOrganizer.Infrastructure.Scanning;
 
 using System.Text;
 using System.Text.Json;
-using LiteDB;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 
 public sealed class PenumbraScanService : IPenumbraScanService
 {
@@ -24,7 +24,8 @@ public sealed class PenumbraScanService : IPenumbraScanService
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report("Reading current folders");
 
-        var dbFolders = await Task.Run(() => LoadCurrentFolders(installation), cancellationToken);
+        var sortOrder = await Task.Run(() => PenumbraSortOrder.Load(installation.ConfigDirectory), cancellationToken);
+        var dbFolders = sortOrder.Data.Keys.ToDictionary(id => id, sortOrder.GetFolderFor, StringComparer.OrdinalIgnoreCase);
 
         progress?.Report("Reading collections");
         var collections = await Task.Run(() => LoadCollections(installation, cancellationToken), cancellationToken);
@@ -38,7 +39,7 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         var directoryNames = new HashSet<string>(physicalDirectories.Select(Path.GetFileName)!, StringComparer.OrdinalIgnoreCase);
         foreach (var dbOnly in dbFolders.Keys.Where(key => !directoryNames.Contains(key)))
-            warnings.Add($"mod_data.db references a mod folder that is missing on disk: {dbOnly}");
+            warnings.Add($"sort_order.json references a mod folder that is missing on disk: {dbOnly}");
 
         var duplicateNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var mods = new List<ModScanResult>(physicalDirectories.Count);
@@ -69,6 +70,7 @@ public sealed class PenumbraScanService : IPenumbraScanService
             CurrentFolderTree = tree,
             Collections = collections,
             Warnings = warnings,
+            EmptyFolders = sortOrder.EmptyFolders,
         };
     }
 
@@ -149,9 +151,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         duplicateNames[name] = duplicateNames.TryGetValue(name, out var existing) ? existing + 1 : 1;
 
+        // No sort_order.json entry (or an empty folder value) means the mod sits at the
+        // Penumbra root under its default display name. That is normal, not a warning.
         var currentVirtualFolder = dbFolders.TryGetValue(directoryName, out var folder) ? folder : string.Empty;
-        if (string.IsNullOrWhiteSpace(currentVirtualFolder))
-            warnings.Add("Current Penumbra virtual folder is missing from mod_data.db.");
 
         collectionStatesByName.TryGetValue(name, out var collectionStates);
 
@@ -177,30 +179,6 @@ public sealed class PenumbraScanService : IPenumbraScanService
             SchemaFingerprints = schemaFingerprints,
             RawMetadata = new JsonReadOnlyMemory(rawFiles),
         };
-    }
-
-    private static Dictionary<string, string> LoadCurrentFolders(PenumbraInstallation installation)
-    {
-        var dbPath = Path.Combine(installation.ConfigDirectory, "mod_data.db");
-        if (!File.Exists(dbPath))
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        using var db = new LiteDatabase($"Filename={dbPath};Connection=Shared;Timeout=00:00:02");
-        var collection = db.GetCollection("LocalModData");
-        var folders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var doc in collection.FindAll())
-        {
-            if (!doc.TryGetValue("_id", out var idValue) || idValue.Type != BsonType.String)
-                continue;
-
-            var id = idValue.AsString;
-            var folder = doc.TryGetValue("Folder", out var bson) && bson.Type == BsonType.String
-                ? bson.AsString
-                : string.Empty;
-            folders[id] = folder;
-        }
-
-        return folders;
     }
 
     private static List<CollectionInventory> LoadCollections(PenumbraInstallation installation, CancellationToken cancellationToken)

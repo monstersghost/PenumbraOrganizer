@@ -85,7 +85,10 @@ public sealed class OrganizerProposalValidationService : IOrganizerProposalValid
             return (OrganizerRowStatus.StaleScan, "The current folder no longer matches the scan snapshot.");
         }
 
-        if (!VirtualFolderPath.IsValid(proposal.ProposedVirtualFolder, out var pathError))
+        // An empty proposed folder means the mod stays at (or returns to) the Penumbra root,
+        // which is a valid location. Only validate the path shape when a folder is specified.
+        if (!string.IsNullOrEmpty(proposal.ProposedVirtualFolder) &&
+            !VirtualFolderPath.IsValid(proposal.ProposedVirtualFolder, out var pathError))
         {
             errors.Add(new OrganizerValidationIssue(proposal.StableScanId, "InvalidPath", pathError));
             return (OrganizerRowStatus.InvalidPath, pathError);

@@ -1,6 +1,6 @@
 namespace PenumbraOrganizer.Tests.Fixtures;
 
-using LiteDB;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 
 public sealed class TemporaryPenumbraFixture : IDisposable
 {
@@ -29,7 +29,7 @@ public sealed class TemporaryPenumbraFixture : IDisposable
     public string ModRoot { get; }
 
     public string PenumbraJsonPath => Path.Combine(PluginConfigsPath, "Penumbra.json");
-    public string ModDataDbPath => Path.Combine(PenumbraConfigPath, "mod_data.db");
+    public string SortOrderPath => Path.Combine(PenumbraConfigPath, "sort_order.json");
     public string OrganizationJsonPath => Path.Combine(PenumbraConfigPath, "mod_filesystem", "organization.json");
     public string PluginManifestPath => Path.Combine(InstalledPluginsPath, "Penumbra.json");
     public string PluginAssemblyPath => Path.Combine(InstalledPluginsPath, "Penumbra.dll");
@@ -58,27 +58,61 @@ public sealed class TemporaryPenumbraFixture : IDisposable
         File.WriteAllBytes(PluginAssemblyPath, new byte[] { 0x4D, 0x5A });
     }
 
-    public void WriteModData(params (string DirectoryName, string Folder)[] rows)
+    /// <summary>
+    /// Writes the authoritative <c>sort_order.json</c>. Each entry's value is the full virtual
+    /// path (folder + display leaf), matching Penumbra's real on-disk format.
+    /// </summary>
+    public void WriteSortOrder(params (string Id, string FullPath)[] entries)
+        => WriteSortOrder(entries, Array.Empty<string>());
+
+    public void WriteSortOrder((string Id, string FullPath)[] entries, string[] emptyFolders)
     {
-        using var db = new LiteDatabase($"Filename={ModDataDbPath};Connection=Direct");
-        var collection = db.GetCollection("LocalModData");
-        foreach (var row in rows)
+        var payload = new
         {
-            var doc = new BsonDocument
-            {
-                ["_id"] = row.DirectoryName,
-                ["Folder"] = row.Folder,
-            };
-            collection.Upsert(doc);
-        }
+            Data = entries.ToDictionary(entry => entry.Id, entry => entry.FullPath, StringComparer.Ordinal),
+            EmptyFolders = emptyFolders,
+        };
+        File.WriteAllText(SortOrderPath, System.Text.Json.JsonSerializer.Serialize(payload));
     }
 
-    public void WriteModDataDocument(BsonDocument document)
+    /// <summary>
+    /// Seeds <c>sort_order.json</c> from folder-only rows. The display leaf defaults to the mod's
+    /// directory name, which is the common case for tests that only care about the folder.
+    /// </summary>
+    public void WriteModData(params (string DirectoryName, string Folder)[] rows)
     {
-        using var db = new LiteDatabase($"Filename={ModDataDbPath};Connection=Direct");
-        var collection = db.GetCollection("LocalModData");
-        collection.Upsert(document);
+        var entries = rows
+            .Select(row => (row.DirectoryName,
+                FullPath: string.IsNullOrEmpty(row.Folder) ? row.DirectoryName : $"{row.Folder}/{row.DirectoryName}"))
+            .ToArray();
+        WriteSortOrder(entries);
     }
+
+    /// <summary>Writes raw <c>sort_order.json</c> text for malformed-schema or unknown-field tests.</summary>
+    public void WriteSortOrderRaw(string json)
+        => File.WriteAllText(SortOrderPath, json);
+
+    /// <summary>Reads back the current containing folder for a mod from <c>sort_order.json</c>.</summary>
+    public string CurrentFolderOf(string modDirectoryName)
+        => PenumbraSortOrder.Load(PenumbraConfigPath).GetFolderFor(modDirectoryName);
+
+    /// <summary>Reads back the full sort path (folder + leaf) for a mod, or null if it has no entry.</summary>
+    public string? CurrentSortPathOf(string modDirectoryName)
+        => PenumbraSortOrder.Load(PenumbraConfigPath).GetFullPathFor(modDirectoryName);
+
+    public string MetaJsonPathOf(string modDirectoryName) => Path.Combine(ModRoot, modDirectoryName, "meta.json");
+    public string LocalModDataPathOf(string modDirectoryName) => Path.Combine(PenumbraConfigPath, "mod_data", modDirectoryName + ".json");
+
+    /// <summary>Writes a per-user <c>mod_data/&lt;id&gt;.json</c> local-data file.</summary>
+    public void WriteLocalModData(string modDirectoryName, string json)
+    {
+        var directory = Path.Combine(PenumbraConfigPath, "mod_data");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(LocalModDataPathOf(modDirectoryName), json);
+    }
+
+    public string ReadMetaJson(string modDirectoryName) => File.ReadAllText(MetaJsonPathOf(modDirectoryName));
+    public string ReadLocalModData(string modDirectoryName) => File.ReadAllText(LocalModDataPathOf(modDirectoryName));
 
     public string CreateMod(string folderName, string metaJson, string? defaultModJson = null)
     {
