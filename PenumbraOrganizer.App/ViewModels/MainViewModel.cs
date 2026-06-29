@@ -81,6 +81,12 @@ public sealed class MainViewModel : ObservableObject
     private string _diagnosticStatus = "Diagnostic export is available without touching your mod assets or live databases.";
     private bool _showAdvancedTools;
     private bool _isBusy;
+    private ICollectionView _filteredMods = null!;
+    private ICollectionView _selectedFolderMods = null!;
+    private ICollectionView _changedMods = null!;
+    private bool _suspendOrganizerRefresh;
+    private bool _suspendSelectedFolderRefresh;
+    private bool _suspendCollectionViewRefresh;
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -128,12 +134,9 @@ public sealed class MainViewModel : ObservableObject
         SelectedOrganizerMods = new ObservableCollection<ModRowViewModel>();
         ReviewRows = new ObservableCollection<OrganizerValidationRow>();
         ScanWarnings = new ObservableCollection<string>();
-        FilteredMods = new CollectionViewSource { Source = Mods }.View;
-        FilteredMods.Filter = FilterMod;
-        SelectedFolderMods = new CollectionViewSource { Source = Mods }.View;
-        SelectedFolderMods.Filter = FilterSelectedFolderMod;
-        ChangedMods = new CollectionViewSource { Source = Mods }.View;
-        ChangedMods.Filter = item => item is ModRowViewModel mod && mod.IsChanged;
+        _filteredMods = CreateCollectionView(FilterMod);
+        _selectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        _changedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
@@ -224,9 +227,23 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ModRowViewModel> SelectedOrganizerMods { get; }
     public ObservableCollection<OrganizerValidationRow> ReviewRows { get; }
     public ObservableCollection<string> ScanWarnings { get; }
-    public ICollectionView FilteredMods { get; }
-    public ICollectionView SelectedFolderMods { get; }
-    public ICollectionView ChangedMods { get; }
+    public ICollectionView FilteredMods
+    {
+        get => _filteredMods;
+        private set => SetProperty(ref _filteredMods, value);
+    }
+
+    public ICollectionView SelectedFolderMods
+    {
+        get => _selectedFolderMods;
+        private set => SetProperty(ref _selectedFolderMods, value);
+    }
+
+    public ICollectionView ChangedMods
+    {
+        get => _changedMods;
+        private set => SetProperty(ref _changedMods, value);
+    }
     public BackupsViewModel Backups => _backups;
 
     public string DetectionSummary
@@ -254,8 +271,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _searchText, value))
             {
-                FilteredMods.Refresh();
-                SelectedFolderMods.Refresh();
+                RefreshCollectionViews();
             }
         }
     }
@@ -345,7 +361,8 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedProposedFolder, value))
             {
-                SelectedFolderMods.Refresh();
+                if (!_suspendSelectedFolderRefresh)
+                    RefreshSelectedFolderView();
                 RenameFolderName = value is null ? string.Empty : value.Path;
                 RefreshSelectionCommandState();
             }
@@ -1011,7 +1028,7 @@ public sealed class MainViewModel : ObservableObject
             return;
 
         OrganizeFilter = filter;
-        FilteredMods.Refresh();
+        RefreshCollectionViews();
     }
 
     private bool FilterSelectedFolderMod(object item)
@@ -1183,19 +1200,29 @@ public sealed class MainViewModel : ObservableObject
     private void RebuildProposedFolders()
     {
         var selectedPath = SelectedProposedFolder?.Path;
-        ProposedFolders.Clear();
-        foreach (var folder in _organizerFolders.Select(folder => folder.Path)
-                     .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
-                     .Where(folder => !string.IsNullOrWhiteSpace(folder))
-                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                     .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+        // Setting SelectedProposedFolder below would otherwise re-enter SelectedFolderMods.Refresh()
+        // while RefreshOrganizerViews is mid-refresh; suppress it and let the caller refresh once.
+        _suspendSelectedFolderRefresh = true;
+        try
         {
-            ProposedFolders.Add(new OrganizerFolderViewModel(folder));
-        }
+            ProposedFolders.Clear();
+            foreach (var folder in _organizerFolders.Select(folder => folder.Path)
+                         .Concat(Mods.Select(mod => mod.ProposedVirtualFolder))
+                         .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase))
+            {
+                ProposedFolders.Add(new OrganizerFolderViewModel(folder));
+            }
 
-        RecountProposedFolders();
-        SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
-                                 ?? ProposedFolders.FirstOrDefault();
+            RecountProposedFolders();
+            SelectedProposedFolder = ProposedFolders.FirstOrDefault(folder => string.Equals(folder.Path, selectedPath, StringComparison.OrdinalIgnoreCase))
+                                     ?? ProposedFolders.FirstOrDefault();
+        }
+        finally
+        {
+            _suspendSelectedFolderRefresh = false;
+        }
     }
 
     private void RecountProposedFolders()
@@ -1213,9 +1240,7 @@ public sealed class MainViewModel : ObservableObject
     private void RefreshOrganizerViews()
     {
         RebuildProposedFolders();
-        FilteredMods.Refresh();
-        SelectedFolderMods.Refresh();
-        ChangedMods.Refresh();
+        RefreshCollectionViews();
         RecountProposedFolders();
         ChangedProposalCount = Mods.Count(mod => mod.IsChanged);
         NeedsReviewCount = Mods.Count(mod => mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase) ||
@@ -1231,8 +1256,67 @@ public sealed class MainViewModel : ObservableObject
 
     private void ModRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (_suspendOrganizerRefresh)
+            return;
+
         if (e.PropertyName is nameof(ModRowViewModel.ProposedVirtualFolder) or nameof(ModRowViewModel.Protected))
             RefreshOrganizerViews();
+    }
+
+    // WPF's ListCollectionView.Refresh() can throw a NullReferenceException in PrepareLocalArray()
+    // when a refresh is requested re-entrantly (e.g. a row's PropertyChanged fires mid-refresh and
+    // rebuilds the proposed folders, which re-refreshes a view filtered over the same source).
+    // Recreating the view recovers cleanly, so guard every refresh and rebuild on NRE.
+    private void RefreshCollectionViews()
+    {
+        if (_suspendCollectionViewRefresh)
+            return;
+
+        try
+        {
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+        catch (NullReferenceException ex)
+        {
+            _logger.LogWarning(ex, "Collection view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            FilteredMods.Refresh();
+            SelectedFolderMods.Refresh();
+            ChangedMods.Refresh();
+        }
+    }
+
+    private void RefreshSelectedFolderView()
+    {
+        if (_suspendCollectionViewRefresh)
+            return;
+
+        try
+        {
+            SelectedFolderMods.Refresh();
+        }
+        catch (NullReferenceException ex)
+        {
+            _logger.LogWarning(ex, "Selected folder view refresh failed; rebuilding organizer views");
+            RebuildCollectionViews();
+            SelectedFolderMods.Refresh();
+        }
+    }
+
+    private void RebuildCollectionViews()
+    {
+        FilteredMods = CreateCollectionView(FilterMod);
+        SelectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
+        ChangedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
+    }
+
+    private ICollectionView CreateCollectionView(Predicate<object> filter)
+    {
+        var view = new CollectionViewSource { Source = Mods }.View;
+        view.Filter = filter;
+        return view;
     }
 
     private void OnRowMetadataEdited()
@@ -1293,8 +1377,19 @@ public sealed class MainViewModel : ObservableObject
 
     private void RefreshRowsFromProposals()
     {
-        foreach (var row in Mods)
-            row.RefreshFromProposal();
+        // Suspend per-row refresh callbacks so the bulk update doesn't re-enter
+        // RefreshOrganizerViews once per row (which crashes a view mid-refresh). Callers
+        // refresh the views once afterward.
+        _suspendOrganizerRefresh = true;
+        try
+        {
+            foreach (var row in Mods)
+                row.RefreshFromProposal();
+        }
+        finally
+        {
+            _suspendOrganizerRefresh = false;
+        }
     }
 
     private static string ComposeSiblingPath(string oldPath, string newLeaf)
