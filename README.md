@@ -4,7 +4,7 @@ A beginner-friendly, unofficial Windows utility for viewing and reorganizing Pen
 
 ## Current status
 
-**0.2.0-beta**
+**0.2.1-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
 file-based config (`sort_order.json`, `mod_data`, collections), lets you reorganize
@@ -20,11 +20,13 @@ The current build includes:
 * one-click organization strategies that produce a full plan
 * selected-row and bulk proposal actions
 * proposed folder creation and rename
-* protected mods
+* protected mods, including one-click protection for an entire proposed folder
+* manual override for the detected Penumbra config path and Mods folder
 * undo and redo
 * organizer session saving
 * Review Changes validation
-* verified backup and restore (rollback)
+* verified backup and restore (rollback), backing up the entire Penumbra
+  configuration directory before every Apply, not just the file being written
 * dry run and guarded Apply
 * controlled live-test Apply
 * incomplete-operation recovery
@@ -46,7 +48,7 @@ Penumbra Organizer does not:
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.2.0-beta-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.2.1-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
 4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
@@ -102,6 +104,10 @@ Screenshots are not included yet.
 * XIVLauncher/Dalamud with Penumbra for real scanning
 * no separate .NET installation
 * internet not required for core local features
+
+Linux is supported by running the app under Wine/Proton alongside the game. Discovery
+finds XIVLauncher.Core's config at `~/.xlcore/pluginConfigs/Penumbra.json`. This path has
+not yet been validated on a real Linux install.
 
 ## Known limitations
 
