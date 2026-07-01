@@ -6,7 +6,7 @@ public enum OrganizerProposalSource
 {
     Manual,
     DeterministicRule,
-    ImportedAi,
+    ImportedExternal,
     PreservedCurrent,
     RestoredByUndo,
 }

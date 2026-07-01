@@ -141,7 +141,7 @@ Protection overrides all organization preferences.
 
 ## Manual organizer workspace
 
-Manual human organization is a primary workflow. Users must be able to organize entirely inside the GUI without AI, spreadsheets, exported CSV files, JSON editing, full path typing, command-line tools, or knowledge of Penumbra metadata.
+Manual human organization is a primary workflow. Users must be able to organize entirely inside the GUI without spreadsheets, exported CSV files, JSON editing, full path typing, command-line tools, or knowledge of Penumbra metadata.
 
 The `Organize` screen starts with "How would you like your mods organized?" and offers beginner-friendly cards:
 
@@ -168,11 +168,11 @@ Every proposed row tracks its source:
 
 - Manual
 - Deterministic rule
-- Imported AI suggestion
+- Imported external suggestion
 - Preserved current
 - Restored by undo
 
-Manual changes override automated or AI suggestions and must not be silently replaced by later automation. Re-running a strategy must ask whether to preserve manual changes, replace all proposals, or cancel, defaulting to preserving manual changes.
+Manual changes override automated or imported suggestions and must not be silently replaced by later automation. Re-running a strategy must ask whether to preserve manual changes, replace all proposals, or cancel, defaulting to preserving manual changes.
 
 Primary organizer actions operate on selected rows. Filtered-but-unselected rows must remain unchanged. Any all-visible operation is exposed separately, clearly labeled, and confirmed with the exact count and destination.
 
@@ -184,7 +184,7 @@ All in-memory proposal mutations go through `IOrganizerMutationService`, includi
 
 ## Deterministic organization
 
-The app must be able to produce proposals without AI when metadata is sufficient:
+The app must be able to produce proposals automatically when metadata is sufficient:
 
 - Creator-only uses explicit author metadata, then meaningful existing creator folders, then preserves or sends to Review based on preference. It does not require type classification.
 - Type-only uses explicit metadata and content signals, does not add creator folders, and preserves or sends uncertain items to Review based on preference.
@@ -193,15 +193,15 @@ The app must be able to produce proposals without AI when metadata is sufficient
 
 ## Workbook export and import
 
-The workbook workflow replaces the earlier sanitized-AI export path. `IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human or an AI the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
+`IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human, or an external tool the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
 
 `ImportAsync` reads an edited workbook back into `WorkbookImportRow` records and validates each against the supplied `ScanInventory`: rows must map to a real installed mod, and a row that targets a protected path or fails validation is rejected rather than silently applied. The result reports accepted rows, rejected rows, and a summary.
 
-Successful imported rows merge into the same in-memory proposal model used by manual editing and are tagged with the `ImportedAi` proposal source, while manual overrides keep precedence. Nothing from a workbook reaches Penumbra until it passes Review Changes, backup, dry run, and Apply like any other proposal.
+Successful imported rows merge into the same in-memory proposal model used by manual editing and are tagged with the `ImportedExternal` proposal source, while manual overrides keep precedence. Nothing from a workbook reaches Penumbra until it passes Review Changes, backup, dry run, and Apply like any other proposal.
 
 ## Review model
 
-`Review Changes` remains mandatory for manual, deterministic, and imported AI proposals. It shows exact current and proposed virtual folders, validation status, and proposal source. Where applicable it can show proposed type, proposed creator, and final proposed folder, but Beginner mode hides irrelevant columns such as proposed type in Creator-only mode.
+`Review Changes` remains mandatory for manual, deterministic, and imported proposals. It shows exact current and proposed virtual folders, validation status, and proposal source. Where applicable it can show proposed type, proposed creator, and final proposed folder, but Beginner mode hides irrelevant columns such as proposed type in Creator-only mode.
 
 Normal flow:
 
