@@ -535,14 +535,14 @@
                                 <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
                             </WrapPanel>
                             <WrapPanel>
-                                <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="140" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="118" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="130" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="126" Height="34" Margin="0,0,8,8" />
                             </WrapPanel>
                         </StackPanel>
                     </Grid>
