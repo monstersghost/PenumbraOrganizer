@@ -544,14 +544,6 @@ public sealed class DryRunAndApplyTests
         public ProposalSnapshot BuildSnapshot(IReadOnlyList<string> protectIds, params (string StableScanId, string ProposedFolder)[] changes)
             => BuildSnapshot(changes, protectIds);
 
-        public ProposalSnapshot BuildSnapshotWithMetadata(
-            (string StableScanId, string ProposedFolder)[] changes,
-            params ModMetadataEdit[] edits)
-        {
-            var baseSnapshot = BuildSnapshot(changes, Array.Empty<string>());
-            return baseSnapshot with { MetadataEdits = edits };
-        }
-
         public ProposalSnapshot BuildSnapshotWithEmptyFolders(
             (string StableScanId, string ProposedFolder)[] changes,
             string[] emptyFolders)

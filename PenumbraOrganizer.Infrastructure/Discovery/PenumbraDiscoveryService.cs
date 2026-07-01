@@ -55,20 +55,6 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (LooksLikeWinePath(configPath) || LooksLikeWinePath(modRoot) || LooksLikeWinePath(pluginAssemblyPath))
-        {
-            return Task.FromResult<PenumbraInstallation?>(new PenumbraInstallation(
-                configPath,
-                Path.GetDirectoryName(configPath) ?? string.Empty,
-                modRoot ?? string.Empty,
-                pluginAssemblyPath,
-                GetPluginManifestPath(pluginAssemblyPath),
-                null,
-                DiscoveryConfidence.Manual,
-                new[] { new DiscoveryEvidence("Manual selection", "Path was provided by the user.") },
-                new[] { "Wine and Linux-style Penumbra locations are not supported in version 1." }));
-        }
-
         if (!File.Exists(configPath))
             return Task.FromResult<PenumbraInstallation?>(null);
 
@@ -76,9 +62,9 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
         if (!doc.RootElement.TryGetProperty("ModDirectory", out var modDirectoryProperty))
             return Task.FromResult<PenumbraInstallation?>(null);
 
-        var resolvedModRoot = string.IsNullOrWhiteSpace(modRoot)
+        var resolvedModRoot = NormalizeForRuntime(string.IsNullOrWhiteSpace(modRoot)
             ? modDirectoryProperty.GetString() ?? string.Empty
-            : modRoot;
+            : modRoot);
 
         if (!Directory.Exists(resolvedModRoot))
             return Task.FromResult<PenumbraInstallation?>(null);
@@ -117,10 +103,33 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
                      Path.Combine(localAppData, "XIVLauncher"),
                      Path.Combine(appData, "XIVLauncherCN"),
                      Path.Combine(localAppData, "XIVLauncherCN"),
-                 })
+                 }.Concat(GetXlCoreBasePaths()))
         {
             if (seen.Add(path))
                 yield return path;
+        }
+    }
+
+    // XIVLauncher.Core (the Linux / Steam Deck launcher) stores plugin configs under
+    // $HOME/.xlcore/pluginConfigs/Penumbra.json — the same layout the Windows XIVLauncher uses
+    // under %AppData%\XIVLauncher, so TryDiscoverFromBasePath handles it once we add the base.
+    // We host the app under Wine, where the Linux root is exposed via the Z: drive mapping, so the
+    // home directory is reachable as Z:\home\<user>\.xlcore. The raw POSIX form is also yielded so
+    // a native (non-Wine) Linux run is covered too; non-existent candidates are simply skipped.
+    private static IEnumerable<string> GetXlCoreBasePaths()
+    {
+        var home = Environment.GetEnvironmentVariable("HOME");
+        if (string.IsNullOrWhiteSpace(home))
+            yield break;
+
+        if (OperatingSystem.IsWindows())
+        {
+            if (home.StartsWith('/'))
+                yield return "Z:" + home.Replace('/', '\\') + "\\.xlcore";
+        }
+        else
+        {
+            yield return Path.Combine(home, ".xlcore");
         }
     }
 
@@ -134,21 +143,16 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
         if (!doc.RootElement.TryGetProperty("ModDirectory", out var modDirectoryProperty))
             return null;
 
-        var modRoot = modDirectoryProperty.GetString() ?? string.Empty;
+        var modRoot = NormalizeForRuntime(modDirectoryProperty.GetString() ?? string.Empty);
         var evidence = new List<DiscoveryEvidence>
         {
             new("Configuration file", configPath),
             new("Configured mod directory", modRoot),
         };
         var warnings = new List<string>();
-        var confidence = DiscoveryConfidence.Medium;
+        DiscoveryConfidence confidence;
 
-        if (LooksLikeWinePath(modRoot))
-        {
-            warnings.Add("Wine and Linux-style Penumbra mod roots are not supported in version 1.");
-            confidence = DiscoveryConfidence.Low;
-        }
-        else if (!Directory.Exists(modRoot))
+        if (!Directory.Exists(modRoot))
         {
             warnings.Add("Configured mod directory does not currently exist.");
             confidence = DiscoveryConfidence.Low;
@@ -235,9 +239,19 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
         return null;
     }
 
-    private static bool LooksLikeWinePath(string? path)
-        => !string.IsNullOrWhiteSpace(path)
-           && (path!.StartsWith("/home/", StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith("/mnt/", StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith("Z:\\", StringComparison.OrdinalIgnoreCase));
+    // Penumbra running under the game's Wine prefix normally stores Windows-style mod roots
+    // (e.g. Z:\home\user\Mods), which a Wine-hosted instance of this app can stat directly. As a
+    // safety net for configs that stored a raw POSIX path, translate a leading-slash path to the
+    // Wine Z: drive mapping (Z: == /) when we are running on Windows/Wine. Native Linux runs keep
+    // the path as-is.
+    private static string NormalizeForRuntime(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return path;
+
+        if (OperatingSystem.IsWindows() && path.StartsWith('/'))
+            return "Z:" + path.Replace('/', '\\');
+
+        return path;
+    }
 }

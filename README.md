@@ -30,9 +30,6 @@ The current build includes:
 * incomplete-operation recovery
 * workbook (Excel) export and import for offline/AI-assisted review
 
-Per-mod metadata editing exists in the engine but its UI is disabled in
-0.2.0-beta pending a fix.
-
 ## What the application does not do
 
 Penumbra Organizer does not:
@@ -112,7 +109,7 @@ Screenshots are not included yet.
 
 The current beta does not yet include:
 
-* per-mod metadata editing UI (engine present, UI disabled)
+* per-mod metadata editing (out of scope — edit metadata in-game)
 * drag-and-drop
 * collection editing
 * `.pmp` handling

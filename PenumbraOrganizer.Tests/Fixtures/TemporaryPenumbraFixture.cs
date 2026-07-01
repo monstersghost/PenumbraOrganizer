@@ -34,7 +34,9 @@ public sealed class TemporaryPenumbraFixture : IDisposable
     public string PluginManifestPath => Path.Combine(InstalledPluginsPath, "Penumbra.json");
     public string PluginAssemblyPath => Path.Combine(InstalledPluginsPath, "Penumbra.dll");
 
-    public void WriteMainConfig()
+    public void WriteMainConfig() => WriteMainConfig(ModRoot);
+
+    public void WriteMainConfig(string modDirectory)
     {
         var json = """
         {
@@ -42,7 +44,7 @@ public sealed class TemporaryPenumbraFixture : IDisposable
           "EnableMods": true,
           "ModDirectory": "__MOD_ROOT__"
         }
-        """.Replace("__MOD_ROOT__", ModRoot.Replace("\\", "\\\\", StringComparison.Ordinal));
+        """.Replace("__MOD_ROOT__", modDirectory.Replace("\\", "\\\\", StringComparison.Ordinal));
         File.WriteAllText(PenumbraJsonPath, json);
     }
 

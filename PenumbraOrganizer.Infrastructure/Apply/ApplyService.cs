@@ -302,7 +302,6 @@ public sealed class ApplyService : IApplyService
             var baseline = change.WriteTargetKind switch
             {
                 PenumbraWriteTargetKind.SortOrderJson => PenumbraSortOrder.EmptyDocumentJson,
-                PenumbraWriteTargetKind.LocalModDataJson => PenumbraMetadataWriter.EmptyLocalDataJson,
                 _ => null,
             };
             if (baseline is null)

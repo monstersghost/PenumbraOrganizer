@@ -45,7 +45,7 @@ contract surface between App and Infrastructure. Grouped by concern:
 | File | Holds |
 | --- | --- |
 | `DomainModels.cs` | Core nouns and enums: `PenumbraInstallation`, `ScanInventory`, `ModScanResult`, `VirtualFolderNode`, `OrganizationPreferences`, `OrganizationStrategy`, `CompatibilityReport`, `ProposalSource` |
-| `OrganizerModels.cs` | The in-memory editing model: `OrganizerModProposal`, `OrganizerFolder`, `OrganizerMutationResult`, `OrganizerHistoryEntry` (undo/redo), `OrganizerValidationResult`, `OrganizerSessionDocument`, `ModMetadataEdit` |
+| `OrganizerModels.cs` | The in-memory editing model: `OrganizerModProposal`, `OrganizerFolder`, `OrganizerMutationResult`, `OrganizerHistoryEntry` (undo/redo), `OrganizerValidationResult`, `OrganizerSessionDocument` |
 | `DryRunModels.cs` | `DryRunPlan` and its entries/file-change/fingerprint snapshots, plus `ProposalSnapshot` (the immutable plan handed into the apply pipeline) |
 | `RecoveryModels.cs` | Backup/rollback/operation-history records, incomplete-operation records, observation status |
 | `IntegrationModels.cs` | Live-installation safety and diagnostics inputs/outputs: controlled-test options/candidates, `RealInstallationValidation*`, diagnostic export request/result |
@@ -54,7 +54,7 @@ contract surface between App and Infrastructure. Grouped by concern:
 A few names worth knowing because they thread through everything:
 
 - **`ScanInventory`** — the read-only snapshot of the live Penumbra install (mods, current virtual folders, collections). The input to organizing, validation, dry run, and apply.
-- **`OrganizerModProposal`** — one row in the Organize grid: a mod plus its *proposed* destination folder, protection flag, and any metadata edit. This is the editable working state.
+- **`OrganizerModProposal`** — one row in the Organize grid: a mod plus its *proposed* destination folder and protection flag. This is the editable working state.
 - **`ProposalSnapshot`** — an immutable capture of the proposed plan handed across the App/Infrastructure boundary into the dry-run → apply pipeline.
 - **`DryRunPlan`** — the validated, file-level description of exactly what apply will write, produced before any bytes are touched.
 
@@ -76,7 +76,7 @@ Implements the Core interfaces. Organized by concern into folders:
 - **`Scanning/`** — `PenumbraScanService` reads the live install into a `ScanInventory` (read-only).
 - **`Penumbra/`** — `PenumbraSortOrder` models `sort_order.json`, the file that actually stores virtual-folder organization.
 - **`Compatibility/`** — `PenumbraCompatibilityService` checks the detected Penumbra version/schema against what the app supports.
-- **`Apply/`** — the write pipeline (see below): `DryRunPlanner`, `DryRunValidationService`, `PenumbraVirtualFolderWriter`, `PenumbraMetadataWriter`, `ApplyService`, plus guards (`WritePermissionPreflightService`, `PlanInvalidationService`, `RealInstallationValidationService`, `PostApplyVerificationService`, `ControlledLiveTestService`).
+- **`Apply/`** — the write pipeline (see below): `DryRunPlanner`, `DryRunValidationService`, `PenumbraVirtualFolderWriter`, `ApplyService`, plus guards (`WritePermissionPreflightService`, `PlanInvalidationService`, `RealInstallationValidationService`, `PostApplyVerificationService`, `ControlledLiveTestService`).
 - **`Recovery/`** — backup, rollback, and operation history. `BackupService`/`RollbackService` do the work; `OperationHistoryService` indexes past operations; `OperationRecoveryService` handles operations interrupted mid-flight; `AtomicJsonFileStore` provides crash-safe writes. `RecoveryStorageLayout` defines the on-disk folder structure under `%LocalAppData%\PenumbraOrganizer`.
 - **`Exports/`** — `WorkbookWorkflowService` exports the inventory + plan to an Excel workbook (ClosedXML) and imports an edited one back, validating against the live inventory.
 - **`Sessions/`** — `OrganizerSessionService` persists/restores the in-memory Organize session so work survives a restart.
@@ -124,7 +124,7 @@ Reading the interfaces in this order in `Core/Interfaces/Services.cs` traces the
 4. **Dry run** — `IDryRunPlanner.CreatePlanAsync` builds a `DryRunPlan` (the exact file changes), backed by `IPenumbraVirtualFolderWriter` which captures source files and schema fingerprints. `IDryRunValidationService` and `IPlanInvalidationService` confirm the plan is still valid against the live install.
 5. **Preflight** — `IWritePermissionPreflightService` checks the target files are writable; `IRealInstallationValidationService` confirms the live install still matches the plan.
 6. **Backup** — `IBackupService.CreateBackupAsync` copies the live Penumbra config to a verified, timestamped operation package before any write.
-7. **Apply** — `IApplyService.PrepareAsync` then `ApplyAsync` writes the new `sort_order.json` (and metadata via `PenumbraMetadataWriter`) atomically.
+7. **Apply** — `IApplyService.PrepareAsync` then `ApplyAsync` writes the new `sort_order.json` atomically.
 8. **Verify** — `IPostApplyVerificationService` confirms the result matches the plan.
 9. **Recover / roll back** — if an operation is interrupted, `IOperationRecoveryService` surfaces it and `IRollbackService` restores the backup; `IOperationObservationService` records the user's "did Penumbra look right?" confirmation.
 
@@ -140,13 +140,13 @@ The on-disk formats produced by these stages are specified in
 All app-owned state is under `%LocalAppData%\PenumbraOrganizer\` — sessions, settings,
 logs, operation backups, and manual "Back Up My Penumbra" snapshots. The layout is defined
 by `RecoveryStorageLayout`. The app never writes inside the FFXIV or Penumbra install except
-the guarded `sort_order.json` / metadata writes during Apply.
+the guarded `sort_order.json` write during Apply.
 
 ## How to make common changes
 
 - **Add a new service** — declare the interface in `Core/Interfaces/Services.cs`, implement under the matching Infrastructure folder, register it in `ServiceCollectionExtensions.cs`, then inject it into a view model.
 - **Add a new Organize action** — add a method to `IOrganizerMutationService` (with its undo/redo inverse), expose a `RelayCommand` on `MainViewModel`, and bind a button in `MainWindow.xaml`.
-- **Change what Apply writes** — work in `Apply/PenumbraVirtualFolderWriter.cs` / `PenumbraMetadataWriter.cs`, and keep `DryRunPlanner` in sync so the dry run predicts the same changes.
+- **Change what Apply writes** — work in `Apply/PenumbraVirtualFolderWriter.cs`, and keep `DryRunPlanner` in sync so the dry run predicts the same changes.
 - **Touch a domain shape** — edit the relevant record in `Core/Models`; the compiler will walk you through the call sites.
 
 ## Testing
