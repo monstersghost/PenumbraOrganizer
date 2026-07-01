@@ -343,6 +343,7 @@ public sealed class DryRunAndApplyTests
         using var context = await ApplyTestContext.CreateAsync();
         context.Fixture.CreateMod("Backup Mod", """{"FileVersion":3,"Name":"Backup Mod","Author":"Author"}""");
         context.Fixture.WriteModData(("Backup Mod", "Current/Folder"));
+        context.Fixture.WriteLocalModData("Backup Mod", """{"FileVersion":3,"Favorite":false}""");
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Backup Mod", "Target/Folder"));
@@ -355,8 +356,15 @@ public sealed class DryRunAndApplyTests
         details!.Operation.VerificationStatus.Should().Be(OperationVerificationStatus.Verified);
         details.Operation.ApplyStatus.Should().Be(ApplyStatus.Ready);
         details.RollbackTransaction.Should().NotBeNull();
-        details.RollbackTransaction!.Files.Single().ExpectedAppliedSha256.Should().Be(plan.FileChanges.Single().ExpectedSha256);
-        details.Manifest!.Files.Single().SourceTargetPath.Should().Be(context.Fixture.SortOrderPath);
+
+        // Backup/rollback now cover the whole Penumbra config directory, not just the file(s)
+        // Apply is about to write.
+        var writeTarget = details.RollbackTransaction!.Files.Should().ContainSingle(file => file.TargetPath == plan.FileChanges.Single().TargetPath).Subject;
+        writeTarget.ExpectedAppliedSha256.Should().Be(plan.FileChanges.Single().ExpectedSha256);
+        writeTarget.ApplyResultStatus.Should().Be(ApplyResultStatus.Pending);
+        details.RollbackTransaction.Files.Should().Contain(file => file.TargetPath != plan.FileChanges.Single().TargetPath && file.ApplyResultStatus == ApplyResultStatus.Applied);
+        details.Manifest!.Files.Should().Contain(file => file.SourceTargetPath == context.Fixture.SortOrderPath);
+        details.Manifest.Files.Count.Should().BeGreaterThan(1);
         details.Operation.OperationFolder.Should().StartWith(context.BackupsRoot);
     }
 

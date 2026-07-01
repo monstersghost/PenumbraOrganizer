@@ -104,9 +104,9 @@ Apply preparation runs this sequence:
 
 1. finalize dry run
 2. create operation ID
-3. create verified backup package for every planned writable file
+3. create a verified backup package of the entire Penumbra configuration directory (not just the planned writable file)
 4. verify backup package
-5. persist rollback transaction with original and expected applied hashes
+5. persist rollback transaction with original and expected applied hashes for every backed-up file (files outside the plan are recorded as expected to stay unchanged)
 6. persist `plan.json` and `apply.json`
 7. enable Apply only when all checks pass
 
