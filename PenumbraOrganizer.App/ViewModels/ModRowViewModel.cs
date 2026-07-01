@@ -128,7 +128,7 @@ public sealed class ModRowViewModel : ObservableObject
         => source switch
         {
             OrganizerProposalSource.DeterministicRule => "Deterministic",
-            OrganizerProposalSource.ImportedAi => "Imported AI",
+            OrganizerProposalSource.ImportedExternal => "Imported",
             OrganizerProposalSource.PreservedCurrent => "Preserved current",
             OrganizerProposalSource.RestoredByUndo => "Restored by undo",
             _ => source.ToString(),

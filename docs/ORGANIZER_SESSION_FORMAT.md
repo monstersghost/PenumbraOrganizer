@@ -80,11 +80,11 @@ Proposal sources are:
 
 * `Manual`
 * `DeterministicRule`
-* `ImportedAi`
+* `ImportedExternal`
 * `PreservedCurrent`
 * `RestoredByUndo`
 
-Manual changes override automated suggestions. Future deterministic or AI proposal generation must not silently replace manual rows.
+Manual changes override automated suggestions. Future deterministic or imported proposal generation must not silently replace manual rows.
 
 ## Undo And Redo Scope
 

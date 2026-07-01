@@ -28,7 +28,7 @@ The current build includes:
 * dry run and guarded Apply
 * controlled live-test Apply
 * incomplete-operation recovery
-* workbook (Excel) export and import for offline/AI-assisted review
+* workbook (Excel) export and import for offline review and editing
 
 ## What the application does not do
 
@@ -40,7 +40,6 @@ Penumbra Organizer does not:
 * edit `.pmp` packages
 * edit Penumbra collections, priorities, enabled states, or option groups
 * write `organization.json`
-* require AI
 * require command-line knowledge
 
 ## Download
@@ -75,10 +74,9 @@ The app is self-contained and requires no separate .NET installation.
 
 ## Workbook workflow
 
-AI is optional. Instead of a built-in AI integration, the app can **Export Workbook**
-to an Excel file you can review offline or hand to any AI provider, then **Import Workbook**
-to bring the edited assignments back in. The import is validated against your live
-Penumbra inventory before anything is applied.
+The app can **Export Workbook** to an Excel file you can review and edit offline in any
+spreadsheet tool, then **Import Workbook** to bring the edited assignments back in. The
+import is validated against your live Penumbra inventory before anything is applied.
 
 ## Safety model
 

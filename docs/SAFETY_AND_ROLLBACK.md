@@ -107,7 +107,7 @@ The current package format is documented in:
 
 ## Rollback
 
-Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current AI proposal, current organizer session, current display names, or a new live scan.
+Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current imported proposal, current organizer session, current display names, or a new live scan.
 
 Rollback is available only after a prepared Apply operation completes enough verified live writes to restore safely.
 

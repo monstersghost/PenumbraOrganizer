@@ -140,6 +140,7 @@ public sealed class MainViewModel : ObservableObject
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
         ChoosePenumbraConfigCommand = new AsyncRelayCommand(ChoosePenumbraConfigAsync, () => !IsBusy);
+        ChooseModsFolderCommand = new AsyncRelayCommand(ChooseModsFolderAsync, () => !IsBusy && _installation is not null);
         ExportWorkbookCommand = new AsyncRelayCommand(ExportWorkbookAsync, () => _inventory is not null && !IsBusy);
         ImportWorkbookCommand = new AsyncRelayCommand(ImportWorkbookAsync, () => _inventory is not null && !IsBusy);
         OpenWorkbookCommand = new AsyncRelayCommand(OpenWorkbookAsync, () => _lastWorkbookExport is not null && File.Exists(_lastWorkbookExport.WorkbookPath));
@@ -183,6 +184,7 @@ public sealed class MainViewModel : ObservableObject
     public ICommand DetectCommand { get; }
     public AsyncRelayCommand ScanCommand { get; }
     public AsyncRelayCommand ChoosePenumbraConfigCommand { get; }
+    public AsyncRelayCommand ChooseModsFolderCommand { get; }
     public AsyncRelayCommand ExportWorkbookCommand { get; }
     public AsyncRelayCommand ImportWorkbookCommand { get; }
     public AsyncRelayCommand OpenWorkbookCommand { get; }
@@ -477,6 +479,7 @@ public sealed class MainViewModel : ObservableObject
                 RaisePropertyChanged(nameof(IsNotBusy));
                 ScanCommand.RaiseCanExecuteChanged();
                 ChoosePenumbraConfigCommand.RaiseCanExecuteChanged();
+                ChooseModsFolderCommand.RaiseCanExecuteChanged();
                 CreateDryRunCommand.RaiseCanExecuteChanged();
                 CreateBackupCommand.RaiseCanExecuteChanged();
                 ApplyVirtualFolderChangesCommand.RaiseCanExecuteChanged();
@@ -531,6 +534,7 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(InstallationMissing));
         ScanCommand.RaiseCanExecuteChanged();
         ConfigureControlledTestCommand.RaiseCanExecuteChanged();
+        ChooseModsFolderCommand.RaiseCanExecuteChanged();
     }
 
     private async Task RunBusyAsync(string progressMessage, Func<Task> action)
@@ -707,6 +711,52 @@ public sealed class MainViewModel : ObservableObject
         {
             _logger.LogError(ex, "Manual Penumbra selection failed");
             MessageBox.Show(ToUserMessage(ex), "Penumbra not found", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // Overrides the resolved Mods folder when Penumbra.json's ModDirectory is wrong for this
+    // machine (e.g. a moved library, or a Wine/Linux path that didn't translate). Requires a
+    // config path to already be known (from auto-detect or ChoosePenumbraConfigAsync).
+    private async Task ChooseModsFolderAsync()
+    {
+        if (_installation is null)
+            return;
+
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose Mods Folder",
+            Multiselect = false,
+        };
+        if (Directory.Exists(_installation.ModRoot))
+            dialog.InitialDirectory = _installation.ModRoot;
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            var installation = await _discoveryService.ValidateManualSelectionAsync(
+                _installation.ConfigurationPath, dialog.FolderName, _installation.PluginAssemblyPath, CancellationToken.None);
+            if (installation is null)
+            {
+                MessageBox.Show(
+                    "That folder does not look like a usable mods folder.",
+                    "Mods folder not accepted",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            _installation = installation;
+            DetectionSummary = BuildHomeSummary(_installation, _inventory);
+            ProgressMessage = "Mods folder overridden manually.";
+            AppendLog($"Overrode mods folder manually: {dialog.FolderName}");
+            RaiseInstallationChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Manual mods folder selection failed");
+            MessageBox.Show(ToUserMessage(ex), "Mods folder not accepted", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -2440,7 +2490,7 @@ public sealed class MainViewModel : ObservableObject
             "Protected" => rows.Where(row => row.Status == OrganizerRowStatus.Protected),
             "Manual" => rows.Where(row => row.Source == OrganizerProposalSource.Manual),
             "Deterministic" => rows.Where(row => row.Source == OrganizerProposalSource.DeterministicRule),
-            "Imported AI" => rows.Where(row => row.Source == OrganizerProposalSource.ImportedAi),
+            "Imported" => rows.Where(row => row.Source == OrganizerProposalSource.ImportedExternal),
             "Unchanged" => rows.Where(row => row.Status == OrganizerRowStatus.Unchanged),
             _ => rows,
         };
