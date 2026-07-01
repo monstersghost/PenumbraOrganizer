@@ -155,7 +155,8 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand = new RelayCommand(_ => ResetAllVisibleToCurrentFolder(), _ => FilteredMods.Cast<object>().Any());
         MarkSelectedProtectedCommand = new RelayCommand(_ => MarkSelectedProtected(), _ => SelectedOrganizerMods.Count > 0);
         UnprotectSelectedCommand = new RelayCommand(_ => UnprotectSelected(), _ => SelectedOrganizerMods.Count > 0);
-        EditMetadataCommand = new RelayCommand(_ => EditSelectedMetadata(), _ => SelectedOrganizerMods.Count > 0);
+        ProtectFolderCommand = new RelayCommand(_ => ProtectSelectedFolder(), _ => SelectedProposedFolder is not null);
+        UnprotectFolderCommand = new RelayCommand(_ => UnprotectSelectedFolder(), _ => SelectedProposedFolder is not null);
         RenameFolderCommand = new RelayCommand(_ => RenameSelectedFolder(), _ => SelectedProposedFolder is not null && !string.IsNullOrWhiteSpace(RenameFolderName));
         DeleteEmptyFolderCommand = new RelayCommand(_ => DeleteSelectedEmptyFolder(), _ => SelectedProposedFolder is not null);
         SaveSessionCommand = new AsyncRelayCommand(SaveSessionAsync, () => _inventory is not null);
@@ -197,7 +198,8 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetAllVisibleToCurrentFolderCommand { get; }
     public RelayCommand MarkSelectedProtectedCommand { get; }
     public RelayCommand UnprotectSelectedCommand { get; }
-    public RelayCommand EditMetadataCommand { get; }
+    public RelayCommand ProtectFolderCommand { get; }
+    public RelayCommand UnprotectFolderCommand { get; }
     public RelayCommand RenameFolderCommand { get; }
     public RelayCommand DeleteEmptyFolderCommand { get; }
     public AsyncRelayCommand SaveSessionCommand { get; }
@@ -604,7 +606,6 @@ public sealed class MainViewModel : ObservableObject
             {
                 var row = new ModRowViewModel(mod);
                 row.PropertyChanged += ModRowPropertyChanged;
-                row.MetadataEdited += OnRowMetadataEdited;
                 Mods.Add(row);
             }
 
@@ -1328,6 +1329,47 @@ public sealed class MainViewModel : ObservableObject
         ApplyMutationResult(result, pushHistory: true);
     }
 
+    private void ProtectSelectedFolder()
+    {
+        if (SelectedProposedFolder is null)
+            return;
+        var ids = ModIdsInFolder(SelectedProposedFolder.Path);
+        if (ids.Count == 0)
+        {
+            AppendLog($"No mods in {SelectedProposedFolder.DisplayName} to protect.");
+            return;
+        }
+        if (!ConfirmAllVisible($"Protect all {ids.Count} mods in {SelectedProposedFolder.DisplayName} (and its subfolders)?"))
+            return;
+        var result = _organizerMutationService.Protect(CurrentProposalRows(), ids);
+        ApplyMutationResult(result, pushHistory: true);
+    }
+
+    private void UnprotectSelectedFolder()
+    {
+        if (SelectedProposedFolder is null)
+            return;
+        var ids = ModIdsInFolder(SelectedProposedFolder.Path);
+        if (ids.Count == 0)
+        {
+            AppendLog($"No mods in {SelectedProposedFolder.DisplayName} to unprotect.");
+            return;
+        }
+        if (!ConfirmAllVisible($"Unprotect all {ids.Count} mods in {SelectedProposedFolder.DisplayName} (and its subfolders)?"))
+            return;
+        var result = _organizerMutationService.Unprotect(CurrentProposalRows(), ids);
+        ApplyMutationResult(result, pushHistory: true);
+    }
+
+    // Mods whose proposed folder is the given path or a descendant of it, mirroring how
+    // RenameFolder scopes a folder operation (equal-or-prefix on ProposedVirtualFolder).
+    private IReadOnlyList<string> ModIdsInFolder(string path)
+        => Mods
+            .Where(mod => mod.ProposedVirtualFolder.Equals(path, StringComparison.OrdinalIgnoreCase)
+                || mod.ProposedVirtualFolder.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase))
+            .Select(mod => mod.StableScanId)
+            .ToArray();
+
     private void RenameSelectedFolder()
     {
         if (SelectedProposedFolder is null)
@@ -1542,38 +1584,6 @@ public sealed class MainViewModel : ObservableObject
         return view;
     }
 
-    private void OnRowMetadataEdited()
-    {
-        // A staged metadata change makes any existing dry run stale; the edit is written only
-        // through the standard Backup and Apply path.
-        InvalidateDryRunState("Mod metadata edits changed.");
-        DebouncedSaveSession();
-    }
-
-    private void EditSelectedMetadata()
-    {
-        var row = SelectedOrganizerMods.FirstOrDefault();
-        if (row is null)
-            return;
-
-        if (SelectedOrganizerMods.Count > 1)
-            ProgressMessage = $"Editing metadata for {row.Name}. Select a single mod to edit a different one.";
-
-        var dialog = new ModMetadataDialog(row)
-        {
-            Owner = Application.Current.MainWindow,
-        };
-        if (dialog.ShowDialog() != true)
-            return;
-
-        // The dialog committed edits live; surface them and refresh review state.
-        AppendLog(row.HasMetadataEdit
-            ? $"Staged metadata edits for {row.Name}: {row.MetadataSummary}."
-            : $"Cleared metadata edits for {row.Name}.");
-        RefreshReviewChanges();
-        RefreshOrganizerViews();
-    }
-
     private void ResetOrganizerHistory()
     {
         _undoStack.Clear();
@@ -1590,7 +1600,8 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand.RaiseCanExecuteChanged();
         MarkSelectedProtectedCommand.RaiseCanExecuteChanged();
         UnprotectSelectedCommand.RaiseCanExecuteChanged();
-        EditMetadataCommand.RaiseCanExecuteChanged();
+        ProtectFolderCommand.RaiseCanExecuteChanged();
+        UnprotectFolderCommand.RaiseCanExecuteChanged();
         RenameFolderCommand.RaiseCanExecuteChanged();
         DeleteEmptyFolderCommand.RaiseCanExecuteChanged();
     }
@@ -1700,28 +1711,12 @@ public sealed class MainViewModel : ObservableObject
                 row.Proposal.OrganizerTypeLabel,
                 row.Proposal.Source,
                 row.Proposal.NeedsReview)).ToArray(),
-            MetadataEdits = Mods
-                .Select(row => (row.StableScanId, Edit: row.BuildMetadataEdit()))
-                .Where(item => item.Edit is not null)
-                .Select(item => new OrganizerSessionMetadataEdit(
-                    item.StableScanId,
-                    item.Edit!.Name,
-                    item.Edit.Author,
-                    item.Edit.Description,
-                    item.Edit.Version,
-                    item.Edit.Website,
-                    item.Edit.ModTags,
-                    item.Edit.Favorite,
-                    item.Edit.LocalTags,
-                    item.Edit.Note))
-                .ToArray(),
         };
     }
 
     private void RestoreSession(OrganizerSessionDocument session)
     {
         var savedById = session.Mods.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
-        var editsById = session.MetadataEdits.ToDictionary(edit => edit.StableScanId, StringComparer.Ordinal);
         foreach (var row in Mods)
         {
             if (savedById.TryGetValue(row.StableScanId, out var saved))
@@ -1733,9 +1728,6 @@ public sealed class MainViewModel : ObservableObject
                 row.Proposal.Source = saved.ProposalSource;
                 row.Proposal.NeedsReview = saved.NeedsReview;
             }
-
-            if (editsById.TryGetValue(row.StableScanId, out var savedEdit))
-                row.ApplyRestoredMetadata(savedEdit);
         }
 
         _organizerFolders.Clear();
@@ -2025,22 +2017,15 @@ public sealed class MainViewModel : ObservableObject
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
 
-        // TODO(metadata-editing): per-mod metadata editing (meta.json / mod_data favorite, tags,
-        // note) is DISABLED for the 0.2.0-beta release. Editing a mod's favorite corrupted the mod
-        // in Penumbra, so we no longer emit any meta.json / mod_data writes. The engine
-        // (PenumbraMetadataWriter, ModMetadataEdit, the dialog) and its tests are kept for a future
-        // fix; re-enable by collecting row.BuildMetadataEdit() here and restoring the UI entries.
-        IReadOnlyList<ModMetadataEdit>? metadataEdits = null;
         var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
         var session = BuildSessionDocument();
         return new ProposalSnapshot(
-            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences, metadataEdits),
+            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
             OrganizerSessionService.BuildSessionIdentity(session),
             preferences,
             proposals,
             folders,
-            validation,
-            metadataEdits);
+            validation);
     }
 
     private ProposalSnapshot BuildActiveProposalSnapshot()
@@ -2092,11 +2077,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var parts = new List<string>();
         var sortCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
-        var metaCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.ModMetaJson);
-        var localCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.LocalModDataJson);
         if (sortCount > 0) parts.Add("sort_order.json (organization)");
-        if (metaCount > 0) parts.Add($"{metaCount} meta.json file(s)");
-        if (localCount > 0) parts.Add($"{localCount} mod_data file(s)");
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
@@ -2175,18 +2156,10 @@ public sealed class MainViewModel : ObservableObject
             : string.Join(Environment.NewLine, examples) +
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
-        var metadataMods = MetadataEditedMods();
-        var metadataBlock = metadataMods.Count == 0
-            ? string.Empty
-            : $"{Environment.NewLine}{Environment.NewLine}Metadata edits ({metadataMods.Count} mod(s)):{Environment.NewLine}" +
-              string.Join(Environment.NewLine, metadataMods.Take(8).Select(row => $"{row.Name}: {row.MetadataSummary}")) +
-              (metadataMods.Count > 8 ? $"{Environment.NewLine}+ {metadataMods.Count - 8} more" : string.Empty);
-
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
-            $"{metadataMods.Count} mod(s) will have metadata edits applied.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
-            $"Planned folder changes:{Environment.NewLine}{exampleBlock}{metadataBlock}{Environment.NewLine}{Environment.NewLine}" +
+            $"Planned folder changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
             $"Authoritative targets: {DescribeWriteTargets(fileChanges)}{Environment.NewLine}" +
             $"Write operations: {fileChanges.Count}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
@@ -2194,9 +2167,6 @@ public sealed class MainViewModel : ObservableObject
             "Physical mod folders and mod files will not be moved." + Environment.NewLine +
             "FFXIV must be closed before Apply.";
     }
-
-    private IReadOnlyList<ModRowViewModel> MetadataEditedMods()
-        => Mods.Where(row => row.HasMetadataEdit).ToArray();
 
     private string BuildApplyResultSummary(ApplyResult applyResult, PostApplyVerificationResult? verification)
     {

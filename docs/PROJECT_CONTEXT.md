@@ -107,7 +107,7 @@ Verified release package details:
 * release EXE launches from the extracted ZIP
 * solution build passes with 0 warnings and 0 errors
 * tests pass: 92/92
-* guarded Apply foundation is implemented for supported `sort_order.json` virtual-folder writes (plus per-mod `meta.json` / `mod_data/<id>.json` metadata edits)
+* guarded Apply foundation is implemented for supported `sort_order.json` virtual-folder writes
 * no physical mod, collection, or FFXIV writes are implemented
 
 ## Critical distinction between Penumbra state and mod storage
@@ -981,7 +981,7 @@ Implemented:
 * immutable backup manifests and rollback transaction records
 * exact-byte rollback executor with conflict detection and post-rollback verification
 * operation-history persistence with package rebuilding
-* authoritative `sort_order.json` mapping (plus `meta.json` / `mod_data/<id>.json` metadata edits), deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
+* authoritative `sort_order.json` mapping, deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
 * read-only Backups screen foundation with backup verification and backup-folder access
 * controlled live-test selection with a default limit of 3 mods
 * explicit controlled-test Apply confirmation and post-Apply Penumbra UI observation capture
@@ -993,7 +993,7 @@ Implemented:
 * public alpha prerelease
 * smoke launch of the published EXE
 
-The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, guarded Review Changes dry-run/apply controls, and a read-only Backups foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, and any wider write target beyond `sort_order.json` and per-mod `meta.json` / `mod_data/<id>.json` remain part of the safe organizer milestone unless separately completed and verified.
+The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, guarded Review Changes dry-run/apply controls, and a read-only Backups foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, and any wider write target beyond `sort_order.json` remain part of the safe organizer milestone unless separately completed and verified.
 
 Existing projects:
 
@@ -1099,7 +1099,7 @@ Unknown structures should remain readable and preserved. They must not be silent
 * Collection matching currently uses mod display names and can be ambiguous when names are duplicated.
 * Top-level mod directories are treated as candidate mod roots and validated using metadata and `sort_order.json`.
 * `.pmp` package handling is intentionally out of scope for the installed-library organizer.
-* Wine and Linux-style paths are reported unsupported for version 1.
+* Linux is supported by running this app under Wine/Proton: discovery adds the XIVLauncher.Core base (`$HOME/.xlcore/pluginConfigs/Penumbra.json`, reached via the Wine `Z:` drive mapping) and POSIX mod roots are normalized to the `Z:` drive. Needs validation on a real Linux/Wine install.
 * The guarded Apply path writes only `sort_order.json` entries plus per-mod `meta.json` / `mod_data/<id>.json` for metadata edits.
 * The legacy `mod_filesystem\organization.json` is not authoritative and is not written.
 * The manual folder-picker wizard is not yet complete.
@@ -1111,7 +1111,7 @@ Unknown structures should remain readable and preserved. They must not be silent
 The following are not yet complete:
 
 * confirming Penumbra reloads `sort_order.json` cleanly after external edits across versions
-* widening Apply beyond `sort_order.json` and per-mod `meta.json` / `mod_data/<id>.json`
+* widening Apply beyond `sort_order.json`
 * persistent compatibility history
 * manual detection and folder-selection wizard
 * strategy-aware proposal generation and validation
@@ -1288,7 +1288,7 @@ The current project and fixtures now prove the authoritative live write targets:
 
 The installed top-level physical mod directory name is the stable scan ID and the mapping used by the scanner and dry-run/apply pipeline. The same string is the physical folder name, the `sort_order.json` `Data` key, and the `mod_data/<id>.json` filename.
 
-The legacy `mod_filesystem\organization.json` is not authoritative and is not written. Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf; root mods are renamed by `meta.json` alone.
+The legacy `mod_filesystem\organization.json` is not authoritative and is not written. A move preserves the mod's existing `sort_order.json` display leaf so reorganization never silently renames it in Penumbra.
 
 The current app also includes:
 

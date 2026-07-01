@@ -2,6 +2,12 @@
 
 _Last updated: 2026-06-29. Supersedes the storage assumptions in the older docs (see "Stale docs" below)._
 
+> **Metadata editing was REMOVED (2026-06-30, out of scope).** This handoff is now a historical
+> record. The `sort_order.json` retarget it describes is live and unchanged, but the per-mod
+> metadata-editing engine and UI (`ModMetadataEdit`, `PenumbraMetadataWriter`, `ModMetadataDialog`,
+> the session `metadataEdits`) have been deleted — metadata is edited in-game. Apply now writes only
+> `sort_order.json`. The scanner still reads `meta.json` / `mod_data/<id>.json` for display.
+
 > **Status update (follow-up session, 2026-06-29):** Every item in "What is LEFT TO DO" below is
 > now **DONE** and the test suite is green (134 tests). The original list is kept for context with
 > per-item resolutions inline. See the git history on branch `retarget-sort-order-and-metadata`.

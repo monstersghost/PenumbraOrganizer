@@ -5,8 +5,6 @@ namespace PenumbraOrganizer.Core.Models;
 public enum PenumbraWriteTargetKind
 {
     SortOrderJson,
-    ModMetaJson,
-    LocalModDataJson,
 }
 
 public enum DryRunPlanValidationStatus
@@ -58,19 +56,13 @@ public enum WritePermissionStatus
 /// production builders seed them (MainViewModel via SeedExistingEmptyFolders; the controlled-test
 /// builder inherits the seeded base snapshot). New builders must do the same.
 /// </param>
-/// <param name="MetadataEdits">
-/// Pending per-mod metadata edits. Each touches the mod's <c>meta.json</c> and/or
-/// <c>mod_data/&lt;id&gt;.json</c>. These are part of the snapshot identity, so changing an edit
-/// invalidates a stale dry run.
-/// </param>
 public sealed record ProposalSnapshot(
     string SnapshotIdentity,
     string OrganizationSessionIdentity,
     OrganizationPreferences OrganizationPreferences,
     IReadOnlyList<OrganizerModProposal> Proposals,
     IReadOnlyList<OrganizerFolder> Folders,
-    OrganizerValidationResult ValidationResult,
-    IReadOnlyList<ModMetadataEdit>? MetadataEdits = null);
+    OrganizerValidationResult ValidationResult);
 
 public sealed record DryRunSourceFileSnapshot(
     string Path,

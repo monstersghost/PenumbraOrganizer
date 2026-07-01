@@ -31,7 +31,7 @@
 - Penumbra discovery
 - config and metadata parsing
 - filesystem scanning
-- `sort_order.json` read/write for virtual-folder organization, plus `meta.json` and `mod_data/<id>.json` metadata editing
+- `sort_order.json` read/write for virtual-folder organization (`meta.json` and `mod_data/<id>.json` are read for display only — never written)
 - backup, rollback, atomic write
 - workbook (Excel) export generation and validated import
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
@@ -78,7 +78,7 @@ Complete foundations include:
 - Review Changes screen with reusable proposal validation and statuses `ValidChange`, `Unchanged`, `Protected`, `NeedsReview`, `InvalidPath`, `BlockedProtected`, `MissingMod`, and `StaleScan`
 - workbook (Excel) export of the inventory and plan, with organization preferences, plus validated workbook import
 
-The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. Per-mod metadata editing exists in the engine but its UI is disabled in 0.2.0-beta. Drag-and-drop, collection editing, `.pmp` handling, and physical mod movement remain out of scope.
+The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. Per-mod metadata editing, drag-and-drop, collection editing, `.pmp` handling, and physical mod movement are out of scope (metadata is edited in-game).
 
 ## PMP scope boundary
 
@@ -241,10 +241,10 @@ The current recovery slice includes:
 - operation-history rebuilding from operation packages
 - read-only `Backups` UI foundation
 - immutable dry-run planner and plan invalidation service
-- exact expected-result generation for `sort_order.json`, `meta.json`, and `mod_data/<id>.json`
+- exact expected-result generation for `sort_order.json`
 - write-permission preflight and `asInvoker` execution level
 - user-authorized real-installation validation workflow
-- guarded Apply executor that writes only `sort_order.json` entries and (for metadata edits) `meta.json` / `mod_data/<id>.json`
+- guarded Apply executor that writes only `sort_order.json` entries
 - post-Apply verification and rollback availability tracking
 - privacy-conscious diagnostic export
 - post-Apply Penumbra UI observation capture
@@ -269,7 +269,7 @@ The currently proven authoritative write targets are:
 
 The top-level physical mod directory name is the stable scan ID used to map an installed mod to its `sort_order.json` entry, its `meta.json`, and its `mod_data/<id>.json` file. The same string is the physical folder name, the `Data` key, and the `mod_data/<id>.json` filename.
 
-Writes are multi-file: a single Apply can touch `sort_order.json` plus one `meta.json` and/or one `mod_data/<id>.json` per edited mod, all captured by one N-file backup and rolled back together. Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf so the rename is visible in Penumbra; root mods are renamed by `meta.json` alone.
+Apply writes only `sort_order.json` (one file), captured by the backup and rolled back as a unit; `meta.json` and `mod_data/<id>.json` are read for display but never modified. The backup/apply/rollback pipeline still supports N files per operation, so it remains ready for future multi-file writes. (Per-mod metadata editing was prototyped and then removed as out of scope — metadata is edited in-game.)
 
 ## Milestone 1
 
