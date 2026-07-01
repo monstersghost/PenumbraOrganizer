@@ -713,31 +713,24 @@
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="18">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Restore a previous backup"
-                                           FontSize="20"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Margin="0,10,0,0"
-                                           Text="{Binding Backups.StatusMessage}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Margin="0,6,0,0"
-                                           Text="{Binding RecoveryStatus}"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <WrapPanel Grid.Column="1"
-                                       VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="Restore a previous backup"
+                                       FontSize="20"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding Backups.StatusMessage}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       Text="{Binding RecoveryStatus}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,14,0,0">
                                 <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh" MinWidth="90" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.RollbackCommand}" Content="Restore Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="34" />
+                                <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="34" Margin="0,0,10,10" />
                             </WrapPanel>
-                        </Grid>
+                        </StackPanel>
                     </Border>
 
                     <Grid Grid.Row="1"
@@ -908,9 +901,11 @@
                                     <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Prepared Changes" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,4,0,0">
                                     <Button Command="{Binding ConfigureControlledTestCommand}" Content="Controlled Test Apply" MinWidth="160" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Controlled Test" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" />
+                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                                 <WrapPanel Margin="0,4,0,0">
                                     <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
