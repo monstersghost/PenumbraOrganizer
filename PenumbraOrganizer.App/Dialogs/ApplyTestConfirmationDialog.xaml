@@ -37,6 +37,7 @@
                     Margin="0,0,10,0"
                     Click="Cancel_Click" />
             <Button Content="{Binding ConfirmButtonText}"
+                    Style="{StaticResource PrimaryButtonStyle}"
                     Width="170"
                     Height="34"
                     Click="Apply_Click" />
