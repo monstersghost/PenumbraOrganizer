@@ -233,7 +233,7 @@ The rollback and verified-backup foundation is implemented, and the first guarde
 The current recovery slice includes:
 
 - recovery domain models and service interfaces in `PenumbraOrganizer.Core`
-- verified backup creation from explicit file lists only
+- verified backup creation; every Apply backs up the entire Penumbra configuration directory
 - immutable `manifest.json` and rollback transaction persistence
 - atomic JSON persistence for operation, manifest, rollback, verification, and history records
 - exact-byte rollback restore with conflict detection
@@ -269,7 +269,7 @@ The currently proven authoritative write targets are:
 
 The top-level physical mod directory name is the stable scan ID used to map an installed mod to its `sort_order.json` entry, its `meta.json`, and its `mod_data/<id>.json` file. The same string is the physical folder name, the `Data` key, and the `mod_data/<id>.json` filename.
 
-Apply writes only `sort_order.json` (one file), captured by the backup and rolled back as a unit; `meta.json` and `mod_data/<id>.json` are read for display but never modified. The backup/apply/rollback pipeline still supports N files per operation, so it remains ready for future multi-file writes. (Per-mod metadata editing was prototyped and then removed as out of scope — metadata is edited in-game.)
+Apply writes only `sort_order.json` (one file); `meta.json` and `mod_data/<id>.json` are read for display but never modified. (Per-mod metadata editing was prototyped and then removed as out of scope — metadata is edited in-game.) The backup taken before every Apply, and the rollback that restores it, both cover the entire Penumbra configuration directory rather than just the one file being written — so unrelated files stay recoverable too, not only the write target.
 
 ## Milestone 1
 

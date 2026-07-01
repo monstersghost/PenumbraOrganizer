@@ -24,7 +24,9 @@ Each package contains:
 └── logs\
 ```
 
-`files\` contains only explicitly requested metadata backups. It must not contain full mod assets.
+`files\` contains a full copy of the Penumbra configuration directory (`sort_order.json`,
+`mod_data\`, `collections\`, and any other files Penumbra keeps there) captured before every
+Apply. It must not contain full mod assets (the mod-library root is never backed up).
 
 Current apply-enabled packages also persist:
 
@@ -204,7 +206,9 @@ It does not expose:
 * public rollback execution
 * force restore
 
-Live Apply is now guarded from the Review Changes workflow, for the proven file-based targets:
-`sort_order.json` virtual-folder organization plus per-mod `meta.json` / `mod_data/<id>.json`
-metadata edits. A single operation can back up and roll back all of these files together (N-file
-backup).
+Live Apply is now guarded from the Review Changes workflow for the proven `sort_order.json`
+virtual-folder target. A single operation backs up and can roll back the entire Penumbra
+configuration directory, not just the file(s) Apply is about to write, so unrelated files stay
+recoverable too. Files the operation didn't touch are recorded as already matching their backup
+(no-op on restore unless something else changed them, in which case restore treats that as a
+conflict like any other).
