@@ -41,18 +41,26 @@ public sealed class PenumbraScanService : IPenumbraScanService
         foreach (var dbOnly in dbFolders.Keys.Where(key => !directoryNames.Contains(key)))
             warnings.Add($"sort_order.json references a mod folder that is missing on disk: {dbOnly}");
 
-        var duplicateNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var mods = new List<ModScanResult>(physicalDirectories.Count);
         var modDataDirectory = Path.Combine(installation.ConfigDirectory, "mod_data");
 
-        foreach (var physicalDirectory in physicalDirectories.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+        // This reads every installed mod's meta.json / group_*.json / local mod_data file
+        // synchronously, which can be hundreds of files. Run it on the thread pool so the UI
+        // thread keeps pumping messages (repainting the progress overlay, responding to
+        // Windows) instead of blocking for the whole scan.
+        var (mods, duplicateNames) = await Task.Run(() =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            var names = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var results = new List<ModScanResult>(physicalDirectories.Count);
+            foreach (var physicalDirectory in physicalDirectories.OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
 
-            var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, duplicateNames, modDataDirectory);
-            if (mod is not null)
-                mods.Add(mod);
-        }
+                var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, names, modDataDirectory);
+                if (mod is not null)
+                    results.Add(mod);
+            }
+            return (results, names);
+        }, cancellationToken);
 
         foreach (var mod in mods.Where(m => duplicateNames.TryGetValue(m.Name, out var count) && count > 1))
         {

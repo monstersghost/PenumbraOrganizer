@@ -138,6 +138,13 @@
                                            Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding PenumbraStateDirectory}"
                                            TextWrapping="Wrap" />
+                                <Button Command="{Binding ChoosePenumbraConfigCommand}"
+                                        Content="Override Penumbra Config..."
+                                        HorizontalAlignment="Left"
+                                        MinWidth="180"
+                                        Height="30"
+                                        Margin="0,6,0,0"
+                                        ToolTip="Pick Penumbra.json manually if it was detected incorrectly." />
                                 <TextBlock Margin="0,12,0,0"
                                            Text="Mod library root"
                                            Foreground="{StaticResource TextSecondaryBrush}" />
@@ -300,10 +307,12 @@
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Creator then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve and clean" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,4,0,0">
                                 <Button Command="{Binding ExportWorkbookCommand}" Content="Export Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding ImportWorkbookCommand}" Content="Import Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                             </WrapPanel>
-                            <TextBlock Margin="0,10,0,0"
+                            <TextBlock Margin="0,6,0,0"
                                        Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
                                        Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
@@ -364,6 +373,10 @@
 
                     <Grid Grid.Row="2"
                           Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="330" />
                             <ColumnDefinition Width="14" />
@@ -372,7 +385,8 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0"
+                        <Border Grid.Row="0"
+                                Grid.Column="0"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
@@ -402,7 +416,8 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="2"
+                        <Border Grid.Row="0"
+                                Grid.Column="2"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
@@ -414,7 +429,6 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Proposed folder tree"
@@ -472,17 +486,11 @@
                                         <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
                                     </DataGrid.Columns>
                                 </DataGrid>
-
-                                <WrapPanel Grid.Row="4"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                </WrapPanel>
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="4"
+                        <Border Grid.Row="0"
+                                Grid.Column="4"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
@@ -492,7 +500,6 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Mods"
@@ -516,20 +523,28 @@
                                         <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
                                     </DataGrid.Columns>
                                 </DataGrid>
-
-                                <WrapPanel Grid.Row="2"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="140" Height="34" Margin="0,0,10,10" />
-                                </WrapPanel>
                             </Grid>
                         </Border>
+
+                        <StackPanel Grid.Row="1"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="5">
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
+                                <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                                <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                            </WrapPanel>
+                            <WrapPanel>
+                                <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="125" Height="34" Margin="0,0,10,10" />
+                                <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="140" Height="34" Margin="0,0,10,10" />
+                            </WrapPanel>
+                        </StackPanel>
                     </Grid>
                 </Grid>
             </TabItem>

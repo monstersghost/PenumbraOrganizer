@@ -15,7 +15,8 @@
     <SolidColorBrush x:Key="WarningBackgroundBrush" Color="#FFFFF7E6" />
     <SolidColorBrush x:Key="WarningBorderBrush" Color="#FFF3D98B" />
     <SolidColorBrush x:Key="WarningTextBrush" Color="#FF92400E" />
-    <SolidColorBrush x:Key="RowHoverBrush" Color="#FFF6F7FB" />
+    <SolidColorBrush x:Key="RowHoverBrush" Color="#FFECEEF5" />
+    <SolidColorBrush x:Key="ZebraStripeBrush" Color="#FFF7F8FC" />
 
     <FontFamily x:Key="AppFontFamily">Segoe UI</FontFamily>
 
@@ -399,6 +400,9 @@
     <Style TargetType="DataGridRow">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
         <Style.Triggers>
+            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                <Setter Property="Background" Value="{StaticResource ZebraStripeBrush}" />
+            </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="{StaticResource RowHoverBrush}" />
             </Trigger>
@@ -418,6 +422,7 @@
         <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
         <Setter Property="CanUserResizeRows" Value="False" />
         <Setter Property="ColumnHeaderHeight" Value="38" />
+        <Setter Property="AlternationCount" Value="2" />
     </Style>
 
     <!-- TabControl -->
