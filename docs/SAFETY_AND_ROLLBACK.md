@@ -9,17 +9,15 @@ The organizer is read-only until:
 - dry-run validation passes
 - a verified backup completes
 
-The current repository now includes a guarded Apply foundation for these proven file-based targets:
+The current repository now includes a guarded Apply foundation for this proven file-based target:
 
 - `sort_order.json` (virtual-folder organization; `Data` entries + `EmptyFolders`)
-- `meta.json` (author metadata, for metadata edits)
-- `mod_data/<id>.json` (per-user local data, for metadata edits)
 
 Physical mod folders, collections, option groups, priorities, enabled states, `.pmp` files, plugin binaries, and FFXIV files remain outside this write path.
 
 The recovery foundation is now implemented for future Apply integration:
 
-- verified backup creation from explicit file lists
+- verified backup creation of the entire Penumbra configuration directory
 - immutable backup manifests
 - rollback transaction persistence
 - exact-byte rollback restore with conflict detection
@@ -31,9 +29,9 @@ This foundation remains fixture-tested and does not expose live Apply or public 
 The first live write path now adds:
 
 - immutable dry-run planning
-- exact expected-result generation for `sort_order.json`, `meta.json`, and `mod_data/<id>.json`
-- verified-backup integration before Apply (N-file backup across every touched file)
-- atomic file replacement for supported virtual-folder and metadata changes
+- exact expected-result generation for `sort_order.json`
+- verified-backup integration before Apply (the full Penumbra configuration directory, not just the file(s) being written)
+- atomic file replacement for supported virtual-folder changes
 - post-Apply verification
 - guarded rollback availability after Apply
 - controlled live-test selection before the first real Apply
@@ -107,7 +105,7 @@ The current package format is documented in:
 
 ## Rollback
 
-Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current AI proposal, current organizer session, current display names, or a new live scan.
+Rollback uses the saved manifest, backup files, and rollback transaction rather than the current workbook, current imported proposal, current organizer session, current display names, or a new live scan.
 
 Rollback is available only after a prepared Apply operation completes enough verified live writes to restore safely.
 

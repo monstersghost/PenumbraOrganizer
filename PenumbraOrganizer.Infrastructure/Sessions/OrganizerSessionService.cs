@@ -123,8 +123,7 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
     public static string BuildProposalSnapshotIdentity(
         IReadOnlyList<OrganizerModProposal> proposals,
         IReadOnlyList<OrganizerFolder> folders,
-        OrganizationPreferences preferences,
-        IReadOnlyList<ModMetadataEdit>? metadataEdits = null)
+        OrganizationPreferences preferences)
     {
         var builder = new StringBuilder();
         builder.AppendLine(preferences.Strategy.ToString());
@@ -136,23 +135,6 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
 
         foreach (var proposal in proposals.OrderBy(proposal => proposal.StableScanId, StringComparer.Ordinal))
             builder.AppendLine($"{proposal.StableScanId}|{proposal.CurrentVirtualFolder}|{proposal.ProposedVirtualFolder}|{proposal.Protected}|{proposal.Source}|{proposal.NeedsReview}|{proposal.OrganizerCreatorLabel}|{proposal.OrganizerTypeLabel}");
-
-        // Metadata edits are part of what an Apply will write, so they must change the snapshot
-        // identity; otherwise a metadata-only change would not invalidate a stale dry run.
-        foreach (var edit in (metadataEdits ?? Array.Empty<ModMetadataEdit>()).OrderBy(edit => edit.StableScanId, StringComparer.Ordinal))
-        {
-            builder.Append("meta:").Append(edit.StableScanId)
-                .Append('|').Append(edit.Name)
-                .Append('|').Append(edit.Author)
-                .Append('|').Append(edit.Description)
-                .Append('|').Append(edit.Version)
-                .Append('|').Append(edit.Website)
-                .Append('|').Append(edit.ModTags is null ? null : string.Join(",", edit.ModTags))
-                .Append('|').Append(edit.Favorite)
-                .Append('|').Append(edit.LocalTags is null ? null : string.Join(",", edit.LocalTags))
-                .Append('|').Append(edit.Note)
-                .AppendLine();
-        }
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
     }

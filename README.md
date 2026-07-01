@@ -4,7 +4,7 @@ A beginner-friendly, unofficial Windows utility for viewing and reorganizing Pen
 
 ## Current status
 
-**0.2.0-beta**
+**0.2.1-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
 file-based config (`sort_order.json`, `mod_data`, collections), lets you reorganize
@@ -20,18 +20,17 @@ The current build includes:
 * one-click organization strategies that produce a full plan
 * selected-row and bulk proposal actions
 * proposed folder creation and rename
-* protected mods
+* protected mods, including one-click protection for an entire proposed folder
+* manual override for the detected Penumbra config path and Mods folder
 * undo and redo
 * organizer session saving
 * Review Changes validation
-* verified backup and restore (rollback)
+* verified backup and restore (rollback), backing up the entire Penumbra
+  configuration directory before every Apply, not just the file being written
 * dry run and guarded Apply
 * controlled live-test Apply
 * incomplete-operation recovery
-* workbook (Excel) export and import for offline/AI-assisted review
-
-Per-mod metadata editing exists in the engine but its UI is disabled in
-0.2.0-beta pending a fix.
+* workbook (Excel) export and import for offline review and editing
 
 ## What the application does not do
 
@@ -43,14 +42,13 @@ Penumbra Organizer does not:
 * edit `.pmp` packages
 * edit Penumbra collections, priorities, enabled states, or option groups
 * write `organization.json`
-* require AI
 * require command-line knowledge
 
 ## Download
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.2.0-beta-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.2.1-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
 4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
@@ -78,10 +76,9 @@ The app is self-contained and requires no separate .NET installation.
 
 ## Workbook workflow
 
-AI is optional. Instead of a built-in AI integration, the app can **Export Workbook**
-to an Excel file you can review offline or hand to any AI provider, then **Import Workbook**
-to bring the edited assignments back in. The import is validated against your live
-Penumbra inventory before anything is applied.
+The app can **Export Workbook** to an Excel file you can review and edit offline in any
+spreadsheet tool, then **Import Workbook** to bring the edited assignments back in. The
+import is validated against your live Penumbra inventory before anything is applied.
 
 ## Safety model
 
@@ -108,11 +105,15 @@ Screenshots are not included yet.
 * no separate .NET installation
 * internet not required for core local features
 
+Linux is supported by running the app under Wine/Proton alongside the game. Discovery
+finds XIVLauncher.Core's config at `~/.xlcore/pluginConfigs/Penumbra.json`. This path has
+not yet been validated on a real Linux install.
+
 ## Known limitations
 
 The current beta does not yet include:
 
-* per-mod metadata editing UI (engine present, UI disabled)
+* per-mod metadata editing (out of scope — edit metadata in-game)
 * drag-and-drop
 * collection editing
 * `.pmp` handling

@@ -111,17 +111,28 @@ public sealed class ApplyService : IApplyService
             throw new InvalidOperationException(string.Join(Environment.NewLine, preflight.Errors));
 
         var operationId = Guid.NewGuid();
+        var writeTargetsByPath = new HashSet<string>(plan.FileChanges.Select(change => change.TargetPath), StringComparer.OrdinalIgnoreCase);
+        var scanIdsByPath = plan.FileChanges.ToDictionary(
+            change => change.TargetPath,
+            change => plan.Entries.Where(entry => entry.TargetPath.Equals(change.TargetPath, StringComparison.OrdinalIgnoreCase) && entry.RequiresWrite)
+                .Select(entry => entry.StableScanId)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray(),
+            StringComparer.OrdinalIgnoreCase);
+
+        // Back up the whole Penumbra config directory, not just the files Apply is about to
+        // write, so rollback can restore everything to its pre-Apply state even if something
+        // outside our own writes (a crash, Penumbra itself) touches other files in the meantime.
         var backupRequest = new BackupRequest(
             operationId,
             plan.ScanIdentity,
-            plan.FileChanges.Select(change => new BackupFileRequest(
-                change.TargetPath,
-                Protected: false,
-                plan.Entries.Where(entry => entry.TargetPath.Equals(change.TargetPath, StringComparison.OrdinalIgnoreCase) && entry.RequiresWrite)
-                    .Select(entry => entry.StableScanId)
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray(),
-                plan.PlanId.ToString("N"))).ToArray(),
+            EnumerateConfigDirectoryFiles(installation.ConfigDirectory)
+                .Select(path => new BackupFileRequest(
+                    path,
+                    Protected: false,
+                    scanIdsByPath.TryGetValue(path, out var scanIds) ? scanIds : Array.Empty<string>(),
+                    plan.PlanId.ToString("N")))
+                .ToArray(),
             plan.ApplicationVersion,
             plan.InstalledPenumbraVersion,
             plan.Summary.AffectedModCount);
@@ -131,7 +142,7 @@ public sealed class ApplyService : IApplyService
             throw new InvalidOperationException(backupDetails.Operation.LastError ?? "Backup verification failed.");
 
         var manifest = backupDetails.Manifest ?? throw new InvalidOperationException("The verified backup manifest is missing.");
-        var manifestBySource = manifest.Files.ToDictionary(file => file.SourceTargetPath, StringComparer.OrdinalIgnoreCase);
+        var expectedShaByPath = plan.FileChanges.ToDictionary(change => change.TargetPath, change => change.ExpectedSha256, StringComparer.OrdinalIgnoreCase);
         var rollbackTransaction = new RollbackTransaction(
             operationId,
             DateTimeOffset.UtcNow,
@@ -139,19 +150,24 @@ public sealed class ApplyService : IApplyService
             plan.InstalledPenumbraVersion,
             plan.ScanIdentity,
             RollbackTransactionStatus.Available,
-            plan.FileChanges.Select(change =>
+            manifest.Files.Select(manifestEntry =>
             {
-                var manifestEntry = manifestBySource[change.TargetPath];
+                var isWriteTarget = writeTargetsByPath.Contains(manifestEntry.SourceTargetPath);
                 return new RollbackFileEntry(
-                    change.TargetPath,
+                    manifestEntry.SourceTargetPath,
                     manifestEntry.RelativeBackupPath,
                     manifestEntry.OriginalSha256,
                     manifestEntry.OriginalLength,
-                    change.ExpectedSha256,
+                    isWriteTarget ? expectedShaByPath[manifestEntry.SourceTargetPath] : manifestEntry.OriginalSha256,
                     ExistedBeforeApply: true,
                     manifestEntry.Classification,
                     Protected: false,
-                    ApplyResultStatus.Pending,
+                    // Files Apply intends to write start Pending and get their real status once
+                    // ApplyAsync runs. Everything else in the full-directory backup is expected to
+                    // stay byte-identical, so mark it Applied now -- that keeps it in scope for
+                    // ExecuteAsync's normal restore/conflict-detection instead of being skipped as
+                    // "not part of this operation".
+                    isWriteTarget ? ApplyResultStatus.Pending : ApplyResultStatus.Applied,
                     RollbackFileStatus.Pending,
                     manifestEntry.AssociatedStableScanIds,
                     plan.PlanId.ToString("N"),
@@ -302,7 +318,6 @@ public sealed class ApplyService : IApplyService
             var baseline = change.WriteTargetKind switch
             {
                 PenumbraWriteTargetKind.SortOrderJson => PenumbraSortOrder.EmptyDocumentJson,
-                PenumbraWriteTargetKind.LocalModDataJson => PenumbraMetadataWriter.EmptyLocalDataJson,
                 _ => null,
             };
             if (baseline is null)
@@ -315,6 +330,11 @@ public sealed class ApplyService : IApplyService
             File.WriteAllBytes(target, System.Text.Encoding.UTF8.GetBytes(baseline));
         }
     }
+
+    private static IReadOnlyList<string> EnumerateConfigDirectoryFiles(string configDirectory)
+        => Directory.Exists(configDirectory)
+            ? Directory.EnumerateFiles(configDirectory, "*", SearchOption.AllDirectories).ToArray()
+            : Array.Empty<string>();
 
     private static ScanInventory BuildInventory(
         DryRunPlan plan,

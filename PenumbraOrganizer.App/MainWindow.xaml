@@ -10,8 +10,7 @@
         Width="1380"
         MinHeight="740"
         MinWidth="1180"
-        WindowStartupLocation="CenterScreen"
-        Background="#FFF4F6F8">
+        WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Window.Resources>
@@ -24,8 +23,8 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0"
-                Background="White"
-                BorderBrush="#FFD9DFE7"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource AppBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="24,18">
             <Grid>
@@ -38,10 +37,10 @@
                     <TextBlock Text="Penumbra Organizer"
                                FontSize="28"
                                FontWeight="SemiBold"
-                               Foreground="#FF1C2633" />
+                               Foreground="{StaticResource TextPrimaryBrush}" />
                     <TextBlock Margin="0,6,0,0"
                                Text="Portable organizer for Penumbra virtual folders. Physical mod files stay exactly where they are."
-                               Foreground="#FF556171"
+                               Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap" />
                 </StackPanel>
 
@@ -55,6 +54,7 @@
                             Margin="0,0,10,0" />
                     <Button Command="{Binding ScanCommand}"
                             Content="Scan My Mods"
+                            Style="{StaticResource PrimaryButtonStyle}"
                             MinWidth="130"
                             Height="36" />
                 </StackPanel>
@@ -81,27 +81,28 @@
 
                         <Border Grid.Row="0"
                                 Grid.Column="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="20">
                             <StackPanel>
                                 <TextBlock Text="Ready to Scan"
                                            FontSize="22"
                                            FontWeight="SemiBold"
-                                           Foreground="#FF1C2633" />
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
                                 <TextBlock Margin="0,12,0,0"
                                            Text="{Binding DetectionSummary}"
                                            FontSize="16"
                                            TextWrapping="Wrap" />
                                 <TextBlock Margin="0,10,0,0"
                                            Text="{Binding CompatibilitySummary}"
-                                           Foreground="#FF556171"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap" />
                                 <WrapPanel Margin="0,18,0,0">
                                     <Button Command="{Binding ScanCommand}"
                                             Content="Scan My Mods"
+                                            Style="{StaticResource PrimaryButtonStyle}"
                                             MinWidth="150"
                                             Height="40"
                                             Margin="0,0,10,10"
@@ -123,10 +124,10 @@
 
                         <Border Grid.Row="0"
                                 Grid.Column="2"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="20">
                             <StackPanel>
                                 <TextBlock Text="Detected Paths"
@@ -134,17 +135,32 @@
                                            FontWeight="SemiBold" />
                                 <TextBlock Margin="0,12,0,0"
                                            Text="Penumbra state directory"
-                                           Foreground="#FF556171" />
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding PenumbraStateDirectory}"
                                            TextWrapping="Wrap" />
+                                <Button Command="{Binding ChoosePenumbraConfigCommand}"
+                                        Content="Override Penumbra Config..."
+                                        HorizontalAlignment="Left"
+                                        MinWidth="180"
+                                        Height="30"
+                                        Margin="0,6,0,0"
+                                        ToolTip="Pick Penumbra.json manually if it was detected incorrectly." />
                                 <TextBlock Margin="0,12,0,0"
                                            Text="Mod library root"
-                                           Foreground="#FF556171" />
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding ModLibraryRoot}"
                                            TextWrapping="Wrap" />
+                                <Button Command="{Binding ChooseModsFolderCommand}"
+                                        Content="Override Mods Folder..."
+                                        HorizontalAlignment="Left"
+                                        MinWidth="180"
+                                        Height="30"
+                                        Margin="0,6,0,0"
+                                        Visibility="{Binding InstallationFound, Converter={StaticResource BoolToVisibilityConverter}}"
+                                        ToolTip="Pick the Mods folder manually if it was detected incorrectly." />
                                 <TextBlock Margin="0,12,0,0"
                                            Text="Installed Penumbra version"
-                                           Foreground="#FF556171" />
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding InstalledPenumbraVersion}" />
                             </StackPanel>
                         </Border>
@@ -152,16 +168,16 @@
                         <Border Grid.Row="1"
                                 Grid.ColumnSpan="3"
                                 Margin="0,18,0,0"
-                                Background="#FFFDF6E7"
-                                BorderBrush="#FFE9D5A1"
+                                Background="{StaticResource WarningBackgroundBrush}"
+                                BorderBrush="{StaticResource WarningBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18"
                                 Visibility="{Binding InstallationMissing, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
                                 <TextBlock Text="Automatic detection did not find Penumbra."
                                            FontWeight="SemiBold"
-                                           Foreground="#FF7A5312" />
+                                           Foreground="{StaticResource WarningTextBrush}" />
                                 <TextBlock Margin="0,6,0,0"
                                            Text="Choose your Penumbra.json file manually if XIVLauncher is stored somewhere unusual."
                                            TextWrapping="Wrap" />
@@ -173,7 +189,7 @@
                                             Margin="0,0,10,0" />
                                     <TextBlock VerticalAlignment="Center"
                                                Text="{Binding ManualConfigPath}"
-                                               Foreground="#FF556171"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" />
                                 </WrapPanel>
                             </StackPanel>
@@ -191,14 +207,14 @@
                             </Grid.ColumnDefinitions>
 
                             <Border Grid.Column="0"
-                                    Background="White"
-                                    BorderBrush="#FFD9DFE7"
+                                    Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource AppBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="8"
+                                    CornerRadius="10"
                                     Padding="18">
                                 <StackPanel>
                                     <TextBlock Text="Installed mods"
-                                               Foreground="#FF556171" />
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding InstalledModCount}"
                                                FontSize="28"
                                                FontWeight="SemiBold" />
@@ -206,14 +222,14 @@
                             </Border>
 
                             <Border Grid.Column="2"
-                                    Background="White"
-                                    BorderBrush="#FFD9DFE7"
+                                    Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource AppBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="8"
+                                    CornerRadius="10"
                                     Padding="18">
                                 <StackPanel>
                                     <TextBlock Text="Protected mods"
-                                               Foreground="#FF556171" />
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding ProtectedModCount}"
                                                FontSize="28"
                                                FontWeight="SemiBold" />
@@ -221,14 +237,14 @@
                             </Border>
 
                             <Border Grid.Column="4"
-                                    Background="White"
-                                    BorderBrush="#FFD9DFE7"
+                                    Background="{StaticResource SurfaceBrush}"
+                                    BorderBrush="{StaticResource AppBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="8"
+                                    CornerRadius="10"
                                     Padding="18">
                                 <StackPanel>
                                     <TextBlock Text="Collections / warnings"
-                                               Foreground="#FF556171" />
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
                                     <TextBlock FontSize="28"
                                                FontWeight="SemiBold">
                                         <Run Text="{Binding CollectionCount, Mode=OneWay}" />
@@ -242,10 +258,10 @@
                         <Border Grid.Row="3"
                                 Grid.ColumnSpan="3"
                                 Margin="0,18,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -274,10 +290,10 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="18">
                         <StackPanel>
                             <TextBlock Text="Choose how to organize your mods"
@@ -291,21 +307,23 @@
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="By creator and type" Content="Creator then type" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Keep my current layout and clean it" Content="Preserve and clean" MinWidth="145" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding SelectStrategyCommand}" CommandParameter="Custom" Content="Custom" MinWidth="110" Height="34" Margin="0,0,10,10" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,4,0,0">
                                 <Button Command="{Binding ExportWorkbookCommand}" Content="Export Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding ImportWorkbookCommand}" Content="Import Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                             </WrapPanel>
-                            <TextBlock Margin="0,10,0,0"
+                            <TextBlock Margin="0,6,0,0"
                                        Text="{Binding SelectedStrategy, StringFormat=Selected strategy: {0}}"
-                                       Foreground="#FF556171" />
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Row="1"
                             Margin="0,16,0,0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="18">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -344,7 +362,7 @@
                             <TextBlock Grid.Column="4"
                                        Margin="16,0,0,0"
                                        VerticalAlignment="Center"
-                                       Foreground="#FF556171">
+                                       Foreground="{StaticResource TextSecondaryBrush}">
                                 <Run Text="{Binding ChangedProposalCount, Mode=OneWay}" />
                                 <Run Text=" changed, " />
                                 <Run Text="{Binding NeedsReviewCount, Mode=OneWay}" />
@@ -355,6 +373,10 @@
 
                     <Grid Grid.Row="2"
                           Margin="0,16,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="330" />
                             <ColumnDefinition Width="14" />
@@ -363,11 +385,12 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                        <Border Grid.Row="0"
+                                Grid.Column="0"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -393,11 +416,12 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="2"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                        <Border Grid.Row="0"
+                                Grid.Column="2"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -405,7 +429,6 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Proposed folder tree"
@@ -463,27 +486,20 @@
                                         <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
                                     </DataGrid.Columns>
                                 </DataGrid>
-
-                                <WrapPanel Grid.Row="4"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                    <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                </WrapPanel>
                             </Grid>
                         </Border>
 
-                        <Border Grid.Column="4"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                        <Border Grid.Row="0"
+                                Grid.Column="4"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Mods"
@@ -507,18 +523,28 @@
                                         <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
                                     </DataGrid.Columns>
                                 </DataGrid>
-
-                                <WrapPanel Grid.Row="2"
-                                           Margin="0,12,0,0">
-                                    <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="125" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="130" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="145" Height="34" Margin="0,0,10,10" />
-                                </WrapPanel>
                             </Grid>
                         </Border>
+
+                        <StackPanel Grid.Row="1"
+                                    Grid.Column="0"
+                                    Grid.ColumnSpan="5">
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
+                                <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                                <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                            </WrapPanel>
+                            <WrapPanel>
+                                <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="118" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="130" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="126" Height="34" Margin="0,0,8,8" />
+                            </WrapPanel>
+                        </StackPanel>
                     </Grid>
                 </Grid>
             </TabItem>
@@ -532,10 +558,10 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="18">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -558,12 +584,13 @@
                                 </TextBlock>
                                 <TextBlock Margin="0,10,0,0"
                                            Text="{Binding ApplyUnavailableReason}"
-                                           Foreground="#FF556171"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Command="{Binding BackupAndApplyCommand}"
                                     Content="Backup and Apply"
+                                    Style="{StaticResource PrimaryButtonStyle}"
                                     MinWidth="170"
                                     Height="42"
                                     VerticalAlignment="Top"
@@ -580,10 +607,10 @@
                         </Grid.ColumnDefinitions>
 
                         <Border Grid.Column="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <StackPanel>
                                 <TextBlock Text="Readiness"
@@ -597,10 +624,10 @@
                         </Border>
 
                         <Border Grid.Column="2"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <StackPanel>
                                 <TextBlock Text="Latest result"
@@ -618,10 +645,10 @@
 
                     <Border Grid.Row="2"
                             Margin="0,16,0,0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="18">
                         <Grid>
                             <Grid.RowDefinitions>
@@ -641,7 +668,7 @@
                                     <ComboBoxItem Content="Needs Review" />
                                     <ComboBoxItem Content="Protected" />
                                     <ComboBoxItem Content="Invalid only" />
-                                    <ComboBoxItem Content="Imported AI" />
+                                    <ComboBoxItem Content="Imported" />
                                     <ComboBoxItem Content="Manual" />
                                     <ComboBoxItem Content="Deterministic" />
                                     <ComboBoxItem Content="Unchanged" />
@@ -681,36 +708,29 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
-                            Background="White"
-                            BorderBrush="#FFD9DFE7"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="8"
+                            CornerRadius="10"
                             Padding="18">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="Restore a previous backup"
-                                           FontSize="20"
-                                           FontWeight="SemiBold" />
-                                <TextBlock Margin="0,10,0,0"
-                                           Text="{Binding Backups.StatusMessage}"
-                                           TextWrapping="Wrap" />
-                                <TextBlock Margin="0,6,0,0"
-                                           Text="{Binding RecoveryStatus}"
-                                           Foreground="#FF556171"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <WrapPanel Grid.Column="1"
-                                       VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="Restore a previous backup"
+                                       FontSize="20"
+                                       FontWeight="SemiBold" />
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="{Binding Backups.StatusMessage}"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,6,0,0"
+                                       Text="{Binding RecoveryStatus}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,14,0,0">
                                 <Button Command="{Binding Backups.RefreshCommand}" Content="Refresh" MinWidth="90" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.RollbackCommand}" Content="Restore Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                 <Button Command="{Binding Backups.VerifyBackupCommand}" Content="Verify Backup" MinWidth="120" Height="34" Margin="0,0,10,10" />
-                                <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="34" />
+                                <Button Command="{Binding Backups.OpenBackupFolderCommand}" Content="Open Backup Folder" MinWidth="150" Height="34" Margin="0,0,10,10" />
                             </WrapPanel>
-                        </Grid>
+                        </StackPanel>
                     </Border>
 
                     <Grid Grid.Row="1"
@@ -722,10 +742,10 @@
                         </Grid.ColumnDefinitions>
 
                         <Border Grid.Column="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <DataGrid ItemsSource="{Binding Backups.Operations}"
                                       SelectedItem="{Binding Backups.SelectedOperation}"
@@ -743,10 +763,10 @@
                         </Border>
 
                         <Border Grid.Column="2"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -765,7 +785,7 @@
                                 <TextBlock Grid.Row="2"
                                            Margin="0,12,0,0"
                                            Text="{Binding Backups.SelectedBackupAvailability}"
-                                           Foreground="#FF556171"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap" />
                                 <DataGrid Grid.Row="3"
                                           Margin="0,12,0,0"
@@ -797,10 +817,10 @@
                         </Grid.RowDefinitions>
 
                         <Border Grid.Row="0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <StackPanel>
                                 <TextBlock Text="Settings"
@@ -819,10 +839,10 @@
 
                         <Border Grid.Row="1"
                                 Margin="0,16,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <StackPanel>
                                 <TextBlock Text="Workbook Export / Import"
@@ -831,18 +851,18 @@
                                 <TextBlock Margin="0,12,0,0"
                                            Text="Export a spreadsheet, edit the mod type, protected, and destination columns, then import it back to stage your changes for review."
                                            TextWrapping="Wrap"
-                                           Foreground="#FF556171" />
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Margin="0,8,0,0"
                                            Text="{Binding WorkbookCategorySummary}"
                                            TextWrapping="Wrap"
-                                           Foreground="#FF556171" />
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
                                 <TextBlock Margin="0,10,0,0"
                                            Text="{Binding WorkbookStatus}"
                                            TextWrapping="Wrap" />
                                 <TextBlock Margin="0,6,0,0"
                                            Text="{Binding WorkbookImportStatus}"
                                            TextWrapping="Wrap"
-                                           Foreground="#FF245C9A" />
+                                           Foreground="{StaticResource AccentHoverBrush}" />
                                 <WrapPanel Margin="0,12,0,0">
                                     <Button Command="{Binding ExportWorkbookCommand}" Content="Export Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ImportWorkbookCommand}" Content="Import Workbook" MinWidth="150" Height="34" Margin="0,0,10,10" />
@@ -854,10 +874,10 @@
 
                         <Border Grid.Row="2"
                                 Margin="0,16,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18"
                                 Visibility="{Binding ShowAdvancedTools, Converter={StaticResource BoolToVisibilityConverter}}">
                             <StackPanel>
@@ -881,9 +901,11 @@
                                     <Button Command="{Binding CreateDryRunCommand}" Content="Create Dry Run" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding CreateBackupCommand}" Content="Create Backup" MinWidth="130" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ApplyVirtualFolderChangesCommand}" Content="Apply Prepared Changes" MinWidth="165" Height="34" Margin="0,0,10,10" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,4,0,0">
                                     <Button Command="{Binding ConfigureControlledTestCommand}" Content="Controlled Test Apply" MinWidth="160" Height="34" Margin="0,0,10,10" />
                                     <Button Command="{Binding ClearControlledTestCommand}" Content="Clear Controlled Test" MinWidth="160" Height="34" Margin="0,0,10,10" />
-                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" />
+                                    <Button Command="{Binding CreateDiagnosticPackageCommand}" Content="Create Diagnostic Package" MinWidth="175" Height="34" Margin="0,0,10,10" />
                                 </WrapPanel>
                                 <WrapPanel Margin="0,4,0,0">
                                     <Button Command="{Binding ReverifyIncompleteOperationCommand}" Content="Re-verify Incomplete" MinWidth="165" Height="34" Margin="0,0,10,10" />
@@ -896,10 +918,10 @@
 
                         <Border Grid.Row="3"
                                 Margin="0,16,0,0"
-                                Background="White"
-                                BorderBrush="#FFD9DFE7"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8"
+                                CornerRadius="10"
                                 Padding="18">
                             <Grid>
                                 <Grid.RowDefinitions>
@@ -925,12 +947,12 @@
         </TabControl>
 
         <Border Grid.Row="2"
-                Background="White"
-                BorderBrush="#FFD9DFE7"
+                Background="{StaticResource SurfaceBrush}"
+                BorderBrush="{StaticResource AppBorderBrush}"
                 BorderThickness="1,1,1,0"
                 Padding="18,10">
             <TextBlock Text="{Binding ProgressMessage}"
-                       Foreground="#FF245C9A"
+                       Foreground="{StaticResource AccentHoverBrush}"
                        TextWrapping="Wrap" />
         </Border>
 
@@ -938,8 +960,8 @@
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibilityConverter}}">
             <Border Width="360"
                     Padding="22"
-                    Background="White"
-                    BorderBrush="#FFD9DFE7"
+                    Background="{StaticResource SurfaceBrush}"
+                    BorderBrush="{StaticResource AppBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="10"
                     HorizontalAlignment="Center"

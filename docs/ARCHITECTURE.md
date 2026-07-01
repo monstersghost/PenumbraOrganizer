@@ -31,7 +31,7 @@
 - Penumbra discovery
 - config and metadata parsing
 - filesystem scanning
-- `sort_order.json` read/write for virtual-folder organization, plus `meta.json` and `mod_data/<id>.json` metadata editing
+- `sort_order.json` read/write for virtual-folder organization (`meta.json` and `mod_data/<id>.json` are read for display only — never written)
 - backup, rollback, atomic write
 - workbook (Excel) export generation and validated import
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
@@ -78,7 +78,7 @@ Complete foundations include:
 - Review Changes screen with reusable proposal validation and statuses `ValidChange`, `Unchanged`, `Protected`, `NeedsReview`, `InvalidPath`, `BlockedProtected`, `MissingMod`, and `StaleScan`
 - workbook (Excel) export of the inventory and plan, with organization preferences, plus validated workbook import
 
-The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. Per-mod metadata editing exists in the engine but its UI is disabled in 0.2.0-beta. Drag-and-drop, collection editing, `.pmp` handling, and physical mod movement remain out of scope.
+The repository now implements verified backup, rollback, immutable dry run, guarded Apply for supported virtual-folder changes, and post-Apply verification. Per-mod metadata editing, drag-and-drop, collection editing, `.pmp` handling, and physical mod movement are out of scope (metadata is edited in-game).
 
 ## PMP scope boundary
 
@@ -141,7 +141,7 @@ Protection overrides all organization preferences.
 
 ## Manual organizer workspace
 
-Manual human organization is a primary workflow. Users must be able to organize entirely inside the GUI without AI, spreadsheets, exported CSV files, JSON editing, full path typing, command-line tools, or knowledge of Penumbra metadata.
+Manual human organization is a primary workflow. Users must be able to organize entirely inside the GUI without spreadsheets, exported CSV files, JSON editing, full path typing, command-line tools, or knowledge of Penumbra metadata.
 
 The `Organize` screen starts with "How would you like your mods organized?" and offers beginner-friendly cards:
 
@@ -168,11 +168,11 @@ Every proposed row tracks its source:
 
 - Manual
 - Deterministic rule
-- Imported AI suggestion
+- Imported external suggestion
 - Preserved current
 - Restored by undo
 
-Manual changes override automated or AI suggestions and must not be silently replaced by later automation. Re-running a strategy must ask whether to preserve manual changes, replace all proposals, or cancel, defaulting to preserving manual changes.
+Manual changes override automated or imported suggestions and must not be silently replaced by later automation. Re-running a strategy must ask whether to preserve manual changes, replace all proposals, or cancel, defaulting to preserving manual changes.
 
 Primary organizer actions operate on selected rows. Filtered-but-unselected rows must remain unchanged. Any all-visible operation is exposed separately, clearly labeled, and confirmed with the exact count and destination.
 
@@ -184,7 +184,7 @@ All in-memory proposal mutations go through `IOrganizerMutationService`, includi
 
 ## Deterministic organization
 
-The app must be able to produce proposals without AI when metadata is sufficient:
+The app must be able to produce proposals automatically when metadata is sufficient:
 
 - Creator-only uses explicit author metadata, then meaningful existing creator folders, then preserves or sends to Review based on preference. It does not require type classification.
 - Type-only uses explicit metadata and content signals, does not add creator folders, and preserves or sends uncertain items to Review based on preference.
@@ -193,15 +193,15 @@ The app must be able to produce proposals without AI when metadata is sufficient
 
 ## Workbook export and import
 
-The workbook workflow replaces the earlier sanitized-AI export path. `IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human or an AI the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
+`IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human, or an external tool the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
 
 `ImportAsync` reads an edited workbook back into `WorkbookImportRow` records and validates each against the supplied `ScanInventory`: rows must map to a real installed mod, and a row that targets a protected path or fails validation is rejected rather than silently applied. The result reports accepted rows, rejected rows, and a summary.
 
-Successful imported rows merge into the same in-memory proposal model used by manual editing and are tagged with the `ImportedAi` proposal source, while manual overrides keep precedence. Nothing from a workbook reaches Penumbra until it passes Review Changes, backup, dry run, and Apply like any other proposal.
+Successful imported rows merge into the same in-memory proposal model used by manual editing and are tagged with the `ImportedExternal` proposal source, while manual overrides keep precedence. Nothing from a workbook reaches Penumbra until it passes Review Changes, backup, dry run, and Apply like any other proposal.
 
 ## Review model
 
-`Review Changes` remains mandatory for manual, deterministic, and imported AI proposals. It shows exact current and proposed virtual folders, validation status, and proposal source. Where applicable it can show proposed type, proposed creator, and final proposed folder, but Beginner mode hides irrelevant columns such as proposed type in Creator-only mode.
+`Review Changes` remains mandatory for manual, deterministic, and imported proposals. It shows exact current and proposed virtual folders, validation status, and proposal source. Where applicable it can show proposed type, proposed creator, and final proposed folder, but Beginner mode hides irrelevant columns such as proposed type in Creator-only mode.
 
 Normal flow:
 
@@ -233,7 +233,7 @@ The rollback and verified-backup foundation is implemented, and the first guarde
 The current recovery slice includes:
 
 - recovery domain models and service interfaces in `PenumbraOrganizer.Core`
-- verified backup creation from explicit file lists only
+- verified backup creation; every Apply backs up the entire Penumbra configuration directory
 - immutable `manifest.json` and rollback transaction persistence
 - atomic JSON persistence for operation, manifest, rollback, verification, and history records
 - exact-byte rollback restore with conflict detection
@@ -241,10 +241,10 @@ The current recovery slice includes:
 - operation-history rebuilding from operation packages
 - read-only `Backups` UI foundation
 - immutable dry-run planner and plan invalidation service
-- exact expected-result generation for `sort_order.json`, `meta.json`, and `mod_data/<id>.json`
+- exact expected-result generation for `sort_order.json`
 - write-permission preflight and `asInvoker` execution level
 - user-authorized real-installation validation workflow
-- guarded Apply executor that writes only `sort_order.json` entries and (for metadata edits) `meta.json` / `mod_data/<id>.json`
+- guarded Apply executor that writes only `sort_order.json` entries
 - post-Apply verification and rollback availability tracking
 - privacy-conscious diagnostic export
 - post-Apply Penumbra UI observation capture
@@ -269,7 +269,7 @@ The currently proven authoritative write targets are:
 
 The top-level physical mod directory name is the stable scan ID used to map an installed mod to its `sort_order.json` entry, its `meta.json`, and its `mod_data/<id>.json` file. The same string is the physical folder name, the `Data` key, and the `mod_data/<id>.json` filename.
 
-Writes are multi-file: a single Apply can touch `sort_order.json` plus one `meta.json` and/or one `mod_data/<id>.json` per edited mod, all captured by one N-file backup and rolled back together. Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf so the rename is visible in Penumbra; root mods are renamed by `meta.json` alone.
+Apply writes only `sort_order.json` (one file); `meta.json` and `mod_data/<id>.json` are read for display but never modified. (Per-mod metadata editing was prototyped and then removed as out of scope — metadata is edited in-game.) The backup taken before every Apply, and the rollback that restores it, both cover the entire Penumbra configuration directory rather than just the one file being written — so unrelated files stay recoverable too, not only the write target.
 
 ## Milestone 1
 

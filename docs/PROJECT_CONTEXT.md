@@ -10,8 +10,8 @@ Its purpose is to:
 * scan installed mods and current Penumbra organization
 * show current logical folders and relevant settings
 * allow users to propose folder changes manually
-* optionally export sanitized metadata for review by an external AI
-* import and validate AI-generated proposals
+* optionally export sanitized metadata as a workbook for offline review
+* import and validate edited workbook proposals
 * protect selected mods and folder trees from all changes
 * create verified backups
 * generate dry-run plans
@@ -107,7 +107,7 @@ Verified release package details:
 * release EXE launches from the extracted ZIP
 * solution build passes with 0 warnings and 0 errors
 * tests pass: 92/92
-* guarded Apply foundation is implemented for supported `sort_order.json` virtual-folder writes (plus per-mod `meta.json` / `mod_data/<id>.json` metadata edits)
+* guarded Apply foundation is implemented for supported `sort_order.json` virtual-folder writes
 * no physical mod, collection, or FFXIV writes are implemented
 
 ## Critical distinction between Penumbra state and mod storage
@@ -297,7 +297,7 @@ Supported strategies:
 
 ### Start manually
 
-Users can create proposed Penumbra folders, select mods, assign or drag them into folders, undo and redo, mark protected items, and reach Review Changes without AI, spreadsheets, exported CSV files, JSON editing, command-line tools, or repeated full-path typing.
+Users can create proposed Penumbra folders, select mods, assign or drag them into folders, undo and redo, mark protected items, and reach Review Changes without spreadsheets, exported CSV files, JSON editing, command-line tools, or repeated full-path typing.
 
 ### Creator only
 
@@ -426,7 +426,7 @@ Protection always overrides these preferences.
 
 ## Deterministic organization
 
-The application should be capable of producing proposals without AI when metadata is sufficient.
+The application should be capable of producing proposals automatically when metadata is sufficient.
 
 For Creator-only organization:
 
@@ -685,11 +685,11 @@ Every proposed change must track its source:
 
 * Manual
 * Deterministic rule
-* Imported AI suggestion
+* Imported external suggestion
 * Preserved current path
 * Restored by undo
 
-A manual action overrides an automated or AI suggestion for that row.
+A manual action overrides an automated or imported suggestion for that row.
 
 Later automation must not silently overwrite a manual decision.
 
@@ -783,166 +783,25 @@ A first-time user must be able to:
 10. inspect the Changes-only view.
 11. reach Review Changes without opening a spreadsheet, JSON file, terminal, or Advanced mode.
 
-## External AI design
+## External review design
 
-The application does not require integrated AI, API keys, or a specific provider. AI must remain optional and must not be presented as the recommended or required method.
+> An earlier versioned JSON/ZIP exchange-package design was superseded by the current
+> Excel-workbook export/import below and no longer exists in the codebase. This section
+> describes the current design only.
 
-Users may use ChatGPT, Codex, Claude, Gemini, or another capable assistant externally.
+The application exports a sanitized workbook the user can review or edit offline in any
+spreadsheet tool. It does not require any integrated service, API keys, or a specific provider.
 
 The intended workflow is:
 
-1. Penumbra Organizer exports a sanitized inventory.
-2. The app creates a master prompt.
-3. The app packages both with simple instructions.
-4. The user uploads the package to their AI provider.
-5. The AI returns one structured JSON proposal.
-6. The app imports and validates the proposal.
-7. The user reviews all changes.
-8. Only the app performs backup, dry run, validation, and Apply.
+1. Penumbra Organizer exports a sanitized inventory workbook.
+2. The user reviews or edits the workbook offline (by hand, or with any external tool of their
+   choosing).
+3. The app imports and validates the edited workbook.
+4. The user reviews all changes.
+5. Only the app performs backup, dry run, validation, and Apply.
 
-The AI may only suggest changes. It must never directly alter the live installation.
-
-The external AI package should contain:
-
-* `Penumbra_Mod_Inventory.json`
-* `AI_INSTRUCTIONS.txt`
-* `HOW_TO_USE.txt`
-
-It should also be distributed as:
-
-`Penumbra_AI_Review_Package.zip`
-
-The ZIP must contain those files at its root.
-
-The package must not contain:
-
-* mod assets
-* absolute Windows profile paths
-* absolute mod-library paths
-* API keys
-* unrelated XIVLauncher files
-* live configuration secrets
-* backups
-* logs
-
-Path signals exported for classification should be sanitized and relative to the mod library.
-
-The versioned AI exchange contract is documented in:
-
-`docs/AI_EXCHANGE_FORMAT.md`
-
-The app uses explicit domain models for:
-
-* `AiInventoryExport`
-* `AiInventoryMod`
-* `AiOrganizationPreferences`
-* `AiProposalDocument`
-* `AiProposalSummary`
-* `AiProposalRow`
-* `AiCreatorAlias`
-* `AiProposalGeneratedBy`
-
-The current supported `formatVersion` is `1`.
-
-Export IDs must be globally unique and use the format:
-
-`export-<UTC timestamp>-<guid>`
-
-The proposal document must copy the inventory `sourceExportId` exactly.
-
-The selected organization preferences must be included in the sanitized AI inventory export as a top-level object such as:
-
-```json
-{
-  "organizationPreferences": {
-    "strategy": "CreatorOnly",
-    "useTypeFolders": false,
-    "useCreatorFolders": true,
-    "folderOrder": ["Creator"],
-    "fixedRootFolder": null,
-    "preserveMeaningfulExistingFolders": true,
-    "flattenTemporarySourceFolders": true,
-    "normalizeCreatorAliases": true,
-    "unknownCreatorBehavior": "PreserveCurrent",
-    "unknownTypeBehavior": "NotApplicable",
-    "uncertainClassificationBehavior": "Review"
-  }
-}
-```
-
-The generated master AI prompt must state:
-
-* follow `organizationPreferences` exactly
-* do not impose type folders when `useTypeFolders` is false
-* do not impose creator folders when `useCreatorFolders` is false
-* type classification is not required in Creator-only mode
-* creator identification is not required in Type-only mode
-* preserve-and-clean mode should minimize changes
-* the AI must not replace the user-selected strategy with its preferred structure
-* return every input `scanId` exactly once
-* never add unknown IDs
-* never omit rows
-* copy `sourceExportId` exactly
-* copy `currentVirtualFolder` exactly
-* leave protected rows unchanged
-* use `action = keep` and `confidence = protected` for protected rows
-* use `keep` only when current and proposed folders match
-* use `move` only when they differ
-* use `review` for uncertain decisions
-* return JSON only
-* include no Markdown fences
-* include no prose outside the JSON
-* never emit physical paths as proposed virtual folders
-* never propose deleting, merging, renaming, or moving physical mod directories
-
-Before serializing any file or path field, the export must:
-
-* reject absolute paths unless safely relativized
-* remove the mod-library root
-* remove the Windows profile directory
-* convert valid paths to relative paths within the mod directory
-* omit paths that cannot be safely relativized
-* normalize separators for export
-* prevent `..` traversal
-
-Review these fields specifically:
-
-* `recognizedMetadataFiles`
-* `unknownMetadataFiles`
-* `malformedMetadataFiles`
-* any content-signal path values
-* schema fingerprint file names
-
-The AI inventory must never include:
-
-* `C:\Users\<name>`
-* the absolute Penumbra state directory
-* the absolute mod-library root
-* arbitrary unrelated filesystem locations
-
-The app must reject an AI response when:
-
-* the export ID does not match
-* input rows are missing
-* unknown IDs were added
-* IDs are duplicated
-* protected rows were changed
-* invalid actions or paths are used
-* the JSON is malformed
-* a physical path is proposed as a virtual folder
-* a keep action changes the folder
-* a move action leaves the folder unchanged
-* proposed paths do not conform to the selected organization strategy, unless the row is protected or explicitly manually overridden
-
-The read-only proposal validator must return structured validation results suitable for a future GUI:
-
-* errors
-* warnings
-* accepted proposals
-* rejected proposals
-* summary
-
-It must not modify live state.
+An imported workbook may only suggest changes. It must never directly alter the live installation.
 
 ## Current implementation
 
@@ -967,9 +826,9 @@ Implemented:
 * dependency injection
 * structured domain models
 * organization preference, proposal source, and manual override model foundations
-* explicit versioned AI export and proposal models
-* strict AI export package validation
-* read-only AI proposal validation service
+* explicit versioned workbook export and proposal models
+* strict workbook export package validation
+* read-only workbook import proposal validation service
 * first in-memory manual organizer workspace in the WPF app
 * proposed folder tree, strategy selection, bulk visible-row assignment, protection marking, changes-only view, undo, and redo foundations
 * selected-row organizer actions with explicit all-visible actions
@@ -981,7 +840,7 @@ Implemented:
 * immutable backup manifests and rollback transaction records
 * exact-byte rollback executor with conflict detection and post-rollback verification
 * operation-history persistence with package rebuilding
-* authoritative `sort_order.json` mapping (plus `meta.json` / `mod_data/<id>.json` metadata edits), deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
+* authoritative `sort_order.json` mapping, deterministic expected-result generation, write preflight, atomic Apply, and post-Apply verification
 * read-only Backups screen foundation with backup verification and backup-folder access
 * controlled live-test selection with a default limit of 3 mods
 * explicit controlled-test Apply confirmation and post-Apply Penumbra UI observation capture
@@ -993,7 +852,7 @@ Implemented:
 * public alpha prerelease
 * smoke launch of the published EXE
 
-The current repository also contains an inventory export service and WPF controls for creating an AI review package. The export model includes organization preferences for future strategy-aware AI review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, guarded Review Changes dry-run/apply controls, and a read-only Backups foundation. Drag-and-drop, richer folder tree interactions, GUI AI import, and any wider write target beyond `sort_order.json` and per-mod `meta.json` / `mod_data/<id>.json` remain part of the safe organizer milestone unless separately completed and verified.
+The current repository also contains an inventory export service and WPF controls for creating a review workbook. The export model includes organization preferences for future strategy-aware review. A read-only proposal validation service exists. The WPF app now has a selected-row in-memory manual organizer slice, centralized mutation/history services, atomic session persistence, guarded Review Changes dry-run/apply controls, and a read-only Backups foundation. Drag-and-drop, richer folder tree interactions, GUI workbook import, and any wider write target beyond `sort_order.json` remain part of the safe organizer milestone unless separately completed and verified.
 
 Existing projects:
 
@@ -1007,7 +866,6 @@ Important existing files include:
 ### Documentation
 
 * `docs/ARCHITECTURE.md`
-* `docs/AI_EXCHANGE_FORMAT.md`
 * `docs/BACKUP_AND_ROLLBACK_FORMAT.md`
 * `docs/DRY_RUN_AND_APPLY_FORMAT.md`
 * `docs/HANDOFF_ROLLBACK_FOUNDATION.md`
@@ -1019,7 +877,6 @@ Important existing files include:
 ### Core
 
 * `PenumbraOrganizer.Core/Models/DomainModels.cs`
-* `PenumbraOrganizer.Core/Models/AiExchangeModels.cs`
 * `PenumbraOrganizer.Core/Interfaces/Services.cs`
 * `PenumbraOrganizer.Core/Services/CreatorCanonicalizer.cs`
 * `PenumbraOrganizer.Core/Services/ProtectionService.cs`
@@ -1033,7 +890,6 @@ Important existing files include:
 * `PenumbraOrganizer.Infrastructure/Scanning/PenumbraScanService.cs`
 * `PenumbraOrganizer.Infrastructure/Compatibility/PenumbraCompatibilityService.cs`
 * `PenumbraOrganizer.Infrastructure/Exports/InventoryExportService.cs`
-* `PenumbraOrganizer.Infrastructure/Exports/AiProposalValidationService.cs`
 * `PenumbraOrganizer.Infrastructure/Sessions/OrganizerSessionService.cs`
 * `PenumbraOrganizer.Infrastructure/ServiceCollectionExtensions.cs`
 
@@ -1053,7 +909,6 @@ Important existing files include:
 * `PenumbraOrganizer.Tests/Discovery/PenumbraDiscoveryServiceTests.cs`
 * `PenumbraOrganizer.Tests/Scanning/PenumbraScanServiceTests.cs`
 * `PenumbraOrganizer.Tests/Compatibility/SchemaFingerprintServiceTests.cs`
-* `PenumbraOrganizer.Tests/Exports/AiExchangeTests.cs`
 * `PenumbraOrganizer.Tests/Organizer/OrganizerServicesTests.cs`
 
 ### Release
@@ -1099,7 +954,7 @@ Unknown structures should remain readable and preserved. They must not be silent
 * Collection matching currently uses mod display names and can be ambiguous when names are duplicated.
 * Top-level mod directories are treated as candidate mod roots and validated using metadata and `sort_order.json`.
 * `.pmp` package handling is intentionally out of scope for the installed-library organizer.
-* Wine and Linux-style paths are reported unsupported for version 1.
+* Linux is supported by running this app under Wine/Proton: discovery adds the XIVLauncher.Core base (`$HOME/.xlcore/pluginConfigs/Penumbra.json`, reached via the Wine `Z:` drive mapping) and POSIX mod roots are normalized to the `Z:` drive. Needs validation on a real Linux/Wine install.
 * The guarded Apply path writes only `sort_order.json` entries plus per-mod `meta.json` / `mod_data/<id>.json` for metadata edits.
 * The legacy `mod_filesystem\organization.json` is not authoritative and is not written.
 * The manual folder-picker wizard is not yet complete.
@@ -1111,12 +966,12 @@ Unknown structures should remain readable and preserved. They must not be silent
 The following are not yet complete:
 
 * confirming Penumbra reloads `sort_order.json` cleanly after external edits across versions
-* widening Apply beyond `sort_order.json` and per-mod `meta.json` / `mod_data/<id>.json`
+* widening Apply beyond `sort_order.json`
 * persistent compatibility history
 * manual detection and folder-selection wizard
 * strategy-aware proposal generation and validation
-* AI inventory export package verification for clean-machine release usage
-* AI proposal GUI import flow and user-facing validation preview
+* workbook inventory export package verification for clean-machine release usage
+* workbook proposal GUI import flow and user-facing validation preview
 * mod-to-folder drag-and-drop
 * clean Windows machine validation without an installed development runtime
 
@@ -1127,7 +982,7 @@ The final write pipeline must be:
 1. Detect Penumbra.
 2. Scan the installed library.
 3. Select an organization strategy or start manually.
-4. Generate proposals manually, deterministically, or through external AI.
+4. Generate proposals manually, deterministically, or through an imported workbook.
 5. Review exact virtual-folder changes.
 6. Create and verify a backup.
 7. Apply supported virtual-folder metadata changes.
@@ -1203,7 +1058,7 @@ Show beginner-friendly selectable cards:
 * By creator and type
 * Keep my current layout and clean it
 * Custom
-* External AI review
+* External workbook review
 
 Each card should include a small folder-tree example.
 
@@ -1240,7 +1095,7 @@ Primary actions:
 
 * `Preview Organization`
 * `Edit Manually`
-* `Create AI Review Package`
+* `Export Workbook`
 
 The intended manual beginner workflow is:
 
@@ -1259,7 +1114,7 @@ Review Changes must show the organization source for every proposed path:
 
 * Manual
 * Deterministic rule
-* Imported AI suggestion
+* Imported external suggestion
 * Preserved current path
 
 Show resolved components separately where applicable:
@@ -1288,14 +1143,14 @@ The current project and fixtures now prove the authoritative live write targets:
 
 The installed top-level physical mod directory name is the stable scan ID and the mapping used by the scanner and dry-run/apply pipeline. The same string is the physical folder name, the `sort_order.json` `Data` key, and the `mod_data/<id>.json` filename.
 
-The legacy `mod_filesystem\organization.json` is not authoritative and is not written. Editing a placed mod's `meta.json` `Name` also rewrites its `sort_order.json` display leaf; root mods are renamed by `meta.json` alone.
+The legacy `mod_filesystem\organization.json` is not authoritative and is not written. A move preserves the mod's existing `sort_order.json` display leaf so reorganization never silently renames it in Penumbra.
 
 The current app also includes:
 
 * explicit `Validate My Installation` read-only validation
 * `Controlled Test Apply` for tiny explicitly selected live tests
 * guarded rollback from the Backups screen for valid completed operations
-* strict AI proposal import with manual-override precedence
+* strict workbook proposal import with manual-override precedence
 * privacy-conscious diagnostic export
 * visible incomplete-operation recovery guidance after interruption
 
