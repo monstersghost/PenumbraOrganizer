@@ -96,7 +96,7 @@ public enum ProposalSource
 {
     Manual,
     DeterministicRule,
-    ImportedAiSuggestion,
+    ImportedExternalSuggestion,
     PreservedCurrent,
     RestoredByUndo,
 }

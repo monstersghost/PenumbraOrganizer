@@ -5,7 +5,7 @@ $appProject = Join-Path $root 'PenumbraOrganizer.App\PenumbraOrganizer.App.cspro
 $releaseRoot = Join-Path $root 'artifacts\release'
 $publishDir = Join-Path $releaseRoot 'publish'
 $packageDir = Join-Path $releaseRoot 'package'
-$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.2.0-beta-win-x64.zip'
+$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.2.1-beta-win-x64.zip'
 $exePath = Join-Path $publishDir 'PenumbraOrganizer.exe'
 
 if (Test-Path $releaseRoot) {

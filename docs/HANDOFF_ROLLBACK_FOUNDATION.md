@@ -92,7 +92,7 @@ The UI now also exposes:
 
 * `Validate My Installation`
 * guarded `Roll Back Changes` for valid restorable operations
-* strict AI proposal import
+* strict workbook proposal import
 * diagnostic export
 
 The UI still does not expose:

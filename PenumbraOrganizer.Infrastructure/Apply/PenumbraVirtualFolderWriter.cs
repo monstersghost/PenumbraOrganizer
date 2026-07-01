@@ -40,10 +40,6 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         var state = LoadState(installation);
         var rowsById = proposalSnapshot.ValidationResult.Rows.ToDictionary(row => row.StableScanId, StringComparer.Ordinal);
         var proposalsById = proposalSnapshot.Proposals.ToDictionary(proposal => proposal.StableScanId, StringComparer.Ordinal);
-        var nameEditsById = (proposalSnapshot.MetadataEdits ?? Array.Empty<ModMetadataEdit>())
-            .Where(edit => !string.IsNullOrEmpty(edit.Name))
-            .GroupBy(edit => edit.StableScanId, StringComparer.Ordinal)
-            .ToDictionary(group => group.Key, group => group.Last().Name!, StringComparer.Ordinal);
         var entries = new List<DryRunPlanEntry>(inventory.Mods.Count);
 
         foreach (var mod in inventory.Mods.OrderBy(mod => mod.StableScanId, StringComparer.Ordinal))
@@ -70,19 +66,12 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
                 ? PenumbraSortOrder.DisplayLeaf(existing)
                 : DefaultDisplayName(mod);
 
-            // A meta.json Name edit only changes a root mod's display automatically; a *placed*
-            // mod's display name is the sort_order leaf, so rewrite the leaf to keep the rename
-            // visible in Penumbra. Root mods keep their leaf (the meta.json change suffices).
-            var isPlaced = !string.IsNullOrEmpty(row.ProposedVirtualFolder);
-            var displayLeaf = isPlaced && nameEditsById.TryGetValue(mod.StableScanId, out var newName)
-                ? newName
-                : currentLeaf;
-
+            // Moving a mod preserves its existing display leaf so the reorganization never silently
+            // renames it in Penumbra's UI.
             var folderChanged = row.Status == OrganizerRowStatus.ValidChange;
-            var leafChanged = isPlaced && !string.Equals(displayLeaf, currentLeaf, StringComparison.Ordinal);
-            var requiresWrite = (folderChanged || leafChanged) && !effectiveProtected;
+            var requiresWrite = folderChanged && !effectiveProtected;
             var proposedSortPath = requiresWrite
-                ? BuildProposedSortPath(row.ProposedVirtualFolder, displayLeaf, mod)
+                ? BuildProposedSortPath(row.ProposedVirtualFolder, currentLeaf, mod)
                 : string.Empty;
 
             entries.Add(new DryRunPlanEntry(
