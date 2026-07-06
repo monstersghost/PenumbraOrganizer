@@ -8,6 +8,7 @@ using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Apply;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 using PenumbraOrganizer.Infrastructure.Recovery;
 using PenumbraOrganizer.Infrastructure.Scanning;
 using PenumbraOrganizer.Infrastructure.Sessions;
@@ -425,6 +426,146 @@ public sealed class DryRunAndApplyTests
     }
 
     [Fact]
+    public async Task Apply_LiveSortOrderMissing_RecoversFromBak_AndPreservesUntouchedEntries()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Apply Mod", """{"FileVersion":3,"Name":"Apply Mod","Author":"Author"}""");
+        context.Fixture.CreateMod("Other Mod", """{"FileVersion":3,"Name":"Other Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Apply Mod", "Current/Apply"), ("Other Mod", "Current/Other"));
+        // Simulate an unclean shutdown: the live sort_order.json is gone, only Penumbra's own
+        // .bak survives. Both mods' real organization must still make it through Apply.
+        File.Move(context.Fixture.SortOrderPath, context.Fixture.SortOrderPath + ".bak");
+
+        await context.ScanAsync();
+        context.Inventory!.Mods.Single(m => m.StableScanId == "Other Mod").CurrentVirtualFolder.Should().Be("Current/Other");
+
+        var snapshot = context.BuildSnapshot(("Apply Mod", "Target/Apply"), ("Other Mod", "Current/Other"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Completed);
+        File.Exists(context.Fixture.SortOrderPath).Should().BeTrue();
+        // The moved mod lands in its new folder, and the untouched mod's real folder (recovered
+        // from .bak) survives instead of being silently reset to root.
+        context.Fixture.CurrentFolderOf("Apply Mod").Should().Be("Target/Apply");
+        context.Fixture.CurrentFolderOf("Other Mod").Should().Be("Current/Other");
+    }
+
+    [Fact]
+    public async Task Apply_ModDataDbIsAuthoritative_MovesFolder_PreservesUnrelatedAndProtected_AndRollbackReverts()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CopyRealLiteDbAssembly();
+        context.Fixture.CreateMod("Mover", """{"FileVersion":3,"Name":"Mover","Author":"Author"}""");
+        context.Fixture.CreateMod("Stationary", """{"FileVersion":3,"Name":"Stationary","Author":"Author"}""");
+        context.Fixture.CreateMod("Guarded", """{"FileVersion":3,"Name":"Guarded","Author":"Author"}""");
+        // No sort_order.json at all: mod_data.db is unambiguously the authoritative format here.
+        context.Fixture.WriteModDataDb(("Mover", "Current/Folder"), ("Stationary", "Current/Folder"), ("Guarded", "Current/Folder"));
+
+        await context.ScanAsync();
+        context.Inventory!.Mods.Single(m => m.StableScanId == "Mover").CurrentVirtualFolder.Should().Be("Current/Folder");
+
+        var snapshot = context.BuildSnapshot(
+            ["Guarded"],
+            ("Mover", "Target/Folder"), ("Stationary", "Current/Folder"), ("Guarded", "Current/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.ApplyPermitted.Should().BeTrue();
+        plan.FileChanges.Should().ContainSingle(change => change.WriteTargetKind == PenumbraWriteTargetKind.ModDataDb);
+        plan.Entries.Single(entry => entry.StableScanId == "Mover").RequiresWrite.Should().BeTrue();
+        plan.Entries.Single(entry => entry.StableScanId == "Guarded").RequiresWrite.Should().BeFalse();
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Completed);
+        result.RollbackAvailable.Should().BeTrue();
+
+        var afterApply = PenumbraModDataDb.Load(context.Fixture.PenumbraConfigPath, context.Installation);
+        afterApply.Status.Should().Be(PenumbraModDataDbLoadStatus.Success);
+        afterApply.Data!.GetFolderFor("Mover").Should().Be("Target/Folder");
+        afterApply.Data.GetFolderFor("Stationary").Should().Be("Current/Folder");
+        afterApply.Data.GetFolderFor("Guarded").Should().Be("Current/Folder");
+
+        var rollback = await context.RollbackService.ExecuteAsync(operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+        rollback.Status.Should().Be(RollbackTransactionStatus.Completed);
+
+        var afterRollback = PenumbraModDataDb.Load(context.Fixture.PenumbraConfigPath, context.Installation);
+        afterRollback.Status.Should().Be(PenumbraModDataDbLoadStatus.Success);
+        afterRollback.Data!.GetFolderFor("Mover").Should().Be("Current/Folder");
+    }
+
+    [Fact]
+    public async Task PostApplyVerification_ModDataDb_NullInstallation_DegradesToHashChecksWithWarning()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CopyRealLiteDbAssembly();
+        context.Fixture.CreateMod("Mover", """{"FileVersion":3,"Name":"Mover","Author":"Author"}""");
+        context.Fixture.WriteModDataDb(("Mover", "Current/Folder"));
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Mover", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+        result.Status.Should().Be(ApplyStatus.Completed);
+
+        var verificationService = new PostApplyVerificationService();
+
+        var withoutInstallation = await verificationService.VerifyAsync(plan, result, installation: null, CancellationToken.None);
+        withoutInstallation.Succeeded.Should().BeTrue();
+        withoutInstallation.VerifiedChangedModCount.Should().Be(0);
+        withoutInstallation.Warnings.Should().Contain(w => w.Contains("without a live installation", StringComparison.Ordinal));
+
+        var withInstallation = await verificationService.VerifyAsync(plan, result, context.Installation, CancellationToken.None);
+        withInstallation.Succeeded.Should().BeTrue();
+        withInstallation.VerifiedChangedModCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CreatePlan_ModDataDbEngineUnavailable_ThrowsClearError()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        // Deliberately do NOT call CopyRealLiteDbAssembly(): no LiteDB.dll next to the plugin.
+        context.Fixture.CreateMod("Mover", """{"FileVersion":3,"Name":"Mover","Author":"Author"}""");
+        context.Fixture.WriteModDataDb(("Mover", "Current/Folder"));
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Mover", "Target/Folder"));
+
+        var act = () => context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .Where(ex => ex.Message.Contains("LiteDB", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Apply_ModDataDbBlocksWhenSourceHashChanges()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CopyRealLiteDbAssembly();
+        context.Fixture.CreateMod("Hash Mod", """{"FileVersion":3,"Name":"Hash Mod","Author":"Author"}""");
+        context.Fixture.WriteModDataDb(("Hash Mod", "Current/Folder"));
+
+        await context.ScanAsync();
+        var snapshot = context.BuildSnapshot(("Hash Mod", "Target/Folder"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        // Simulate Penumbra (or the user's own tool) changing mod_data.db between dry run and
+        // Apply: a full rewrite, since a real LiteDB file can't have a duplicate "_id" re-inserted.
+        File.Delete(context.Fixture.ModDataDbPath);
+        context.Fixture.WriteModDataDb(("Hash Mod", "Changed/OutsideApply"));
+
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Failed);
+        result.Files.Should().ContainSingle(file => file.Status == ApplyResultStatus.Failed && file.Message.Contains("source hash", StringComparison.OrdinalIgnoreCase));
+        var afterFailedApply = PenumbraModDataDb.Load(context.Fixture.PenumbraConfigPath, context.Installation);
+        afterFailedApply.Data!.GetFolderFor("Hash Mod").Should().Be("Changed/OutsideApply");
+    }
+
+    [Fact]
     public async Task Apply_BlocksWhenSourceHashChanges()
     {
         using var context = await ApplyTestContext.CreateAsync();
@@ -505,7 +646,7 @@ public sealed class DryRunAndApplyTests
             var protectionService = new ProtectionService();
             ScanService = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, protectionService);
             ProposalValidationService = new OrganizerProposalValidationService();
-            Writer = new PenumbraVirtualFolderWriter();
+            Writer = new PenumbraOrganizationWriter();
             var invalidation = new PlanInvalidationService(Writer);
             ValidationService = new DryRunValidationService(invalidation);
             Planner = new DryRunPlanner(Writer, ValidationService);
@@ -524,7 +665,7 @@ public sealed class DryRunAndApplyTests
         public PenumbraInstallation Installation { get; }
         public IPenumbraScanService ScanService { get; }
         public IOrganizerProposalValidationService ProposalValidationService { get; }
-        public PenumbraVirtualFolderWriter Writer { get; }
+        public IPenumbraVirtualFolderWriter Writer { get; }
         public IDryRunValidationService ValidationService { get; }
         public IDryRunPlanner Planner { get; }
         public IWritePermissionPreflightService PreflightService { get; }

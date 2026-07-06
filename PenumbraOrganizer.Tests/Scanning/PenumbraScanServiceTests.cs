@@ -147,6 +147,39 @@ public sealed class PenumbraScanServiceTests
     }
 
     [Fact]
+    public async Task ScanAsync_ModDataDbIsAuthoritative_ReadsCurrentFolderAndLocalDataFromLiteDb()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CopyRealLiteDbAssembly();
+        fixture.CreateMod("Placed Mod", """{"FileVersion":3,"Name":"Placed Mod"}""");
+        // No sort_order.json at all: mod_data.db is unambiguously authoritative here.
+        fixture.WriteModDataDb(("Placed Mod", "Clothing/Hats", true, new[] { "cute" }, "keep me"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var placed = inventory.Mods.Single(m => m.Name == "Placed Mod");
+        placed.CurrentVirtualFolder.Should().Be("Clothing/Hats");
+        placed.Favorite.Should().BeTrue();
+        placed.LocalTags.Should().Equal("cute");
+        placed.Note.Should().Be("keep me");
+        inventory.Warnings.Should().Contain(w => w.Contains("mod_data.db", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ScanAsync_SurfacesExistingEmptyFolders()
     {
         using var fixture = new TemporaryPenumbraFixture();
@@ -170,6 +203,37 @@ public sealed class PenumbraScanServiceTests
         var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
 
         inventory.EmptyFolders.Should().BeEquivalentTo("telegram", "Reserved/Sub");
+    }
+
+    [Fact]
+    public async Task ScanAsync_LiveSortOrderMissing_RecoversFolderFromBakAndWarns()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod("Placed Mod", """{"FileVersion":3,"Name":"Placed Mod"}""");
+        fixture.WriteSortOrder(("Placed Mod", "Clothing/Placed Mod"));
+        // Simulate the real-world state this bug was found in: sort_order.json is missing
+        // (interrupted write, etc.) but Penumbra's own .bak still holds the real organization.
+        File.Move(fixture.SortOrderPath, fixture.SortOrderPath + ".bak");
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var placed = inventory.Mods.Single(m => m.Name == "Placed Mod");
+        placed.CurrentVirtualFolder.Should().Be("Clothing");
+        inventory.Warnings.Should().Contain(w => w.Contains("sort_order.json.bak", StringComparison.Ordinal));
     }
 
     [Fact]

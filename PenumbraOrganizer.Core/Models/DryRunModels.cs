@@ -5,6 +5,7 @@ namespace PenumbraOrganizer.Core.Models;
 public enum PenumbraWriteTargetKind
 {
     SortOrderJson,
+    ModDataDb,
 }
 
 public enum DryRunPlanValidationStatus

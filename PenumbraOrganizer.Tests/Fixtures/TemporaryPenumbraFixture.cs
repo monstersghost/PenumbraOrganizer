@@ -1,5 +1,6 @@
 namespace PenumbraOrganizer.Tests.Fixtures;
 
+using LiteDB;
 using PenumbraOrganizer.Infrastructure.Penumbra;
 
 public sealed class TemporaryPenumbraFixture : IDisposable
@@ -30,6 +31,7 @@ public sealed class TemporaryPenumbraFixture : IDisposable
 
     public string PenumbraJsonPath => Path.Combine(PluginConfigsPath, "Penumbra.json");
     public string SortOrderPath => Path.Combine(PenumbraConfigPath, "sort_order.json");
+    public string ModDataDbPath => Path.Combine(PenumbraConfigPath, "mod_data.db");
     public string OrganizationJsonPath => Path.Combine(PenumbraConfigPath, "mod_filesystem", "organization.json");
     public string PluginManifestPath => Path.Combine(InstalledPluginsPath, "Penumbra.json");
     public string PluginAssemblyPath => Path.Combine(InstalledPluginsPath, "Penumbra.dll");
@@ -93,6 +95,47 @@ public sealed class TemporaryPenumbraFixture : IDisposable
     /// <summary>Writes raw <c>sort_order.json</c> text for malformed-schema or unknown-field tests.</summary>
     public void WriteSortOrderRaw(string json)
         => File.WriteAllText(SortOrderPath, json);
+
+    /// <summary>
+    /// Writes a real <c>mod_data.db</c> LiteDB file with a <c>LocalModData</c> collection, matching
+    /// the storage format some real Penumbra installs use instead of <c>sort_order.json</c>. Each
+    /// row's <c>Folder</c> is the bare containing folder (no combined folder+leaf encoding).
+    /// </summary>
+    public void WriteModDataDb(params (string DirectoryName, string Folder)[] rows)
+        => WriteModDataDb(rows.Select(row => (row.DirectoryName, row.Folder, Favorite: false, LocalTags: Array.Empty<string>(), Note: string.Empty)).ToArray());
+
+    public void WriteModDataDb(params (string DirectoryName, string Folder, bool Favorite, string[] LocalTags, string Note)[] rows)
+    {
+        using var db = new LiteDatabase(ModDataDbPath);
+        var collection = db.GetCollection(PenumbraOrganizer.Infrastructure.Penumbra.PenumbraModDataDb.CollectionName);
+        foreach (var row in rows)
+        {
+            var tags = new BsonArray();
+            foreach (var tag in row.LocalTags)
+                tags.Add(tag);
+
+            collection.Insert(new BsonDocument
+            {
+                ["_id"] = row.DirectoryName,
+                ["Folder"] = row.Folder,
+                ["Favorite"] = row.Favorite,
+                ["Note"] = row.Note,
+                ["LocalTags"] = tags,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Copies the test project's own (real) LiteDB.dll next to the fixture's fake plugin assembly,
+    /// so production code's <c>LiteDbAssemblyLoader</c> exercises the real dynamic-load path in
+    /// tests instead of a mock. Call this only from tests that expect the LiteDB engine to be
+    /// available; omit it to exercise the EngineUnavailable fallback.
+    /// </summary>
+    public void CopyRealLiteDbAssembly()
+    {
+        Directory.CreateDirectory(InstalledPluginsPath);
+        File.Copy(typeof(LiteDatabase).Assembly.Location, Path.Combine(InstalledPluginsPath, "LiteDB.dll"), overwrite: true);
+    }
 
     /// <summary>Reads back the current containing folder for a mod from <c>sort_order.json</c>.</summary>
     public string CurrentFolderOf(string modDirectoryName)

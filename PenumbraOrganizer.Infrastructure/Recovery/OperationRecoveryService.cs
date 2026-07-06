@@ -126,7 +126,10 @@ public sealed class OperationRecoveryService : IOperationRecoveryService
         if (details.Plan is null || details.ApplyResult is null)
             throw new InvalidOperationException("A persisted dry run and apply result are required before verification can continue.");
 
-        var verification = await _postApplyVerificationService.VerifyAsync(details.Plan, details.ApplyResult, cancellationToken);
+        // This recovery flow only has a persisted operation ID, not a live PenumbraInstallation, so
+        // a mod_data.db-backed operation can only be re-verified via its hash chain here (see
+        // PostApplyVerificationService.ResolveCurrentFolderLookup).
+        var verification = await _postApplyVerificationService.VerifyAsync(details.Plan, details.ApplyResult, installation: null, cancellationToken);
         var verificationDocument = await AtomicJsonFileStore.ReadAsync<OperationVerificationDocument>(_layout.GetVerificationPath(operationId), cancellationToken)
             ?? new OperationVerificationDocument();
         verificationDocument = verificationDocument with { PostApplyVerification = verification };

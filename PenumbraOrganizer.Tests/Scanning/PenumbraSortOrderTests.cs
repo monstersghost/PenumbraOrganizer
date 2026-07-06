@@ -53,10 +53,55 @@ public sealed class PenumbraSortOrderTests
             var sortOrder = PenumbraSortOrder.Load(emptyDir);
             sortOrder.Data.Should().BeEmpty();
             sortOrder.EmptyFolders.Should().BeEmpty();
+            sortOrder.LoadedFromBackup.Should().BeFalse();
         }
         finally
         {
             Directory.Delete(emptyDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_MissingLiveFile_FallsBackToBakFile()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(
+                Path.Combine(dir, "sort_order.json.bak"),
+                """{"Data":{"ModA":"Gear/Hats/Cool Hat"},"EmptyFolders":["Empty/Shelf"]}""");
+
+            var sortOrder = PenumbraSortOrder.Load(dir);
+
+            sortOrder.LoadedFromBackup.Should().BeTrue();
+            sortOrder.GetFolderFor("ModA").Should().Be("Gear/Hats");
+            sortOrder.EmptyFolders.Should().ContainSingle().Which.Should().Be("Empty/Shelf");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Load_LiveFilePresent_DoesNotFallBackEvenWhenBakDiffers()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "sort_order.json"), """{"Data":{"ModA":"Live/Cool Hat"}}""");
+            File.WriteAllText(Path.Combine(dir, "sort_order.json.bak"), """{"Data":{"ModA":"Stale/Cool Hat"}}""");
+
+            var sortOrder = PenumbraSortOrder.Load(dir);
+
+            sortOrder.LoadedFromBackup.Should().BeFalse();
+            sortOrder.GetFolderFor("ModA").Should().Be("Live");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
         }
     }
 
