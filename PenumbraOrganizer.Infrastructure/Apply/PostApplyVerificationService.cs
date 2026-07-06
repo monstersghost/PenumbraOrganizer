@@ -8,6 +8,7 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
     public Task<PostApplyVerificationResult> VerifyAsync(
         DryRunPlan plan,
         ApplyResult applyResult,
+        PenumbraInstallation? installation,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -31,19 +32,20 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
         }
 
         // Folder verification only applies when this operation actually changed the
-        // organization file. A metadata-only operation is fully verified by the per-file hash
-        // checks above.
-        var sortOrderChange = plan.FileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
-        if (sortOrderChange is null)
+        // organization file (sort_order.json or mod_data.db). A metadata-only operation is fully
+        // verified by the per-file hash checks above.
+        var organizationChange = plan.FileChanges.FirstOrDefault(change =>
+            change.WriteTargetKind is PenumbraWriteTargetKind.SortOrderJson or PenumbraWriteTargetKind.ModDataDb);
+        if (organizationChange is null)
         {
             return Task.FromResult(new PostApplyVerificationResult(
                 applyResult.OperationId, Succeeded: errors.Count == 0, 0, 0, errors, warnings));
         }
 
-        PenumbraModDataState state;
+        Func<string, string>? currentFolderFor;
         try
         {
-            state = PenumbraVirtualFolderWriter.LoadState(sortOrderChange.TargetPath);
+            currentFolderFor = ResolveCurrentFolderLookup(organizationChange.WriteTargetKind, organizationChange.TargetPath, installation, warnings);
         }
         catch (Exception ex)
         {
@@ -51,10 +53,18 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             return Task.FromResult(new PostApplyVerificationResult(applyResult.OperationId, false, 0, 0, errors, warnings));
         }
 
+        if (currentFolderFor is null)
+        {
+            // mod_data.db with no installation on hand (incomplete-operation recovery): the hash
+            // checks above are the only verification possible here; a warning was already added.
+            return Task.FromResult(new PostApplyVerificationResult(
+                applyResult.OperationId, Succeeded: errors.Count == 0, 0, 0, errors, warnings));
+        }
+
         foreach (var entry in plan.Entries)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var currentFolder = state.CurrentFolderFor(entry.StableScanId);
+            var currentFolder = currentFolderFor(entry.StableScanId);
 
             if (entry.RequiresWrite)
             {
@@ -78,11 +88,35 @@ public sealed class PostApplyVerificationService : IPostApplyVerificationService
             Succeeded: errors.Count == 0,
             VerifiedChangedModCount: plan.Entries.Count(entry =>
                 entry.RequiresWrite &&
-                string.Equals(state.CurrentFolderFor(entry.StableScanId), entry.ProposedVirtualFolder, StringComparison.Ordinal)),
+                string.Equals(currentFolderFor(entry.StableScanId), entry.ProposedVirtualFolder, StringComparison.Ordinal)),
             VerifiedProtectedModCount: plan.Entries.Count(entry =>
                 entry.Protected &&
-                string.Equals(state.CurrentFolderFor(entry.StableScanId), entry.CurrentVirtualFolder, StringComparison.Ordinal)),
+                string.Equals(currentFolderFor(entry.StableScanId), entry.CurrentVirtualFolder, StringComparison.Ordinal)),
             Errors: errors,
             Warnings: warnings));
+    }
+
+    private static Func<string, string>? ResolveCurrentFolderLookup(
+        PenumbraWriteTargetKind kind,
+        string targetPath,
+        PenumbraInstallation? installation,
+        ICollection<string> warnings)
+    {
+        if (kind == PenumbraWriteTargetKind.SortOrderJson)
+        {
+            var state = PenumbraVirtualFolderWriter.LoadState(targetPath);
+            return state.CurrentFolderFor;
+        }
+
+        if (installation is null)
+        {
+            warnings.Add(
+                "Could not re-verify mod_data.db folders after Apply without a live installation " +
+                "(this only happens during incomplete-operation recovery); relying on the hash checks above.");
+            return null;
+        }
+
+        var dbState = ModDataDbVirtualFolderWriter.LoadState(installation);
+        return dbState.CurrentFolderFor;
     }
 }

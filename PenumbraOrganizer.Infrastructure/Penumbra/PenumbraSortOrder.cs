@@ -29,10 +29,11 @@ public sealed class PenumbraSortOrder
 
     private readonly IReadOnlyDictionary<string, string> _data;
 
-    private PenumbraSortOrder(IReadOnlyDictionary<string, string> data, IReadOnlyList<string> emptyFolders)
+    private PenumbraSortOrder(IReadOnlyDictionary<string, string> data, IReadOnlyList<string> emptyFolders, bool loadedFromBackup = false)
     {
         _data = data;
         EmptyFolders = emptyFolders;
+        LoadedFromBackup = loadedFromBackup;
     }
 
     /// <summary>Raw <c>Data</c> map: mod directory name -&gt; full virtual path (folder + display leaf).</summary>
@@ -41,20 +42,56 @@ public sealed class PenumbraSortOrder
     /// <summary>Folders Penumbra tracks even though they currently contain no mods.</summary>
     public IReadOnlyList<string> EmptyFolders { get; }
 
+    /// <summary>
+    /// True when <c>sort_order.json</c> itself was missing and this organization was recovered
+    /// from Penumbra's own <c>sort_order.json.bak</c> instead. Penumbra writes that backup right
+    /// before it rewrites the live file, so it is missing (not stale) whenever the app is opened
+    /// between a crash/unclean shutdown and Penumbra's next save.
+    /// </summary>
+    public bool LoadedFromBackup { get; }
+
     public static string GetPath(string configDirectory)
         => System.IO.Path.Combine(configDirectory, FileName);
 
+    public static string GetBackupPath(string configDirectory)
+        => GetPath(configDirectory) + ".bak";
+
     /// <summary>
-    /// Loads <c>sort_order.json</c> from the given Penumbra config directory. A missing file
-    /// is treated as an empty organization (every mod at root), not an error.
+    /// Loads <c>sort_order.json</c> from the given Penumbra config directory. If the live file is
+    /// missing but Penumbra's own <c>sort_order.json.bak</c> is present, the backup is used instead
+    /// of silently treating real, previously-saved organization as "every mod at root". Only when
+    /// neither file exists is the organization treated as empty.
     /// </summary>
     public static PenumbraSortOrder Load(string configDirectory)
     {
         var path = GetPath(configDirectory);
-        if (!File.Exists(path))
-            return Empty;
+        if (File.Exists(path))
+            return Parse(File.ReadAllText(path));
 
-        return Parse(File.ReadAllText(path));
+        var backupPath = GetBackupPath(configDirectory);
+        if (File.Exists(backupPath))
+        {
+            var recovered = Parse(File.ReadAllText(backupPath));
+            return new PenumbraSortOrder(recovered.Data, recovered.EmptyFolders, loadedFromBackup: true);
+        }
+
+        return Empty;
+    }
+
+    /// <summary>
+    /// Returns the JSON text that should be treated as the current <c>sort_order.json</c> content
+    /// at <paramref name="sortOrderPath"/>: the live file if present, else the sibling
+    /// <c>.bak</c> file, else the canonical empty document. Shared by the reader (<see cref="Load"/>)
+    /// and the apply-time writer so both agree on what "current" means and neither one silently
+    /// discards a real, previously-saved organization that only survives in the backup.
+    /// </summary>
+    public static string LoadBaselineText(string sortOrderPath)
+    {
+        if (File.Exists(sortOrderPath))
+            return File.ReadAllText(sortOrderPath);
+
+        var backupPath = sortOrderPath + ".bak";
+        return File.Exists(backupPath) ? File.ReadAllText(backupPath) : EmptyDocumentJson;
     }
 
     public static PenumbraSortOrder Empty { get; } =

@@ -4,18 +4,25 @@ A beginner-friendly, unofficial Windows utility for viewing and reorganizing Pen
 
 ## Current status
 
-**0.2.1-beta**
+**0.3.0-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
-file-based config (`sort_order.json`, `mod_data`, collections), lets you reorganize
+file-based config (`sort_order.json` or `mod_data.db`, collections), lets you reorganize
 your virtual folders, and writes the changes back behind a verified backup.
+
+Penumbra has used more than one on-disk format for virtual-folder organization across
+versions. This build detects which one your install is actually using (whichever file
+Penumbra touched most recently) and reads/writes that one, instead of assuming
+`sort_order.json` is always authoritative — so an install on an older or newer Penumbra
+version isn't silently shown an empty or stale folder structure.
 
 The current build includes:
 
 * automatic Penumbra discovery
 * distinction between Penumbra state directory and mod-library root
 * installed-mod scanning (read-only)
-* current Penumbra-folder inventory
+* current Penumbra-folder inventory, from whichever storage format (`sort_order.json` or
+  `mod_data.db`) your installed Penumbra version is actually using
 * manual in-memory folder proposals
 * one-click organization strategies that produce a full plan
 * selected-row and bulk proposal actions
@@ -48,7 +55,7 @@ Penumbra Organizer does not:
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.2.1-beta-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.3.0-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
 4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.

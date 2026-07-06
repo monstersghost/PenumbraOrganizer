@@ -193,8 +193,9 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
 
     internal static PenumbraModDataState LoadState(string sortOrderPath)
     {
-        // A missing sort_order.json is treated as the canonical empty document so a fresh
-        // install (every mod at the root) can still be organized. The apply path materializes
+        // A missing sort_order.json falls back to Penumbra's own sort_order.json.bak (see
+        // PenumbraSortOrder.LoadBaselineText); only when neither exists is it the canonical empty
+        // document (a genuinely fresh install, every mod at the root). The apply path materializes
         // exactly these bytes before writing, keeping source hashes consistent. The source hash
         // must match the live file's raw bytes, so for an existing file we hash the bytes on disk.
         byte[] bytes;
@@ -206,7 +207,7 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
         }
         else
         {
-            json = PenumbraSortOrder.EmptyDocumentJson;
+            json = PenumbraSortOrder.LoadBaselineText(sortOrderPath);
             bytes = Encoding.UTF8.GetBytes(json);
         }
 
@@ -262,7 +263,7 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
 
     private static JsonObject LoadEditableRoot(string sortOrderPath)
     {
-        var text = File.Exists(sortOrderPath) ? File.ReadAllText(sortOrderPath) : PenumbraSortOrder.EmptyDocumentJson;
+        var text = PenumbraSortOrder.LoadBaselineText(sortOrderPath);
         var node = JsonNode.Parse(text);
         return node as JsonObject ?? new JsonObject();
     }
