@@ -179,9 +179,14 @@ public interface IControlledLiveTestService
 
 public interface IPostApplyVerificationService
 {
+    // installation is required to re-verify a ModDataDb-backed write (it needs the installed
+    // plugin's LiteDB engine); pass null when it isn't available (e.g. the incomplete-operation
+    // recovery flow, which only has a persisted operation ID) and verification degrades to the
+    // hash-chain checks alone for that backend.
     Task<PostApplyVerificationResult> VerifyAsync(
         DryRunPlan plan,
         ApplyResult applyResult,
+        PenumbraInstallation? installation,
         CancellationToken cancellationToken);
 }
 

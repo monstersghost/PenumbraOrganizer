@@ -283,7 +283,7 @@ public sealed class ApplyService : IApplyService
         }
 
         var interim = BuildApplyResult(operation, results, ComputeStatus(results), rollbackAvailable: anyWriteCompleted, null);
-        var verification = await _postApplyVerificationService.VerifyAsync(plan, interim, cancellationToken);
+        var verification = await _postApplyVerificationService.VerifyAsync(plan, interim, installation, cancellationToken);
         var finalStatus = verification.Succeeded
             ? interim.Status
             : anyWriteCompleted
@@ -307,25 +307,23 @@ public sealed class ApplyService : IApplyService
     }
 
     // A fresh install may have no sort_order.json yet, and a mod may have no per-user
-    // mod_data/<id>.json. Materialize the canonical empty baseline (byte-identical to what the
-    // planner hashed as the source) before backup so the proven backup/apply/rollback machinery
-    // operates on a real, captured file. Rollback restores this empty baseline, which is
-    // semantically identical to the file never having existed.
+    // mod_data/<id>.json. Materialize the baseline the planner actually hashed as the source
+    // (Penumbra's own sort_order.json.bak when present, otherwise the canonical empty document —
+    // see PenumbraSortOrder.LoadBaselineText) before backup, so the proven backup/apply/rollback
+    // machinery operates on a real, captured file and never mistakes a recovered organization for
+    // an empty one. Rollback restores exactly this baseline.
     private static void EnsureWriteTargetsExist(DryRunPlan plan)
     {
         foreach (var change in plan.FileChanges)
         {
-            var baseline = change.WriteTargetKind switch
-            {
-                PenumbraWriteTargetKind.SortOrderJson => PenumbraSortOrder.EmptyDocumentJson,
-                _ => null,
-            };
-            if (baseline is null)
+            if (change.WriteTargetKind != PenumbraWriteTargetKind.SortOrderJson)
                 continue;
 
             var target = RecoveryStorageLayout.ValidateAbsoluteTargetPath(change.TargetPath);
             if (File.Exists(target))
                 continue;
+
+            var baseline = PenumbraSortOrder.LoadBaselineText(target);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.WriteAllBytes(target, System.Text.Encoding.UTF8.GetBytes(baseline));
         }
@@ -465,6 +463,17 @@ public sealed class ApplyService : IApplyService
 
     private static async Task ValidateTemporaryOutputAsync(string tempPath, DryRunFileChange fileChange, DryRunPlan plan, CancellationToken cancellationToken)
     {
+        if (fileChange.WriteTargetKind == PenumbraWriteTargetKind.ModDataDb)
+        {
+            // mod_data.db is binary, not text/JSON. Correctness was already verified once at
+            // plan-build time, against byte-identical content: ModDataDbVirtualFolderWriter
+            // self-verifies each folder update via the real LiteDB engine before those bytes ever
+            // become the plan's expected bytes, and the hash chain around this call guarantees
+            // what's on disk now is exactly that. Re-deriving the same check here would need
+            // PenumbraInstallation threaded into this private static method for no new information.
+            return;
+        }
+
         var text = await File.ReadAllTextAsync(tempPath, cancellationToken);
 
         if (fileChange.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson)

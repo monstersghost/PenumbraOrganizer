@@ -24,8 +24,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report("Reading current folders");
 
-        var sortOrder = await Task.Run(() => PenumbraSortOrder.Load(installation.ConfigDirectory), cancellationToken);
-        var dbFolders = sortOrder.Data.Keys.ToDictionary(id => id, sortOrder.GetFolderFor, StringComparer.OrdinalIgnoreCase);
+        var warnings = new List<string>();
+        var (dbFolders, emptyFolders, modDataDbEntries, missingFolderReferenceSource) =
+            await Task.Run(() => LoadOrganization(installation, warnings), cancellationToken);
 
         progress?.Report("Reading collections");
         var collections = await Task.Run(() => LoadCollections(installation, cancellationToken), cancellationToken);
@@ -35,11 +36,10 @@ public sealed class PenumbraScanService : IPenumbraScanService
         var physicalDirectories = Directory.Exists(installation.ModRoot)
             ? Directory.EnumerateDirectories(installation.ModRoot).ToList()
             : new List<string>();
-        var warnings = new List<string>();
 
         var directoryNames = new HashSet<string>(physicalDirectories.Select(Path.GetFileName)!, StringComparer.OrdinalIgnoreCase);
         foreach (var dbOnly in dbFolders.Keys.Where(key => !directoryNames.Contains(key)))
-            warnings.Add($"sort_order.json references a mod folder that is missing on disk: {dbOnly}");
+            warnings.Add($"{missingFolderReferenceSource} references a mod folder that is missing on disk: {dbOnly}");
 
         var modDataDirectory = Path.Combine(installation.ConfigDirectory, "mod_data");
 
@@ -55,7 +55,7 @@ public sealed class PenumbraScanService : IPenumbraScanService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, names, modDataDirectory);
+                var mod = ScanModDirectory(physicalDirectory, dbFolders, collectionStatesByName, names, modDataDirectory, modDataDbEntries);
                 if (mod is not null)
                     results.Add(mod);
             }
@@ -79,8 +79,51 @@ public sealed class PenumbraScanService : IPenumbraScanService
             CurrentFolderTree = tree,
             Collections = collections,
             Warnings = warnings,
-            EmptyFolders = sortOrder.EmptyFolders,
+            EmptyFolders = emptyFolders,
         };
+    }
+
+    // Penumbra has shipped more than one storage format for virtual-folder organization, and an
+    // install can be sitting on either one depending on version history (see
+    // PenumbraOrganizationBackendSelector). This picks the authoritative source for the scan and
+    // reports why, rather than silently assuming sort_order.json.
+    private static (
+        IReadOnlyDictionary<string, string> DbFolders,
+        IReadOnlyList<string> EmptyFolders,
+        IReadOnlyDictionary<string, PenumbraModDataDbEntry>? ModDataDbEntries,
+        string MissingFolderReferenceSource)
+        LoadOrganization(PenumbraInstallation installation, ICollection<string> warnings)
+    {
+        var backend = PenumbraOrganizationBackendSelector.Detect(installation.ConfigDirectory);
+        if (backend == PenumbraOrganizationBackend.ModDataDb)
+        {
+            var loadResult = PenumbraModDataDb.Load(installation.ConfigDirectory, installation);
+            if (loadResult.Status == PenumbraModDataDbLoadStatus.Success)
+            {
+                var entries = loadResult.Data!.Entries;
+                var folders = entries.ToDictionary(kv => kv.Key, kv => kv.Value.Folder, StringComparer.OrdinalIgnoreCase);
+                warnings.Add(
+                    "This Penumbra install stores virtual folders in mod_data.db, not sort_order.json. Viewing " +
+                    "and protecting mods works normally; reorganizing (moving mods) isn't supported yet for this format.");
+                return (folders, loadResult.Data.EmptyFolders, entries, PenumbraModDataDb.FileName);
+            }
+
+            warnings.Add(
+                (loadResult.ErrorMessage ?? "mod_data.db could not be read.") +
+                " Falling back to sort_order.json, which may be out of date.");
+        }
+
+        var sortOrder = PenumbraSortOrder.Load(installation.ConfigDirectory);
+        if (sortOrder.LoadedFromBackup)
+        {
+            warnings.Add(
+                "sort_order.json was missing, so your current folder structure was recovered from Penumbra's own " +
+                "sort_order.json.bak. This is read-only and does not change anything; open Penumbra once and it " +
+                "will normally rewrite sort_order.json on its own.");
+        }
+
+        var dbFolders = sortOrder.Data.Keys.ToDictionary(id => id, sortOrder.GetFolderFor, StringComparer.OrdinalIgnoreCase);
+        return (dbFolders, sortOrder.EmptyFolders, null, PenumbraSortOrder.FileName);
     }
 
     private ModScanResult? ScanModDirectory(
@@ -88,7 +131,8 @@ public sealed class PenumbraScanService : IPenumbraScanService
         IReadOnlyDictionary<string, string> dbFolders,
         IReadOnlyDictionary<string, IReadOnlyList<ModCollectionState>> collectionStatesByName,
         IDictionary<string, int> duplicateNames,
-        string modDataDirectory)
+        string modDataDirectory,
+        IReadOnlyDictionary<string, PenumbraModDataDbEntry>? modDataDbEntries)
     {
         var directoryName = Path.GetFileName(physicalDirectory);
         if (string.IsNullOrWhiteSpace(directoryName))
@@ -167,7 +211,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         collectionStatesByName.TryGetValue(name, out var collectionStates);
 
-        var localData = ReadLocalModData(modDataDirectory, directoryName, warnings);
+        var localData = modDataDbEntries is not null
+            ? ReadLocalModDataFromDb(modDataDbEntries, directoryName)
+            : ReadLocalModData(modDataDirectory, directoryName, warnings);
 
         return new ModScanResult
         {
@@ -220,6 +266,11 @@ public sealed class PenumbraScanService : IPenumbraScanService
             return new LocalModData(false, false, Array.Empty<string>(), string.Empty);
         }
     }
+
+    private static LocalModData ReadLocalModDataFromDb(IReadOnlyDictionary<string, PenumbraModDataDbEntry> entries, string stableScanId)
+        => entries.TryGetValue(stableScanId, out var entry)
+            ? new LocalModData(true, entry.Favorite, entry.LocalTags, entry.Note)
+            : new LocalModData(false, false, Array.Empty<string>(), string.Empty);
 
     private static List<CollectionInventory> LoadCollections(PenumbraInstallation installation, CancellationToken cancellationToken)
     {

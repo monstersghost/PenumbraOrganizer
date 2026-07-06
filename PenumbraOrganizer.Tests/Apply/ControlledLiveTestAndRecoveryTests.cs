@@ -294,7 +294,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
             ScanService = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, protectionService);
             ProposalValidationService = new OrganizerProposalValidationService();
             ControlledService = new ControlledLiveTestService(ProposalValidationService);
-            Writer = new PenumbraVirtualFolderWriter();
+            Writer = new PenumbraOrganizationWriter();
             ValidationService = new DryRunValidationService(new PlanInvalidationService(Writer));
             Planner = new DryRunPlanner(Writer, ValidationService);
             PreflightService = new WritePermissionPreflightService(BackupsRoot);
@@ -317,7 +317,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
         public IPenumbraScanService ScanService { get; }
         public IOrganizerProposalValidationService ProposalValidationService { get; }
         public ControlledLiveTestService ControlledService { get; }
-        public PenumbraVirtualFolderWriter Writer { get; }
+        public IPenumbraVirtualFolderWriter Writer { get; }
         public IDryRunValidationService ValidationService { get; }
         public IDryRunPlanner Planner { get; }
         public IWritePermissionPreflightService PreflightService { get; }
