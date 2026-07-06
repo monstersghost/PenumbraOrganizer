@@ -183,7 +183,7 @@ public sealed class ValidationAndImportTests
             var protectionService = new ProtectionService();
             ScanService = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, protectionService);
             ProposalValidationService = new OrganizerProposalValidationService();
-            Writer = new PenumbraVirtualFolderWriter();
+            Writer = new PenumbraOrganizationWriter();
             ValidationService = new DryRunValidationService(new PlanInvalidationService(Writer));
             Planner = new DryRunPlanner(Writer, ValidationService);
             PreflightService = new WritePermissionPreflightService(
@@ -206,7 +206,7 @@ public sealed class ValidationAndImportTests
         public PenumbraInstallation Installation { get; }
         public IPenumbraScanService ScanService { get; }
         public IOrganizerProposalValidationService ProposalValidationService { get; }
-        public PenumbraVirtualFolderWriter Writer { get; }
+        public IPenumbraVirtualFolderWriter Writer { get; }
         public IDryRunValidationService ValidationService { get; }
         public IDryRunPlanner Planner { get; }
         public IWritePermissionPreflightService PreflightService { get; }
