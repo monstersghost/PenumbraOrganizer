@@ -62,12 +62,12 @@ public sealed class OrganizerMutationService : IOrganizerMutationService
     public OrganizerMutationResult Unprotect(IList<OrganizerModProposal> mods, IReadOnlyList<string> stableScanIds)
     {
         var changes = ResolveSelectedMods(mods, stableScanIds)
-            .Where(mod => mod.Protected && !mod.OriginalProtected)
+            .Where(mod => mod.Protected)
             .Select(mod => BuildRowChange(mod, mod.ProposedVirtualFolder, false, OrganizerProposalSource.Manual, mod.NeedsReview))
             .ToArray();
 
         if (changes.Length == 0)
-            return OrganizerMutationResult.Blocked("No selected app-protected mods can be unprotected.");
+            return OrganizerMutationResult.Blocked("Selected mods are already unprotected.");
 
         ApplyRowChanges(mods, changes, after: true);
         return OrganizerMutationResult.Success(
