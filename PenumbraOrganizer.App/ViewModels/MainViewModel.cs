@@ -64,6 +64,7 @@ public sealed class MainViewModel : ObservableObject
     private string _controlledTestSelectionSummary = "Choose up to 3 eligible mods before preparing a live test dry run.";
     private string _recoveryStatus = "Incomplete operations will appear here if backup, Apply, verification, or rollback is interrupted.";
     private OrganizerFolderViewModel? _selectedProposedFolder;
+    private VirtualFolderNode? _selectedCurrentFolderNode;
     private OrganizerValidationResult? _reviewValidation;
     private DryRunPlan? _currentDryRunPlan;
     private ApplyOperation? _preparedApplyOperation;
@@ -156,8 +157,8 @@ public sealed class MainViewModel : ObservableObject
         ResetAllVisibleToCurrentFolderCommand = new RelayCommand(_ => ResetAllVisibleToCurrentFolder(), _ => FilteredMods.Cast<object>().Any());
         MarkSelectedProtectedCommand = new RelayCommand(_ => MarkSelectedProtected(), _ => SelectedOrganizerMods.Count > 0);
         UnprotectSelectedCommand = new RelayCommand(_ => UnprotectSelected(), _ => SelectedOrganizerMods.Count > 0);
-        ProtectFolderCommand = new RelayCommand(_ => ProtectSelectedFolder(), _ => SelectedProposedFolder is not null);
-        UnprotectFolderCommand = new RelayCommand(_ => UnprotectSelectedFolder(), _ => SelectedProposedFolder is not null);
+        ProtectFolderCommand = new RelayCommand(_ => ProtectSelectedFolder(), _ => SelectedCurrentFolderNode is not null);
+        UnprotectFolderCommand = new RelayCommand(_ => UnprotectSelectedFolder(), _ => SelectedCurrentFolderNode is not null);
         RenameFolderCommand = new RelayCommand(_ => RenameSelectedFolder(), _ => SelectedProposedFolder is not null && !string.IsNullOrWhiteSpace(RenameFolderName));
         DeleteEmptyFolderCommand = new RelayCommand(_ => DeleteSelectedEmptyFolder(), _ => SelectedProposedFolder is not null);
         SaveSessionCommand = new AsyncRelayCommand(SaveSessionAsync, () => _inventory is not null);
@@ -366,6 +367,19 @@ public sealed class MainViewModel : ObservableObject
                     RefreshSelectedFolderView();
                 RenameFolderName = value is null ? string.Empty : value.Path;
                 RefreshSelectionCommandState();
+            }
+        }
+    }
+
+    public VirtualFolderNode? SelectedCurrentFolderNode
+    {
+        get => _selectedCurrentFolderNode;
+        set
+        {
+            if (SetProperty(ref _selectedCurrentFolderNode, value))
+            {
+                ProtectFolderCommand.RaiseCanExecuteChanged();
+                UnprotectFolderCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -819,7 +833,7 @@ public sealed class MainViewModel : ObservableObject
             if (_lastWorkbookImport is null)
                 return;
 
-            if (_lastWorkbookImport.Errors.Count > 0)
+            if (_lastWorkbookImport.Rows.Count == 0 && _lastWorkbookImport.Errors.Count > 0)
             {
                 WorkbookImportStatus = _lastWorkbookImport.Summary;
                 ProgressMessage = "Workbook import blocked.";
@@ -838,6 +852,10 @@ public sealed class MainViewModel : ObservableObject
             WorkbookStatus = $"Imported workbook: {Path.GetFileName(_lastWorkbookImport.WorkbookPath)}";
             ProgressMessage = "Workbook imported.";
             AppendLog($"Imported workbook from {_lastWorkbookImport.WorkbookPath}.");
+            if (_lastWorkbookImport.Errors.Count > 0)
+                AppendLog("Workbook import skipped some rows: " + string.Join(" | ", _lastWorkbookImport.Errors.Take(8)));
+            if (_lastWorkbookImport.Warnings.Count > 0)
+                AppendLog("Workbook import warnings: " + string.Join(" | ", _lastWorkbookImport.Warnings.Take(8)));
         }
         catch (Exception ex)
         {
@@ -1062,6 +1080,17 @@ public sealed class MainViewModel : ObservableObject
         if (MessageBox.Show(confirmation, "Create Diagnostic Package", MessageBoxButton.OKCancel, MessageBoxImage.Information) != MessageBoxResult.OK)
             return;
 
+        string destinationPath;
+        try
+        {
+            destinationPath = ResolveDiagnosticExportPath();
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressMessage = "Diagnostic package creation cancelled.";
+            return;
+        }
+
         try
         {
             ProgressMessage = "Creating diagnostic package.";
@@ -1080,9 +1109,20 @@ public sealed class MainViewModel : ObservableObject
                     ActivityLog),
                 CancellationToken.None);
 
-            DiagnosticStatus = $"Diagnostic package created at {result.ZipPath}";
+            File.Copy(result.ZipPath, destinationPath, overwrite: true);
+
+            DiagnosticStatus = $"Diagnostic package created at {destinationPath}";
             ProgressMessage = "Diagnostic package created.";
-            AppendLog($"Created diagnostic package at {result.ZipPath}");
+            AppendLog($"Created diagnostic package at {destinationPath}");
+
+            if (MessageBox.Show(
+                    $"The diagnostic package was saved to:{Environment.NewLine}{Environment.NewLine}{destinationPath}{Environment.NewLine}{Environment.NewLine}Open it now?",
+                    "Diagnostic package created",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information) == MessageBoxResult.Yes)
+            {
+                Process.Start(new ProcessStartInfo { FileName = destinationPath, UseShellExecute = true });
+            }
         }
         catch (Exception ex)
         {
@@ -1091,6 +1131,23 @@ public sealed class MainViewModel : ObservableObject
             ProgressMessage = "Diagnostic export failed.";
             AppendLog("Diagnostic export failed: " + ex.Message);
         }
+    }
+
+    private string ResolveDiagnosticExportPath()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Choose Diagnostic Package Location",
+            Filter = "Zip archive (*.zip)|*.zip",
+            FileName = $"PenumbraOrganizer-Diagnostic-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.zip",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            OverwritePrompt = true,
+        };
+
+        if (dialog.ShowDialog(Application.Current.MainWindow) != true)
+            throw new OperationCanceledException("Diagnostic package export was cancelled.");
+
+        return dialog.FileName;
     }
 
     private async Task CreateManualBackupAsync()
@@ -1110,15 +1167,22 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
+        string destinationParent;
+        try
+        {
+            destinationParent = ResolveBackupDestinationFolder();
+        }
+        catch (OperationCanceledException)
+        {
+            ProgressMessage = "Backup cancelled.";
+            return;
+        }
+
         try
         {
             await RunBusyAsync("Backing up your Penumbra configuration.", () => Task.Run(() =>
             {
-                var destinationRoot = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "PenumbraOrganizer",
-                    "ManualBackups",
-                    DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss"));
+                var destinationRoot = Path.Combine(destinationParent, $"PenumbraOrganizer-Backup-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
                 CopyDirectory(configDirectory, Path.Combine(destinationRoot, "Penumbra"));
                 _lastManualBackupPath = destinationRoot;
             }));
@@ -1142,6 +1206,22 @@ public sealed class MainViewModel : ObservableObject
             AppendLog("Manual backup failed: " + ex.Message);
             MessageBox.Show(ToUserMessage(ex), "Backup failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private static string ResolveBackupDestinationFolder()
+    {
+        var dialog = new OpenFolderDialog { Title = "Choose Backup Location" };
+        var defaultRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "PenumbraOrganizer",
+            "ManualBackups");
+        if (Directory.Exists(defaultRoot))
+            dialog.InitialDirectory = defaultRoot;
+
+        if (dialog.ShowDialog() != true)
+            throw new OperationCanceledException("Backup was cancelled.");
+
+        return dialog.FolderName;
     }
 
     private static void CopyDirectory(string sourceDir, string targetDir)
@@ -1381,15 +1461,15 @@ public sealed class MainViewModel : ObservableObject
 
     private void ProtectSelectedFolder()
     {
-        if (SelectedProposedFolder is null)
+        if (SelectedCurrentFolderNode is null)
             return;
-        var ids = ModIdsInFolder(SelectedProposedFolder.Path);
+        var ids = ModIdsInCurrentFolder(SelectedCurrentFolderNode.Path);
         if (ids.Count == 0)
         {
-            AppendLog($"No mods in {SelectedProposedFolder.DisplayName} to protect.");
+            AppendLog($"No mods in {SelectedCurrentFolderNode.Path} to protect.");
             return;
         }
-        if (!ConfirmAllVisible($"Protect all {ids.Count} mods in {SelectedProposedFolder.DisplayName} (and its subfolders)?"))
+        if (!ConfirmAllVisible($"Protect all {ids.Count} mods in {SelectedCurrentFolderNode.Path} (and its subfolders)?"))
             return;
         var result = _organizerMutationService.Protect(CurrentProposalRows(), ids);
         ApplyMutationResult(result, pushHistory: true);
@@ -1397,15 +1477,15 @@ public sealed class MainViewModel : ObservableObject
 
     private void UnprotectSelectedFolder()
     {
-        if (SelectedProposedFolder is null)
+        if (SelectedCurrentFolderNode is null)
             return;
-        var ids = ModIdsInFolder(SelectedProposedFolder.Path);
+        var ids = ModIdsInCurrentFolder(SelectedCurrentFolderNode.Path);
         if (ids.Count == 0)
         {
-            AppendLog($"No mods in {SelectedProposedFolder.DisplayName} to unprotect.");
+            AppendLog($"No mods in {SelectedCurrentFolderNode.Path} to unprotect.");
             return;
         }
-        if (!ConfirmAllVisible($"Unprotect all {ids.Count} mods in {SelectedProposedFolder.DisplayName} (and its subfolders)?"))
+        if (!ConfirmAllVisible($"Unprotect all {ids.Count} mods in {SelectedCurrentFolderNode.Path} (and its subfolders)?"))
             return;
         var result = _organizerMutationService.Unprotect(CurrentProposalRows(), ids);
         ApplyMutationResult(result, pushHistory: true);
@@ -1417,6 +1497,20 @@ public sealed class MainViewModel : ObservableObject
         => Mods
             .Where(mod => mod.ProposedVirtualFolder.Equals(path, StringComparison.OrdinalIgnoreCase)
                 || mod.ProposedVirtualFolder.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase))
+            .Select(mod => mod.StableScanId)
+            .ToArray();
+
+    // Mods whose current (as-scanned) folder is the given path or a descendant of it, for the
+    // Protect Folder / Unprotect Folder buttons, which act on the Current folder tree selection.
+    // "(unassigned)" mirrors the placeholder BuildFolderTree uses for an empty CurrentVirtualFolder.
+    private IReadOnlyList<string> ModIdsInCurrentFolder(string path)
+        => Mods
+            .Where(mod =>
+            {
+                var folder = string.IsNullOrWhiteSpace(mod.CurrentVirtualFolder) ? "(unassigned)" : mod.CurrentVirtualFolder;
+                return folder.Equals(path, StringComparison.OrdinalIgnoreCase)
+                    || folder.StartsWith(path + "/", StringComparison.OrdinalIgnoreCase);
+            })
             .Select(mod => mod.StableScanId)
             .ToArray();
 

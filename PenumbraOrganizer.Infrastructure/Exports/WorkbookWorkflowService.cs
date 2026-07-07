@@ -84,8 +84,9 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             var errors = new List<string>();
             var warnings = new List<string>();
 
-            ValidateMetadata(meta, inventory, errors);
-            var metadataErrorCount = errors.Count;
+            ValidateMetadata(meta, inventory, errors, warnings);
+            if (errors.Count > 0)
+                return BuildImportResult(workbookPath, meta, rows, errors, warnings);
 
             var inventoryById = inventory.Mods.ToDictionary(mod => mod.StableScanId, StringComparer.Ordinal);
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
@@ -97,7 +98,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
                     errors.Add($"The workbook is missing the required column '{header}'.");
             }
 
-            if (errors.Count > metadataErrorCount)
+            if (errors.Count > 0)
                 return BuildImportResult(workbookPath, meta, rows, errors, warnings);
 
             var lastRow = editable.LastRowUsed()?.RowNumber() ?? 1;
@@ -152,7 +153,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 
                 if (!string.Equals(currentFolder, mod.CurrentVirtualFolder, StringComparison.Ordinal))
                 {
-                    errors.Add($"Row {rowNumber} no longer matches the exported current folder for {stableScanId}. Scan and export a new workbook before importing edits.");
+                    warnings.Add($"Row {rowNumber} no longer matches the exported current folder for {stableScanId} and was skipped. Scan and export a new workbook to include its edits.");
                     continue;
                 }
 
@@ -340,7 +341,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         return map;
     }
 
-    private static void ValidateMetadata(Dictionary<string, string> meta, ScanInventory inventory, List<string> errors)
+    private static void ValidateMetadata(Dictionary<string, string> meta, ScanInventory inventory, List<string> errors, List<string> warnings)
     {
         if (!meta.TryGetValue("formatVersion", out var formatVersion) ||
             !int.TryParse(formatVersion, out var parsedVersion) ||
@@ -360,7 +361,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         if (!meta.TryGetValue("scanIdentity", out var scanIdentity) ||
             !string.Equals(scanIdentity, currentScanIdentity, StringComparison.Ordinal))
         {
-            errors.Add("The library changed after this workbook was exported. Scan and export a new workbook before importing edits.");
+            warnings.Add("Your mod library changed since this workbook was exported. Rows whose current folder no longer matches will be skipped.");
         }
     }
 
@@ -378,9 +379,12 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         DateTimeOffset.TryParse(generatedAtUtcRaw, out var generatedAtUtc);
 
         var changedCount = rows.Count(row => row.ResolvedDestination is not null && !string.Equals(row.ResolvedDestination, row.CurrentVirtualFolder, StringComparison.Ordinal));
-        var summary = errors.Count > 0
+        var skippedCount = errors.Count + warnings.Count;
+        var summary = rows.Count == 0 && errors.Count > 0
             ? $"Workbook import blocked. {errors.Count} validation issue(s) were found."
-            : $"Workbook imported successfully. {changedCount} mod destination change(s) are ready for review.";
+            : skippedCount > 0
+                ? $"Workbook imported with {changedCount} mod destination change(s) ready for review. {skippedCount} row(s) were skipped."
+                : $"Workbook imported successfully. {changedCount} mod destination change(s) are ready for review.";
 
         return new WorkbookImportResult(
             workbookPath,
