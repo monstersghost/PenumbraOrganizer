@@ -2,7 +2,7 @@
 
 A beginner-friendly, unofficial Windows utility for viewing and reorganizing Penumbra virtual mod folders without physically moving mod files.
 
-##Suport Server on Discord ( I Hope i don't regret this)
+## Suport Server on Discord ( I Hope i don't regret this)
 https://discord.gg/MhQzVJ65c
 
 ## Current status
