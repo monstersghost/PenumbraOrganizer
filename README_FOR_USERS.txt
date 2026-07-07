@@ -1,4 +1,4 @@
-Penumbra Organizer v0.2.1-beta
+Penumbra Organizer v0.3.1-beta
 
 Portable Windows utility for reorganizing Penumbra virtual folders.
 
