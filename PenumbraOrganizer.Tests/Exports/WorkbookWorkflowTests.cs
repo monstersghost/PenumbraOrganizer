@@ -131,7 +131,7 @@ public sealed class WorkbookWorkflowTests
     }
 
     [Fact]
-    public async Task Import_RejectsTraversalAndStaleCurrentFolders()
+    public async Task Import_SkipsStaleCurrentFoldersWithWarning_InsteadOfBlocking()
     {
         var service = CreateService();
         var exportedInventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
@@ -147,10 +147,58 @@ public sealed class WorkbookWorkflowTests
         var changedInventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Moved/Folder"));
         var imported = await service.ImportAsync(export.WorkbookPath, changedInventory, CancellationToken.None);
 
-        imported.Errors.Should().Contain(error => error.Contains("library changed", StringComparison.OrdinalIgnoreCase));
-        imported.Errors.Should().Contain(error =>
-            error.Contains("Row 2", StringComparison.OrdinalIgnoreCase)
-            && error.Contains("current folder", StringComparison.OrdinalIgnoreCase));
+        imported.Errors.Should().BeEmpty();
+        imported.Rows.Should().BeEmpty();
+        imported.Warnings.Should().Contain(warning => warning.Contains("library changed", StringComparison.OrdinalIgnoreCase));
+        imported.Warnings.Should().Contain(warning =>
+            warning.Contains("Row 2", StringComparison.OrdinalIgnoreCase)
+            && warning.Contains("current folder", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Import_AppliesUnaffectedRows_WhenOnlyOneModDriftedSinceExport()
+    {
+        var service = CreateService();
+        var exportedInventory = CreateInventory(
+            ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
+            ("Body01", "Gen3 Body", "Author", "Bodies/Old"));
+        var export = await service.ExportAsync(exportedInventory, Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
+
+        // Simulates closing the app, someone (or Penumbra itself) moving one mod, then reopening and rescanning.
+        var driftedInventory = CreateInventory(
+            ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
+            ("Body01", "Gen3 Body", "Author", "Bodies/Moved"));
+
+        var imported = await service.ImportAsync(export.WorkbookPath, driftedInventory, CancellationToken.None);
+
+        imported.Errors.Should().BeEmpty();
+        imported.Rows.Should().ContainSingle(row => row.StableScanId == "Dress01");
+        imported.Rows.Should().NotContain(row => row.StableScanId == "Body01");
+        imported.Warnings.Should().Contain(warning => warning.Contains("Body01", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Import_AppliesUnaffectedRows_WhenOneRowHasInvalidData()
+    {
+        var service = CreateService();
+        var inventory = CreateInventory(
+            ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
+            ("Body01", "Gen3 Body", "Author", "Bodies/Old"));
+        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            var bodyRow = sheet.RowsUsed().Single(row => row.Cell(8).GetString() == "Body01").RowNumber();
+            sheet.Cell(bodyRow, 6).Value = "MAYBE";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().Contain(error => error.Contains("Body01", StringComparison.OrdinalIgnoreCase));
+        imported.Rows.Should().ContainSingle(row => row.StableScanId == "Dress01");
+        imported.Rows.Should().NotContain(row => row.StableScanId == "Body01");
     }
 
     [Fact]

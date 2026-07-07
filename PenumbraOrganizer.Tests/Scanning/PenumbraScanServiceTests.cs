@@ -76,7 +76,7 @@ public sealed class PenumbraScanServiceTests
 
         inventory.Mods.Should().HaveCount(2);
         inventory.Mods.Should().ContainSingle(m => m.Name == "Sample Mod" && m.ContentSignalSummary.Contains("Clothing", StringComparison.Ordinal));
-        inventory.Mods.Should().ContainSingle(m => m.Name == "Akako Locked" && m.Protected);
+        inventory.Mods.Should().ContainSingle(m => m.Name == "Akako Locked" && !m.Protected);
         inventory.Collections.Should().ContainSingle(c => c.Name == "Aqua");
         inventory.CurrentFolderTree.Should().Contain(node => node.Path == "Clothing/Bizu Mods");
     }

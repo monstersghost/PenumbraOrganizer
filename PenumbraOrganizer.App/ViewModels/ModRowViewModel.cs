@@ -55,7 +55,15 @@ public sealed class ModRowViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _protected, value))
+            {
                 Proposal.Protected = value;
+                // A protected mod can't have a pending move — mirrors OrganizerMutationService.Protect,
+                // which resets the proposed folder for the button-driven path. Without this, toggling
+                // the inline grid checkbox after a strategy already proposed a move leaves the row
+                // Protected=true with a stale ProposedVirtualFolder, which Review Changes then blocks.
+                if (value)
+                    ProposedVirtualFolder = CurrentVirtualFolder;
+            }
         }
     }
 

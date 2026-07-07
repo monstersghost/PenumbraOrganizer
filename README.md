@@ -20,7 +20,7 @@ The current build includes:
 * one-click organization strategies that produce a full plan
 * selected-row and bulk proposal actions
 * proposed folder creation and rename
-* protected mods, including one-click protection for an entire proposed folder
+* protected mods, including one-click protection for an entire current folder
 * manual override for the detected Penumbra config path and Mods folder
 * undo and redo
 * organizer session saving
@@ -60,7 +60,7 @@ The app is self-contained and requires no separate .NET installation.
 1. Open the app and let it detect Penumbra.
 2. Confirm the displayed Penumbra state directory and mod library root.
 3. Click **Scan My Mods**.
-4. Open **Organize** and choose a strategy:
+4. Open **Sort Method** and choose a strategy:
    * Start manually
    * By creator
    * By mod type
@@ -68,17 +68,25 @@ The app is self-contained and requires no separate .NET installation.
    * Creator then type
    * Preserve and clean
    * Custom
-5. Adjust proposed folders and assignments, using Undo or Redo as needed.
-6. Open **Review Changes** and resolve anything flagged.
-7. **Close FFXIV.**
-8. Create a backup, then **Backup and Apply**.
-9. If you need to undo a previous operation, open **Backups** and use **Restore Backup**.
+5. Open **Current Mods** to search/filter your library and protect or unprotect specific mods
+   or folders (Protect Folder/Unprotect Folder act on the folder selected in the current folder
+   tree; Protect Selected/Unprotect Selected act on the mods selected in the grid).
+6. Open **Proposed Changes** to adjust proposed folders and assignments, using Undo or Redo as
+   needed.
+7. Open **Review Changes** and resolve anything flagged.
+8. **Close FFXIV.**
+9. Create a backup, then **Backup and Apply**.
+10. If you need to undo a previous operation, open **Backups** and use **Restore Backup**.
 
 ## Workbook workflow
 
 The app can **Export Workbook** to an Excel file you can review and edit offline in any
 spreadsheet tool, then **Import Workbook** to bring the edited assignments back in. The
-import is validated against your live Penumbra inventory before anything is applied.
+import is validated against your live Penumbra inventory before anything is applied. If your
+mod library changed since export (a mod moved, or one row no longer matches), only the
+affected rows are skipped with a reason — every other valid row still imports. Import is only
+fully blocked when nothing in the workbook can be applied at all (wrong Penumbra library,
+unsupported format, or missing columns).
 
 ## Safety model
 
@@ -92,7 +100,10 @@ import is validated against your live Penumbra inventory before anything is appl
 ## Where the app stores its data
 
 * `%LocalAppData%\PenumbraOrganizer\`
-* Sessions, settings, logs, and backups (including manual "Back Up My Penumbra" snapshots) live there.
+* Sessions, settings, and logs live there.
+* Manual Penumbra config backups and diagnostic packages default to a folder under
+  `%LocalAppData%\PenumbraOrganizer\`, but both prompt you to choose a save location (and offer
+  to open it afterward) each time you create one.
 
 ## Screenshots
 
@@ -165,6 +176,7 @@ Documentation:
 * [Compatibility model](docs/COMPATIBILITY_MODEL.md)
 * [Organizer session format](docs/ORGANIZER_SESSION_FORMAT.md)
 * [Sort order and metadata handoff](docs/HANDOFF_SORT_ORDER_AND_METADATA.md)
+* [Mod category overhaul handoff (in progress)](docs/HANDOFF_MOD_CATEGORY_OVERHAUL.md)
 
 ## Disclaimer
 

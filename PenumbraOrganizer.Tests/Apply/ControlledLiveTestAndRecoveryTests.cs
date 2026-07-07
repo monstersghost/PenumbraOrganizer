@@ -31,7 +31,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
             ("Eligible Mod", "Current/Eligible"));
 
         await context.ScanAsync();
-        var snapshot = context.BuildSnapshot(("Eligible Mod", "Manual/Eligible"));
+        var snapshot = context.BuildSnapshot(["Protected Mod"], ("Eligible Mod", "Manual/Eligible"));
 
         var setup = await context.ControlledService.BuildSetupAsync(
             context.Installation,
@@ -344,12 +344,16 @@ public sealed class ControlledLiveTestAndRecoveryTests
         }
 
         public ProposalSnapshot BuildSnapshot(params (string StableScanId, string ProposedFolder)[] changes)
+            => BuildSnapshot(Array.Empty<string>(), changes);
+
+        public ProposalSnapshot BuildSnapshot(IReadOnlyList<string> protectIds, params (string StableScanId, string ProposedFolder)[] changes)
         {
             var proposals = Inventory!.Mods
                 .OrderBy(mod => mod.StableScanId, StringComparer.Ordinal)
                 .Select(mod =>
                 {
                     var changed = changes.FirstOrDefault(change => change.StableScanId == mod.StableScanId);
+                    var protectedNow = mod.Protected || protectIds.Contains(mod.StableScanId, StringComparer.Ordinal);
                     return new OrganizerModProposal
                     {
                         StableScanId = mod.StableScanId,
@@ -359,7 +363,7 @@ public sealed class ControlledLiveTestAndRecoveryTests
                         OriginalCreator = mod.Author,
                         OrganizerCreatorLabel = string.IsNullOrWhiteSpace(mod.Author) ? "Unknown creator" : mod.Author,
                         OrganizerTypeLabel = "Unknown type",
-                        Protected = mod.Protected,
+                        Protected = protectedNow,
                         OriginalProtected = mod.Protected,
                         Source = OrganizerProposalSource.Manual,
                     };

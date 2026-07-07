@@ -6,6 +6,7 @@
         xmlns:behaviors="clr-namespace:PenumbraOrganizer.App.Behaviors"
         mc:Ignorable="d"
         Title="Penumbra Organizer"
+        Icon="Assets/app.ico"
         Height="860"
         Width="1380"
         MinHeight="740"
@@ -281,12 +282,10 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem Header="Organize">
+            <TabItem Header="Sort Method">
                 <Grid Margin="14">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0"
@@ -317,9 +316,17 @@
                                        Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
+                </Grid>
+            </TabItem>
 
-                    <Border Grid.Row="1"
-                            Margin="0,16,0,0"
+            <TabItem Header="Current Mods">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
                             Background="{StaticResource SurfaceBrush}"
                             BorderBrush="{StaticResource AppBorderBrush}"
                             BorderThickness="1"
@@ -371,22 +378,15 @@
                         </Grid>
                     </Border>
 
-                    <Grid Grid.Row="2"
+                    <Grid Grid.Row="1"
                           Margin="0,16,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="330" />
-                            <ColumnDefinition Width="14" />
                             <ColumnDefinition Width="330" />
                             <ColumnDefinition Width="14" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Row="0"
-                                Grid.Column="0"
+                        <Border Grid.Column="0"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
@@ -396,6 +396,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Current folder tree"
                                            FontSize="18"
@@ -403,6 +404,7 @@
                                 <DataGrid Grid.Row="1"
                                           Margin="0,12,0,0"
                                           ItemsSource="{Binding FolderTree}"
+                                          SelectedItem="{Binding SelectedCurrentFolderNode}"
                                           AutoGenerateColumns="False"
                                           IsReadOnly="True"
                                           CanUserAddRows="False"
@@ -413,84 +415,22 @@
                                         <DataGridTextColumn Header="Mods" Binding="{Binding DirectModCount}" Width="70" />
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Grid.Row="2"
+                                            Margin="0,12,0,0">
+                                    <Separator Margin="0,0,0,10" />
+                                    <TextBlock Text="Acts on the folder selected above"
+                                               FontSize="11"
+                                               Margin="0,0,0,6"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <WrapPanel>
+                                        <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                                        <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="126" Height="34" Margin="0,0,8,8" />
+                                    </WrapPanel>
+                                </StackPanel>
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="0"
-                                Grid.Column="2"
-                                Background="{StaticResource SurfaceBrush}"
-                                BorderBrush="{StaticResource AppBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="10"
-                                Padding="18">
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" />
-                                </Grid.RowDefinitions>
-
-                                <TextBlock Text="Proposed folder tree"
-                                           FontSize="18"
-                                           FontWeight="SemiBold" />
-
-                                <Grid Grid.Row="1"
-                                      Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="32"
-                                             Padding="8,4"
-                                             VerticalContentAlignment="Center" />
-                                    <Button Grid.Column="1"
-                                            Command="{Binding CreateProposedFolderCommand}"
-                                            Content="Create Folder"
-                                            MinWidth="110"
-                                            Height="32"
-                                            Margin="10,0,0,0" />
-                                </Grid>
-
-                                <Grid Grid.Row="2"
-                                      Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox Text="{Binding RenameFolderName, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="32"
-                                             Padding="8,4"
-                                             VerticalContentAlignment="Center" />
-                                    <Button Grid.Column="1"
-                                            Command="{Binding RenameFolderCommand}"
-                                            Content="Rename"
-                                            MinWidth="90"
-                                            Height="32"
-                                            Margin="10,0,0,0" />
-                                </Grid>
-
-                                <DataGrid Grid.Row="3"
-                                          Margin="0,12,0,0"
-                                          ItemsSource="{Binding ProposedFolders}"
-                                          SelectedItem="{Binding SelectedProposedFolder}"
-                                          AutoGenerateColumns="False"
-                                          IsReadOnly="True"
-                                          CanUserAddRows="False"
-                                          HeadersVisibility="Column"
-                                          SelectionMode="Single">
-                                    <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Proposed folder" Binding="{Binding DisplayName}" Width="*" />
-                                        <DataGridTextColumn Header="Direct" Binding="{Binding DirectModCount}" Width="70" />
-                                        <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
-                                    </DataGrid.Columns>
-                                </DataGrid>
-                            </Grid>
-                        </Border>
-
-                        <Border Grid.Row="0"
-                                Grid.Column="4"
+                        <Border Grid.Column="2"
                                 Background="{StaticResource SurfaceBrush}"
                                 BorderBrush="{StaticResource AppBorderBrush}"
                                 BorderThickness="1"
@@ -500,6 +440,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Text="Mods"
@@ -523,29 +464,118 @@
                                         <DataGridTextColumn Header="Source" Binding="{Binding ProposalSource}" Width="110" IsReadOnly="True" />
                                     </DataGrid.Columns>
                                 </DataGrid>
+
+                                <StackPanel Grid.Row="2"
+                                            Margin="0,12,0,0">
+                                    <Separator Margin="0,0,0,10" />
+                                    <TextBlock Text="Acts on the mods selected above"
+                                               FontSize="11"
+                                               Margin="0,0,0,6"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <WrapPanel>
+                                        <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="118" Height="34" Margin="0,0,8,8" />
+                                        <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="130" Height="34" Margin="0,0,8,8" />
+                                    </WrapPanel>
+                                </StackPanel>
                             </Grid>
                         </Border>
-
-                        <StackPanel Grid.Row="1"
-                                    Grid.Column="0"
-                                    Grid.ColumnSpan="5">
-                            <WrapPanel Margin="0,12,0,0">
-                                <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
-                                <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                                <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
-                            </WrapPanel>
-                            <WrapPanel>
-                                <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding MarkSelectedProtectedCommand}" Content="Protect Selected" MinWidth="118" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding UnprotectSelectedCommand}" Content="Unprotect Selected" MinWidth="130" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding ProtectFolderCommand}" Content="Protect Folder" MinWidth="112" Height="34" Margin="0,0,8,8" />
-                                <Button Command="{Binding UnprotectFolderCommand}" Content="Unprotect Folder" MinWidth="126" Height="34" Margin="0,0,8,8" />
-                            </WrapPanel>
-                        </StackPanel>
                     </Grid>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Proposed Changes">
+                <Grid Margin="14">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0"
+                            Background="{StaticResource SurfaceBrush}"
+                            BorderBrush="{StaticResource AppBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="18">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Text="Proposed folder tree"
+                                       FontSize="18"
+                                       FontWeight="SemiBold" />
+
+                            <Grid Grid.Row="1"
+                                  Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="32"
+                                         Padding="8,4"
+                                         VerticalContentAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Command="{Binding CreateProposedFolderCommand}"
+                                        Content="Create Folder"
+                                        MinWidth="110"
+                                        Height="32"
+                                        Margin="10,0,0,0" />
+                            </Grid>
+
+                            <Grid Grid.Row="2"
+                                  Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding RenameFolderName, UpdateSourceTrigger=PropertyChanged}"
+                                         Height="32"
+                                         Padding="8,4"
+                                         VerticalContentAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Command="{Binding RenameFolderCommand}"
+                                        Content="Rename"
+                                        MinWidth="90"
+                                        Height="32"
+                                        Margin="10,0,0,0" />
+                            </Grid>
+
+                            <DataGrid Grid.Row="3"
+                                      Margin="0,12,0,0"
+                                      ItemsSource="{Binding ProposedFolders}"
+                                      SelectedItem="{Binding SelectedProposedFolder}"
+                                      AutoGenerateColumns="False"
+                                      IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      HeadersVisibility="Column"
+                                      SelectionMode="Single">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Proposed folder" Binding="{Binding DisplayName}" Width="*" />
+                                    <DataGridTextColumn Header="Direct" Binding="{Binding DirectModCount}" Width="70" />
+                                    <DataGridTextColumn Header="Child" Binding="{Binding DescendantModCount}" Width="70" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Grid.Row="1"
+                                Margin="0,16,0,0">
+                        <WrapPanel>
+                            <Button Command="{Binding DeleteEmptyFolderCommand}" Content="Delete Empty Folder" MinWidth="145" Height="32" Margin="0,0,10,10" />
+                            <Button Command="{Binding UndoCommand}" Content="{Binding UndoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                            <Button Command="{Binding RedoCommand}" Content="{Binding RedoDescription}" MinWidth="130" Height="32" Margin="0,0,10,10" />
+                        </WrapPanel>
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Command="{Binding AssignSelectedToSelectedFolderCommand}" Content="Assign Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                            <Button Command="{Binding AssignAllVisibleToSelectedFolderCommand}" Content="Assign Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                            <Button Command="{Binding ResetSelectedToCurrentFolderCommand}" Content="Return Selected" MinWidth="112" Height="34" Margin="0,0,8,8" />
+                            <Button Command="{Binding ResetAllVisibleToCurrentFolderCommand}" Content="Return Visible" MinWidth="108" Height="34" Margin="0,0,8,8" />
+                        </WrapPanel>
+                    </StackPanel>
                 </Grid>
             </TabItem>
 
