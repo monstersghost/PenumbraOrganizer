@@ -24,7 +24,7 @@ jobs:
             TITLE="🚀 New Release: ${RELEASE_NAME:-$RELEASE_TAG}"
           fi
 
-          BODY=$(printf "%s" "$RELEASE_BODY" | head -c 1500)
+          BODY=$(printf "%s" "$RELEASE_BODY" | head -c 3900)
           ROLE_ID="1524370428196552765"
 
           jq -n \
