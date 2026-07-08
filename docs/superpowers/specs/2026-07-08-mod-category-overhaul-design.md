@@ -133,6 +133,18 @@ category static JSON resource checked into the repo, plus the hardcoded pet ID l
 **Accepted limitation:** this table goes stale as new game patches add IDs. No auto-update
 mechanism is in scope — revisit only if it turns out to matter for real collections.
 
+**Self-contained at runtime — no dependency on external tools being installed.** The research
+that produced this design (reading `xivModdingFramework`, `Penumbra.GameData`, and
+`ffxiv-datamining` source) is a **dev-time-only** activity — a one-time extraction the developer
+runs once to produce the static JSON, the same way the extraction script pulled the CSVs above.
+None of TexTools, `xivModdingFramework`, Lumina, SaintCoinach, or internet access are ever
+required by the shipped app. The generated table ships embedded as a resource in the app itself
+(same pattern as the rest of the app's data), and the classification pipeline reads only that
+embedded resource plus the mod's own files at runtime. This applies to the whole pipeline, not
+just this table — nothing in the design reads from a TexTools install, a game install's raw
+sqpack data, or any path the user hasn't already configured (Penumbra's own mod/config folders,
+which the app already depends on today).
+
 ## Data model
 
 Replaces `WorkbookCategoryCatalog`'s flat `WorkbookCategoryDefinition` list and keyword
@@ -193,7 +205,7 @@ actors, so that layer would be scaffolding with no consumer.
 |---|---|---|
 | Category definitions + `Detect` | `PenumbraOrganizer.Core/Models/WorkbookWorkflowModels.cs` | Replace `WorkbookCategoryCatalog` keyword matching with the pipeline above, consuming `ModScanResult.Targets` |
 | Path/slot signal extraction | `PenumbraOrganizer.Infrastructure/Scanning/PenumbraScanService.cs` | Extend `ClassifySignal`/`ExtractContentSignals` to produce `ModTargetClassification` per path, add the race-code/BodySlot/ID-table logic |
-| Bundled ID table | New resource under `PenumbraOrganizer.Infrastructure` (exact path TBD at plan time) | Static JSON, generated once from `ffxiv-datamining` CSVs |
+| Bundled ID table | New embedded resource under `PenumbraOrganizer.Infrastructure` (exact path TBD at plan time) | Static JSON, generated once dev-side from `ffxiv-datamining` CSVs and checked into the repo; shipped app reads only this embedded copy, no runtime fetch or external tool dependency |
 | Detected-type display | `PenumbraOrganizer.App/ViewModels/ModRowViewModel.cs`, `MainWindow.xaml` Mods grid | `DetectedType` sourced from `ModScanResult.DetectedCategory`; `MainViewModel.cs:909`'s existing `mod.DetectedType = row.ResolvedModType` override on workbook import is unchanged |
 | Organize strategies | `PenumbraOrganizer.App/ViewModels/MainViewModel.cs` | "By mod type" / "Type then creator" / "Creator then type" strategies consume `DetectedCategory` |
 
