@@ -70,7 +70,15 @@ public sealed class ModDataDbVirtualFolderWriter : IPenumbraVirtualFolderWriter
                 warnings.Add("mod_data.db has no record for this mod yet. Open it in Penumbra once, then re-scan, before it can be reorganized here.");
 
             var folderChanged = row.Status == OrganizerRowStatus.ValidChange;
+            var blockedByMissingDocument = folderChanged && !effectiveProtected && !hasModDataDbDocument;
             var requiresWrite = folderChanged && !effectiveProtected && hasModDataDbDocument;
+
+            // A mod that would otherwise have a valid, writable change but can't be written
+            // (missing mod_data.db document) is reported as needing review, not silently counted
+            // as an applied change -- keeps the apply-readiness checklist and change counts honest
+            // (DryRunPlanner's ChangedRowCount and MainViewModel's "All target records mapped"
+            // checklist line both key off ValidationStatus == ValidChange).
+            var entryStatus = blockedByMissingDocument ? OrganizerRowStatus.NeedsReview : row.Status;
 
             entries.Add(new DryRunPlanEntry(
                 mod.StableScanId,
@@ -79,7 +87,7 @@ public sealed class ModDataDbVirtualFolderWriter : IPenumbraVirtualFolderWriter
                 row.ProposedVirtualFolder,
                 row.Source,
                 effectiveProtected,
-                row.Status,
+                entryStatus,
                 $"{SchemaFileName}:{mod.StableScanId}",
                 state.SourcePath,
                 mod.StableScanId,
