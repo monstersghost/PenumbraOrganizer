@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Microsoft.Win32;
 using System.Windows;
@@ -293,6 +294,9 @@ public sealed class MainViewModel : ObservableObject
     public bool InstallationFound => _installation is not null;
 
     public bool InstallationMissing => _installation is null;
+
+    public string AppVersionDisplay { get; } = FormatAppVersion(
+        typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 
     public string ManualConfigPath
     {
@@ -2602,6 +2606,11 @@ public sealed class MainViewModel : ObservableObject
             "Custom" => new OrganizationPreferences(OrganizationStrategy.Custom, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, "{Type}/{Creator}"),
             _ => OrganizationPreferences.DefaultManual,
         };
+
+    private static string FormatAppVersion(string? informationalVersion)
+        => informationalVersion is null
+            ? "Penumbra Organizer (dev build)"
+            : $"Penumbra Organizer v{informationalVersion.Split('+')[0]}";
 
     private static string NormalizeVirtualFolder(string path)
         => path.Trim().Replace('\\', '/').Trim('/');
