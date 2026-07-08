@@ -453,6 +453,46 @@ public sealed class DryRunAndApplyTests
     }
 
     [Fact]
+    public async Task Apply_ModDataDb_ModWithNoDocument_IsExcludedFromWriteWithWarning_OtherModsStillApply()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CopyRealLiteDbAssembly();
+        context.Fixture.CreateMod("Mover", """{"FileVersion":3,"Name":"Mover","Author":"Author"}""");
+        context.Fixture.CreateMod("Orphan", """{"FileVersion":3,"Name":"Orphan","Author":"Author"}""");
+        // "Orphan" exists on disk but has no mod_data.db document at all -- mirrors a real-world
+        // mod Penumbra never registered in its LiteDB store (reported on a real Linux install).
+        context.Fixture.WriteModDataDb(("Mover", "Current/Folder"));
+
+        await context.ScanAsync();
+        context.Inventory!.Mods.Single(m => m.StableScanId == "Orphan").CurrentVirtualFolder.Should().BeEmpty();
+
+        var snapshot = context.BuildSnapshot(("Mover", "Target/Folder"), ("Orphan", "Target/Orphan"));
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.ApplyPermitted.Should().BeTrue();
+        var orphanEntry = plan.Entries.Single(entry => entry.StableScanId == "Orphan");
+        orphanEntry.RequiresWrite.Should().BeFalse();
+        orphanEntry.Warnings.Should().Contain(w => w.Contains("mod_data.db has no record", StringComparison.Ordinal));
+        // Downgraded to NeedsReview (not left as ValidChange) so DryRunPlanner's ChangedRowCount
+        // and MainViewModel's "All target records mapped" apply-checklist line -- both of which
+        // key off ValidationStatus == ValidChange -- don't misreport this as a mapped-but-unwritten
+        // change.
+        orphanEntry.ValidationStatus.Should().Be(OrganizerRowStatus.NeedsReview);
+        plan.Entries.Single(entry => entry.StableScanId == "Mover").RequiresWrite.Should().BeTrue();
+        plan.Summary.ChangedRowCount.Should().Be(1);
+        plan.Summary.AffectedModCount.Should().Be(1);
+
+        var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
+        var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(ApplyStatus.Completed);
+        var afterApply = PenumbraModDataDb.Load(context.Fixture.PenumbraConfigPath, context.Installation);
+        afterApply.Status.Should().Be(PenumbraModDataDbLoadStatus.Success);
+        afterApply.Data!.GetFolderFor("Mover").Should().Be("Target/Folder");
+        afterApply.Data.GetEntry("Orphan").Should().BeNull();
+    }
+
+    [Fact]
     public async Task Apply_ModDataDbIsAuthoritative_MovesFolder_PreservesUnrelatedAndProtected_AndRollbackReverts()
     {
         using var context = await ApplyTestContext.CreateAsync();

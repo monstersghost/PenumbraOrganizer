@@ -61,8 +61,24 @@ public sealed class ModDataDbVirtualFolderWriter : IPenumbraVirtualFolderWriter
             if (!string.Equals(currentFolder, row.CurrentVirtualFolder, StringComparison.Ordinal))
                 warnings.Add("The authoritative mod_data.db folder no longer matches the scan snapshot.");
 
+            // A mod can exist on disk (and scan successfully) while mod_data.db has no
+            // LocalModData document for it at all -- Penumbra never registered it in its LiteDB
+            // store. There is nothing to update in that case, so exclude it from the write plan
+            // (same treatment as a protected mod) instead of failing the whole apply.
+            var hasModDataDbDocument = state.Data.GetEntry(mod.StableScanId) is not null;
+            if (!hasModDataDbDocument)
+                warnings.Add("mod_data.db has no record for this mod yet. Open it in Penumbra once, then re-scan, before it can be reorganized here.");
+
             var folderChanged = row.Status == OrganizerRowStatus.ValidChange;
-            var requiresWrite = folderChanged && !effectiveProtected;
+            var blockedByMissingDocument = folderChanged && !effectiveProtected && !hasModDataDbDocument;
+            var requiresWrite = folderChanged && !effectiveProtected && hasModDataDbDocument;
+
+            // A mod that would otherwise have a valid, writable change but can't be written
+            // (missing mod_data.db document) is reported as needing review, not silently counted
+            // as an applied change -- keeps the apply-readiness checklist and change counts honest
+            // (DryRunPlanner's ChangedRowCount and MainViewModel's "All target records mapped"
+            // checklist line both key off ValidationStatus == ValidChange).
+            var entryStatus = blockedByMissingDocument ? OrganizerRowStatus.NeedsReview : row.Status;
 
             entries.Add(new DryRunPlanEntry(
                 mod.StableScanId,
@@ -71,7 +87,7 @@ public sealed class ModDataDbVirtualFolderWriter : IPenumbraVirtualFolderWriter
                 row.ProposedVirtualFolder,
                 row.Source,
                 effectiveProtected,
-                row.Status,
+                entryStatus,
                 $"{SchemaFileName}:{mod.StableScanId}",
                 state.SourcePath,
                 mod.StableScanId,
