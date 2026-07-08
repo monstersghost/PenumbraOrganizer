@@ -1360,11 +1360,13 @@ public sealed class MainViewModel : ObservableObject
         var creator = SanitizeFolderSegment(row.EffectiveCreator);
         var hasCreator = !string.IsNullOrWhiteSpace(creator)
                          && !creator.Equals("Unknown creator", StringComparison.OrdinalIgnoreCase);
+        var subcategory = row.DetectedSubcategory;
 
         return strategy switch
         {
             "By creator" => hasCreator ? creator : "Review",
             "By mod type" => type,
+            "By mod type (detailed)" => string.IsNullOrWhiteSpace(subcategory) ? type : $"{type}/{subcategory}",
             "By type and creator" => hasCreator ? $"{type}/{creator}" : type,
             "By creator and type" => hasCreator ? $"{creator}/{type}" : type,
             "Custom" => hasCreator ? $"{type}/{creator}" : type,
