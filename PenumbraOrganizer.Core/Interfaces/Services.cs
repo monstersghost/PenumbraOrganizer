@@ -6,6 +6,7 @@ public interface IPenumbraDiscoveryService
 {
     Task<DiscoveryResult> DiscoverAsync(CancellationToken cancellationToken);
     Task<PenumbraInstallation?> ValidateManualSelectionAsync(string configPath, string? modRoot, string? pluginAssemblyPath, CancellationToken cancellationToken);
+    string? ResolveConfigPathFromFolder(string folderPath);
 }
 
 public interface IPenumbraScanService
