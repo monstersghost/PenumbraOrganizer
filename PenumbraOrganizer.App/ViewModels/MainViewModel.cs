@@ -1324,7 +1324,7 @@ public sealed class MainViewModel : ObservableObject
             proposal.Source = strategy == "Start Manually"
                 ? OrganizerProposalSource.PreservedCurrent
                 : OrganizerProposalSource.DeterministicRule;
-            proposal.NeedsReview = row.DetectedType.Equals("Review", StringComparison.OrdinalIgnoreCase)
+            proposal.NeedsReview = row.DetectedType.Equals("Others", StringComparison.OrdinalIgnoreCase)
                                    || destination.Contains("Review", StringComparison.OrdinalIgnoreCase);
             if (!string.Equals(destination, proposal.CurrentVirtualFolder, StringComparison.Ordinal))
                 changed++;
