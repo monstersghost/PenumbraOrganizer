@@ -96,6 +96,10 @@
                                            Text="{Binding DetectionSummary}"
                                            FontSize="16"
                                            TextWrapping="Wrap" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Text="{Binding AppVersionDisplay}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="12" />
                                 <TextBlock Margin="0,10,0,0"
                                            Text="{Binding CompatibilitySummary}"
                                            Foreground="{StaticResource TextSecondaryBrush}"
