@@ -332,4 +332,116 @@ public sealed class PenumbraScanServiceTests
         var npcMod = inventory.Mods.Should().ContainSingle(m => m.Name == "NPC Mod").Subject;
         npcMod.DetectedCategory.Should().Be(ModCategory.NPC);
     }
+
+    [Fact]
+    public async Task ScanAsync_ExtractsSignalsFromMultiModGroupOptions()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        var modPath = fixture.CreateMod(
+            "Boots Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "Boots Mod",
+              "Author": "Someone"
+            }
+            """);
+        File.WriteAllText(Path.Combine(modPath, "group_001.json"), """
+        {
+          "Name": "Color",
+          "Type": "Multi",
+          "Options": [
+            {
+              "Name": "Black",
+              "Files": {
+                "chara/equipment/e0387/model/c0101e0387_sho.mdl": "files\\black.mdl"
+              },
+              "Manipulations": []
+            },
+            {
+              "Name": "White",
+              "Files": {
+                "chara/equipment/e0387/texture/v01_c0101e0387_sho_d.tex": "files\\white.tex"
+              },
+              "Manipulations": []
+            }
+          ]
+        }
+        """);
+        fixture.WriteSortOrder(("Boots Mod", "Boots Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Boots Mod").Subject;
+        mod.DetectedCategory.Should().Be(ModCategory.Gear);
+        mod.DetectedSubcategory.Should().Be("sho");
+        mod.Targets.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ExtractsSignalsFromCombiningModGroupContainers()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        var modPath = fixture.CreateMod(
+            "Combining Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "Combining Mod",
+              "Author": "Someone"
+            }
+            """);
+        File.WriteAllText(Path.Combine(modPath, "group_001.json"), """
+        {
+          "Name": "Toggles",
+          "Type": "Combining",
+          "Options": [
+            { "Name": "Toggle A" },
+            { "Name": "Toggle B" }
+          ],
+          "Containers": [
+            {
+              "Files": {
+                "chara/equipment/e0387/model/c0101e0387_sho.mdl": "files\\a.mdl"
+              },
+              "Manipulations": []
+            }
+          ]
+        }
+        """);
+        fixture.WriteSortOrder(("Combining Mod", "Combining Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Combining Mod").Subject;
+        mod.DetectedCategory.Should().Be(ModCategory.Gear);
+    }
 }
