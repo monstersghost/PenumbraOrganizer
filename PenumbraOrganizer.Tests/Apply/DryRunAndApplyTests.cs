@@ -65,6 +65,26 @@ public sealed class DryRunAndApplyTests
     }
 
     [Fact]
+    public async Task Plan_WithNoProposedChanges_IsValidWithoutBenignRowNotesAsWarnings()
+    {
+        using var context = await ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Stay Mod", """{"FileVersion":3,"Name":"Stay Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Stay Mod", "Current/Folder"));
+        await context.ScanAsync();
+
+        // No changes proposed: every mod keeps its current folder, matching a user who has not
+        // chosen an organization strategy or made any manual assignment yet.
+        var snapshot = context.BuildSnapshot();
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.FileChanges.Should().BeEmpty();
+        plan.ApplyPermitted.Should().BeFalse();
+        plan.Validation.Status.Should().Be(DryRunPlanValidationStatus.Valid);
+        plan.Validation.Errors.Should().BeEmpty();
+        plan.Warnings.Should().NotContain(w => w.Contains("No folder change", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task EmptyFolder_IsPersisted_EvenWithoutModMoves()
     {
         using var context = await ApplyTestContext.CreateAsync();
