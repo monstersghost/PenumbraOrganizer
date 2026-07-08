@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Microsoft.Win32;
 using System.Windows;
@@ -293,6 +294,9 @@ public sealed class MainViewModel : ObservableObject
     public bool InstallationFound => _installation is not null;
 
     public bool InstallationMissing => _installation is null;
+
+    public string AppVersionDisplay { get; } = FormatAppVersion(
+        typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 
     public string ManualConfigPath
     {
@@ -690,24 +694,33 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task ChoosePenumbraConfigAsync()
     {
-        var dialog = new OpenFileDialog
+        var dialog = new OpenFolderDialog
         {
-            Title = "Choose Penumbra.json",
-            Filter = "Penumbra configuration|Penumbra.json|JSON files|*.json",
-            CheckFileExists = true,
+            Title = "Choose Penumbra's Config Folder",
             Multiselect = false,
         };
 
         if (dialog.ShowDialog() != true)
             return;
 
+        var resolvedConfigPath = _discoveryService.ResolveConfigPathFromFolder(dialog.FolderName);
+        if (resolvedConfigPath is null)
+        {
+            MessageBox.Show(
+                "Could not find Penumbra.json near that folder. Point to XIVLauncher's pluginConfigs folder (or the Penumbra folder inside it), and the app will find the rest.",
+                "Penumbra not found",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         try
         {
-            var installation = await _discoveryService.ValidateManualSelectionAsync(dialog.FileName, null, null, CancellationToken.None);
+            var installation = await _discoveryService.ValidateManualSelectionAsync(resolvedConfigPath, null, null, CancellationToken.None);
             if (installation is null)
             {
                 MessageBox.Show(
-                    "That file does not look like a usable Penumbra configuration. Choose Penumbra.json from XIVLauncher's pluginConfigs folder.",
+                    "That folder does not look like a usable Penumbra configuration. Choose XIVLauncher's pluginConfigs folder (or the Penumbra folder inside it).",
                     "Penumbra not found",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -715,10 +728,10 @@ public sealed class MainViewModel : ObservableObject
             }
 
             _installation = installation;
-            ManualConfigPath = dialog.FileName;
+            ManualConfigPath = resolvedConfigPath;
             DetectionSummary = BuildHomeSummary(_installation, _inventory);
             ProgressMessage = "Penumbra selected manually.";
-            AppendLog($"Selected Penumbra configuration manually: {dialog.FileName}");
+            AppendLog($"Selected Penumbra configuration manually: {resolvedConfigPath}");
             RaiseInstallationChanged();
         }
         catch (Exception ex)
@@ -1324,7 +1337,7 @@ public sealed class MainViewModel : ObservableObject
             proposal.Source = strategy == "Start Manually"
                 ? OrganizerProposalSource.PreservedCurrent
                 : OrganizerProposalSource.DeterministicRule;
-            proposal.NeedsReview = row.DetectedType.Equals("Review", StringComparison.OrdinalIgnoreCase)
+            proposal.NeedsReview = row.DetectedType.Equals("Others", StringComparison.OrdinalIgnoreCase)
                                    || destination.Contains("Review", StringComparison.OrdinalIgnoreCase);
             if (!string.Equals(destination, proposal.CurrentVirtualFolder, StringComparison.Ordinal))
                 changed++;
@@ -1360,11 +1373,13 @@ public sealed class MainViewModel : ObservableObject
         var creator = SanitizeFolderSegment(row.EffectiveCreator);
         var hasCreator = !string.IsNullOrWhiteSpace(creator)
                          && !creator.Equals("Unknown creator", StringComparison.OrdinalIgnoreCase);
+        var subcategory = row.DetectedSubcategory;
 
         return strategy switch
         {
             "By creator" => hasCreator ? creator : "Review",
             "By mod type" => type,
+            "By mod type (detailed)" => string.IsNullOrWhiteSpace(subcategory) ? type : $"{type}/{subcategory}",
             "By type and creator" => hasCreator ? $"{type}/{creator}" : type,
             "By creator and type" => hasCreator ? $"{creator}/{type}" : type,
             "Custom" => hasCreator ? $"{type}/{creator}" : type,
@@ -2594,11 +2609,17 @@ public sealed class MainViewModel : ObservableObject
         {
             "By creator" => new OrganizationPreferences(OrganizationStrategy.CreatorOnly, false, true, [OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.PreserveCurrent, UnknownTypeBehavior.NotApplicable, UncertainClassificationBehavior.Review, true, null),
             "By mod type" => new OrganizationPreferences(OrganizationStrategy.TypeOnly, true, false, [OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.NotApplicable, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
+            "By mod type (detailed)" => new OrganizationPreferences(OrganizationStrategy.TypeOnly, true, false, [OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.NotApplicable, UnknownTypeBehavior.PreserveCurrent, UncertainClassificationBehavior.Review, true, null),
             "By type and creator" => new OrganizationPreferences(OrganizationStrategy.TypeThenCreator, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
             "By creator and type" => new OrganizationPreferences(OrganizationStrategy.CreatorThenType, true, true, [OrganizationFolderComponent.Creator, OrganizationFolderComponent.Type], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, null),
             "Custom" => new OrganizationPreferences(OrganizationStrategy.Custom, true, true, [OrganizationFolderComponent.Type, OrganizationFolderComponent.Creator], null, true, true, true, UnknownCreatorBehavior.Review, UnknownTypeBehavior.Review, UncertainClassificationBehavior.Review, true, "{Type}/{Creator}"),
             _ => OrganizationPreferences.DefaultManual,
         };
+
+    private static string FormatAppVersion(string? informationalVersion)
+        => informationalVersion is null
+            ? "Penumbra Organizer (dev build)"
+            : $"Penumbra Organizer v{informationalVersion.Split('+')[0]}";
 
     private static string NormalizeVirtualFolder(string path)
         => path.Trim().Replace('\\', '/').Trim('/');

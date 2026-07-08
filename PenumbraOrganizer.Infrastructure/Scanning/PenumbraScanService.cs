@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Infrastructure.Scanning;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PenumbraOrganizer.Core.Classification;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
@@ -215,6 +216,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
             ? ReadLocalModDataFromDb(modDataDbEntries, directoryName)
             : ReadLocalModData(modDataDirectory, directoryName, warnings);
 
+        var targets = ModPathClassifier.Classify(contentPaths);
+        var (detectedCategory, detectedSubcategory) = ModPathClassifier.Resolve(targets);
+
         return new ModScanResult
         {
             StableScanId = directoryName,
@@ -240,6 +244,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
             ContentSignalSummary = SummarizeContentSignals(contentPaths),
             SchemaFingerprints = schemaFingerprints,
             RawMetadata = new JsonReadOnlyMemory(rawFiles),
+            Targets = targets,
+            DetectedCategory = detectedCategory,
+            DetectedSubcategory = detectedSubcategory,
         };
     }
 
@@ -408,13 +415,30 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
     private static void ExtractContentSignals(JsonElement root, ICollection<string> paths)
     {
-        if (root.TryGetProperty("Files", out var files) && files.ValueKind == JsonValueKind.Object)
+        ExtractFilesAndManipulations(root, paths);
+
+        if (root.TryGetProperty("Options", out var options) && options.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var option in options.EnumerateArray())
+                ExtractFilesAndManipulations(option, paths);
+        }
+
+        if (root.TryGetProperty("Containers", out var containers) && containers.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var container in containers.EnumerateArray())
+                ExtractFilesAndManipulations(container, paths);
+        }
+    }
+
+    private static void ExtractFilesAndManipulations(JsonElement element, ICollection<string> paths)
+    {
+        if (element.TryGetProperty("Files", out var files) && files.ValueKind == JsonValueKind.Object)
         {
             foreach (var entry in files.EnumerateObject())
                 paths.Add(entry.Name);
         }
 
-        if (root.TryGetProperty("Manipulations", out var manipulations) && manipulations.ValueKind == JsonValueKind.Array)
+        if (element.TryGetProperty("Manipulations", out var manipulations) && manipulations.ValueKind == JsonValueKind.Array)
         {
             foreach (var item in manipulations.EnumerateArray())
             {

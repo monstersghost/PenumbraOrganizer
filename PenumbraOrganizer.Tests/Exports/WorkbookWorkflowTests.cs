@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Tests.Exports;
 using ClosedXML.Excel;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using PenumbraOrganizer.Core.Classification;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Exports;
@@ -30,8 +31,8 @@ public sealed class WorkbookWorkflowTests
         imported.Errors.Should().BeEmpty();
         imported.Rows.Should().ContainSingle();
         imported.Rows[0].StableScanId.Should().Be("Dress01");
-        imported.Rows[0].ResolvedModType.Should().Be("Clothing");
-        imported.Rows[0].ResolvedDestination.Should().Be("Clothing/Bizu");
+        imported.Rows[0].ResolvedModType.Should().Be("Gear");
+        imported.Rows[0].ResolvedDestination.Should().Be("Gear/Bizu");
     }
 
     [Fact]
@@ -44,7 +45,7 @@ public sealed class WorkbookWorkflowTests
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
             var sheet = workbook.Worksheet("Edit Destinations");
-            sheet.Cell(2, 5).Value = "7";
+            sheet.Cell(2, 5).Value = "16";
             workbook.Save();
         }
 
@@ -52,7 +53,7 @@ public sealed class WorkbookWorkflowTests
 
         imported.Errors.Should().BeEmpty();
         imported.Rows.Should().ContainSingle();
-        imported.Rows[0].ResolvedModType.Should().Be("Review");
+        imported.Rows[0].ResolvedModType.Should().Be("Others");
         imported.Rows[0].ResolvedDestination.Should().BeNull();
     }
 
@@ -66,7 +67,7 @@ public sealed class WorkbookWorkflowTests
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
             var sheet = workbook.Worksheet("Edit Destinations");
-            sheet.Cell(2, 7).Value = "7/Review";
+            sheet.Cell(2, 7).Value = "16/Review";
             workbook.Save();
         }
 
@@ -74,7 +75,7 @@ public sealed class WorkbookWorkflowTests
 
         imported.Errors.Should().BeEmpty();
         imported.Rows.Should().ContainSingle();
-        imported.Rows[0].ResolvedDestination.Should().Be("Review/Review");
+        imported.Rows[0].ResolvedDestination.Should().Be("Others/Review");
     }
 
     [Fact]
@@ -336,6 +337,7 @@ public sealed class WorkbookWorkflowTests
                 Protected = mod.Protected,
                 Warnings = Array.Empty<string>(),
                 ContentSignalSummary = mod.Name,
+                DetectedCategory = ModCategory.Gear,
                 SchemaFingerprints = Array.Empty<SchemaFingerprint>(),
                 RawMetadata = JsonReadOnlyMemory.Empty,
             }).ToArray(),

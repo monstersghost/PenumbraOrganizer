@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\PenumbraOrganizer.App\PenumbraOrganizer.App.csproj" />
     <ProjectReference Include="..\PenumbraOrganizer.Core\PenumbraOrganizer.Core.csproj" />
     <ProjectReference Include="..\PenumbraOrganizer.Infrastructure\PenumbraOrganizer.Infrastructure.csproj" />
   </ItemGroup>

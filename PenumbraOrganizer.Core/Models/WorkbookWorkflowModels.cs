@@ -1,3 +1,5 @@
+using PenumbraOrganizer.Core.Classification;
+
 namespace PenumbraOrganizer.Core.Models;
 
 public sealed record WorkbookCategoryDefinition(
@@ -41,79 +43,50 @@ public sealed record WorkbookImportResult(
 
 public static class WorkbookCategoryCatalog
 {
-    public const int CurrentFormatVersion = 1;
+    public const int CurrentFormatVersion = 2;
     public const string BlankDestinationRule = "Blank destination leaves the mod in its current folder.";
-    public const string ReviewRule = "Use mod type Review or destination 7/Review when a row still needs manual attention.";
+    public const string ReviewRule = "Use mod type Others or destination 16/Others when a row still needs manual attention.";
 
     public static IReadOnlyList<WorkbookCategoryDefinition> Definitions { get; } =
     [
-        new(1, "Clothing", "Gear, outfits, dresses, tops, bottoms, shoes, and similar wearable mods.", "1/Bizu"),
-        new(2, "Accessories", "Accessories, jewelry, horns, ears, tails, hats, and similar add-ons.", "2/Creator"),
-        new(3, "Bodies", "Body replacements, body scales, body shapes, hands, and feet.", "3/Creator"),
-        new(4, "Skin", "Skin textures, makeup, tattoos, freckles, scales, and similar appearance overlays.", "4/Creator"),
-        new(5, "VFX and Animation", "Animations, VFX, emotes, action swaps, PAP/TMB/AVFX content.", "5/Creator"),
-        new(6, "Minions", "Minions, companions, and pet-style cosmetic mods.", "6/Creator"),
-        new(7, "Review", "Rows that need a human decision because the type or destination still needs attention.", "7/Review"),
-        new(8, "Others", "Anything valid that does not fit the broader categories cleanly.", "8/Creator"),
+        new(1, "Gear", "Equipment and accessories: head, body, hands, legs, feet, ears, neck, wrists, and rings.", "1/Creator"),
+        new(2, "Weapon", "Weapon mods.", "2/Creator"),
+        new(3, "Face", "Face mesh and texture replacements.", "3/Creator"),
+        new(4, "Hair", "Hair mesh and texture replacements.", "4/Creator"),
+        new(5, "Body", "Body mesh replacements, plus tail and ear meshes.", "5/Creator"),
+        new(6, "Skin", "Body texture-only retextures, no mesh replacement.", "6/Creator"),
+        new(7, "NPC", "Mods that reskin or reshape a specific NPC rather than a playable character.", "7/Creator"),
+        new(8, "Minion", "Minion companion mods.", "8/Creator"),
+        new(9, "Mount", "Mount mods.", "9/Creator"),
+        new(10, "Pet", "Battle pet mods: fairies, egis, turrets, and similar.", "10/Creator"),
+        new(11, "Ornament", "Worn fashion accessories such as wings and halos.", "11/Creator"),
+        new(12, "Furniture", "Housing furniture and fixtures.", "12/Creator"),
+        new(13, "VFX", "Visual effects.", "13/Creator"),
+        new(14, "Sound", "Sound replacements.", "14/Creator"),
+        new(15, "Animation", "Animation and emote replacements.", "15/Creator"),
+        new(16, "Others", "Anything that doesn't match a specific category, or needs manual review.", "16/Review"),
     ];
 
     /// <summary>
-    /// Deterministic type classification. Stronger semantic signals (a genuine clothing/body item)
-    /// win over raw file counts, so the checks are ordered Clothing → Accessories → Bodies → Skin →
-    /// VFX/Animation → Minions. Texture quantity alone never forces Skin (we only match explicit
-    /// skin/makeup wording). When nothing matches and evidence is thin, the mod goes to Review.
+    /// Classification is computed structurally at scan time by <c>ModPathClassifier</c> from the
+    /// mod's own game paths and manipulation slots (see <c>ModScanResult.DetectedCategory</c>).
+    /// This is a thin lookup from that already-computed category to its workbook definition.
     /// </summary>
     public static WorkbookCategoryDefinition Detect(ModScanResult mod)
-    {
-        var haystack = string.Join(
-            ' ',
-            new[]
-            {
-                mod.Name,
-                mod.Author,
-                mod.Description,
-                mod.ContentSignalSummary,
-            }.Concat(mod.Tags)).ToLowerInvariant();
-
-        if (ContainsAny(haystack, "dress", "outfit", "cloth", "clothing", "heels", "shoe", "boots", "top", "bottom", "jacket", "shirt", "skirt", "pants"))
-            return GetRequiredByCode(1);
-
-        if (ContainsAny(haystack, "accessory", "horn", "ear", "tail", "glasses", "jewelry", "ring", "bracelet", "necklace", "hat", "piercing"))
-            return GetRequiredByCode(2);
-
-        if (ContainsAny(haystack, "body", "bibo", "gen3", "tbse", "bodyscale", "hands", "feet", "torso", "muscle"))
-            return GetRequiredByCode(3);
-
-        if (ContainsAny(haystack, "skin", "makeup", "tattoo", "freckle", "body paint", "face texture"))
-            return GetRequiredByCode(4);
-
-        if (ContainsAny(haystack, "animation", "anim", "pap", "avfx", "vfx", "tmb", "emote", "pose", "action"))
-            return GetRequiredByCode(5);
-
-        if (ContainsAny(haystack, "minion", "companion", "pet"))
-            return GetRequiredByCode(6);
-
-        if (mod.Warnings.Count > 0 || string.IsNullOrWhiteSpace(mod.Author))
-            return GetRequiredByCode(7);
-
-        return GetRequiredByCode(8);
-    }
+        => GetRequiredByCode((int)mod.DetectedCategory);
 
     public static bool TryGetByCode(int code, out WorkbookCategoryDefinition category)
     {
-        category = Definitions.FirstOrDefault(item => item.Code == code) ?? GetRequiredByCode(8);
+        category = Definitions.FirstOrDefault(item => item.Code == code) ?? GetRequiredByCode((int)ModCategory.Others);
         return Definitions.Any(item => item.Code == code);
     }
 
     public static bool TryGetByName(string name, out WorkbookCategoryDefinition category)
     {
-        category = Definitions.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) ?? GetRequiredByCode(8);
+        category = Definitions.FirstOrDefault(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) ?? GetRequiredByCode((int)ModCategory.Others);
         return Definitions.Any(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
     }
 
     public static WorkbookCategoryDefinition GetRequiredByCode(int code)
         => Definitions.First(item => item.Code == code);
-
-    private static bool ContainsAny(string haystack, params string[] needles)
-        => needles.Any(needle => haystack.Contains(needle, StringComparison.Ordinal));
 }
