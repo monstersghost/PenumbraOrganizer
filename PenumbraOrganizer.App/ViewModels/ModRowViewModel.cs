@@ -41,6 +41,7 @@ public sealed class ModRowViewModel : ObservableObject
         CollectionCount = mod.CollectionStates.Count;
         WarningSummary = mod.Warnings.Count == 0 ? string.Empty : string.Join(" | ", mod.Warnings.Take(3));
         _detectedType = WorkbookCategoryCatalog.Detect(mod).Name;
+        DetectedSubcategory = FriendlySubcategory(mod.DetectedSubcategory);
     }
 
     public OrganizerModProposal Proposal { get; }
@@ -49,6 +50,7 @@ public sealed class ModRowViewModel : ObservableObject
     public string Author { get; }
     public string CurrentVirtualFolder { get; }
     public string PhysicalDirectory { get; }
+    public string? DetectedSubcategory { get; }
     public bool Protected
     {
         get => _protected;
@@ -140,6 +142,18 @@ public sealed class ModRowViewModel : ObservableObject
             OrganizerProposalSource.PreservedCurrent => "Preserved current",
             OrganizerProposalSource.RestoredByUndo => "Restored by undo",
             _ => source.ToString(),
+        };
+
+    private static string? FriendlySubcategory(string? rawSuffix)
+        => rawSuffix?.ToLowerInvariant() switch
+        {
+            "met" => "Hats and Glasses",
+            "top" => "Tops",
+            "glv" => "Gloves",
+            "dwn" => "Pants and Shorts",
+            "sho" => "Boots and Sandals",
+            "ear" or "nek" or "wrs" or "ril" or "rir" => "Jewelry and Accessories",
+            _ => null,
         };
 
 }
