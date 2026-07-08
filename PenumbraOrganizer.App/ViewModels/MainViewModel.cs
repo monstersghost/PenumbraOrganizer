@@ -694,24 +694,33 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task ChoosePenumbraConfigAsync()
     {
-        var dialog = new OpenFileDialog
+        var dialog = new OpenFolderDialog
         {
-            Title = "Choose Penumbra.json",
-            Filter = "Penumbra configuration|Penumbra.json|JSON files|*.json",
-            CheckFileExists = true,
+            Title = "Choose Penumbra's Config Folder",
             Multiselect = false,
         };
 
         if (dialog.ShowDialog() != true)
             return;
 
+        var resolvedConfigPath = _discoveryService.ResolveConfigPathFromFolder(dialog.FolderName);
+        if (resolvedConfigPath is null)
+        {
+            MessageBox.Show(
+                "Could not find Penumbra.json near that folder. Point to XIVLauncher's pluginConfigs folder (or the Penumbra folder inside it), and the app will find the rest.",
+                "Penumbra not found",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
         try
         {
-            var installation = await _discoveryService.ValidateManualSelectionAsync(dialog.FileName, null, null, CancellationToken.None);
+            var installation = await _discoveryService.ValidateManualSelectionAsync(resolvedConfigPath, null, null, CancellationToken.None);
             if (installation is null)
             {
                 MessageBox.Show(
-                    "That file does not look like a usable Penumbra configuration. Choose Penumbra.json from XIVLauncher's pluginConfigs folder.",
+                    "That folder does not look like a usable Penumbra configuration. Choose XIVLauncher's pluginConfigs folder (or the Penumbra folder inside it).",
                     "Penumbra not found",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -719,10 +728,10 @@ public sealed class MainViewModel : ObservableObject
             }
 
             _installation = installation;
-            ManualConfigPath = dialog.FileName;
+            ManualConfigPath = resolvedConfigPath;
             DetectionSummary = BuildHomeSummary(_installation, _inventory);
             ProgressMessage = "Penumbra selected manually.";
-            AppendLog($"Selected Penumbra configuration manually: {dialog.FileName}");
+            AppendLog($"Selected Penumbra configuration manually: {resolvedConfigPath}");
             RaiseInstallationChanged();
         }
         catch (Exception ex)

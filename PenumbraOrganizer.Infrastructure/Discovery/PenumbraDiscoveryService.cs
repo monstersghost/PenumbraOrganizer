@@ -91,6 +91,18 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
         return Task.FromResult<PenumbraInstallation?>(result);
     }
 
+    public string? ResolveConfigPathFromFolder(string folderPath)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(folderPath, "Penumbra.json"),
+            Path.Combine(folderPath, "pluginConfigs", "Penumbra.json"),
+            Path.Combine(folderPath, "..", "Penumbra.json"),
+        };
+
+        return candidates.Select(Path.GetFullPath).FirstOrDefault(File.Exists);
+    }
+
     private static IEnumerable<string> GetCandidateBasePaths()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);

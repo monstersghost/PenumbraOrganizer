@@ -64,4 +64,51 @@ public sealed class PenumbraDiscoveryServiceTests
         result.Installations[0].ModRoot.Should().Be(@"Z:\home\deck\Mods");
         result.Installations[0].Warnings.Should().NotContain(warning => warning.Contains("version 1"));
     }
+
+    [Fact]
+    public void ResolveConfigPathFromFolder_FindsPenumbraJsonInPluginConfigsFolder()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+
+        var service = new PenumbraDiscoveryService(NullLogger<PenumbraDiscoveryService>.Instance);
+        var resolved = service.ResolveConfigPathFromFolder(fixture.PluginConfigsPath);
+
+        resolved.Should().Be(fixture.PenumbraJsonPath);
+    }
+
+    [Fact]
+    public void ResolveConfigPathFromFolder_FindsPenumbraJsonWhenPointedAtXivLauncherBaseFolder()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+
+        var service = new PenumbraDiscoveryService(NullLogger<PenumbraDiscoveryService>.Instance);
+        var resolved = service.ResolveConfigPathFromFolder(fixture.BasePath);
+
+        resolved.Should().Be(fixture.PenumbraJsonPath);
+    }
+
+    [Fact]
+    public void ResolveConfigPathFromFolder_FindsPenumbraJsonWhenPointedAtPenumbraSubfolder()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+
+        var service = new PenumbraDiscoveryService(NullLogger<PenumbraDiscoveryService>.Instance);
+        var resolved = service.ResolveConfigPathFromFolder(fixture.PenumbraConfigPath);
+
+        resolved.Should().Be(fixture.PenumbraJsonPath);
+    }
+
+    [Fact]
+    public void ResolveConfigPathFromFolder_ReturnsNullWhenNothingFound()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+
+        var service = new PenumbraDiscoveryService(NullLogger<PenumbraDiscoveryService>.Instance);
+        var resolved = service.ResolveConfigPathFromFolder(fixture.RootPath);
+
+        resolved.Should().BeNull();
+    }
 }
