@@ -857,6 +857,10 @@
                                 <TextBlock Text="Settings"
                                            FontSize="20"
                                            FontWeight="SemiBold" />
+                                <TextBlock Margin="0,4,0,0"
+                                           Text="{Binding AppVersionDisplay}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="12" />
                                 <CheckBox Margin="0,14,0,0"
                                           IsChecked="{Binding ShowAdvancedTools}"
                                           Content="Show advanced tools and diagnostics" />
