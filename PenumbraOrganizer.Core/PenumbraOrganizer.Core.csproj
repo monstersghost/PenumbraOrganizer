@@ -7,4 +7,8 @@
     <RootNamespace>PenumbraOrganizer.Core</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Classification\MonsterCategoryTable.json" />
+  </ItemGroup>
+
 </Project>
