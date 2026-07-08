@@ -72,7 +72,8 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
         if (!IsPlausibleConfigDirectory(configPath))
             return Task.FromResult<PenumbraInstallation?>(null);
 
-        var version = ReadInstalledVersion(pluginAssemblyPath, GetPluginManifestPath(pluginAssemblyPath));
+        var resolvedPluginAssemblyPath = ResolvePluginAssemblyPath(configPath, pluginAssemblyPath);
+        var version = ReadInstalledVersion(resolvedPluginAssemblyPath, GetPluginManifestPath(resolvedPluginAssemblyPath));
         var warnings = new List<string>();
         if (string.IsNullOrWhiteSpace(version))
             warnings.Add("Penumbra plugin version could not be read from the selected plugin files.");
@@ -81,8 +82,8 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
             configPath,
             Path.Combine(Path.GetDirectoryName(configPath)!, "Penumbra"),
             resolvedModRoot,
-            pluginAssemblyPath,
-            GetPluginManifestPath(pluginAssemblyPath),
+            resolvedPluginAssemblyPath,
+            GetPluginManifestPath(resolvedPluginAssemblyPath),
             version,
             DiscoveryConfidence.Manual,
             new[] { new DiscoveryEvidence("Manual selection", "User selected Penumbra paths manually.") },
@@ -208,6 +209,24 @@ public sealed class PenumbraDiscoveryService : IPenumbraDiscoveryService
             return false;
 
         return Directory.Exists(Path.Combine(directory, "Penumbra"));
+    }
+
+    // Manual config selection (ChoosePenumbraConfigAsync) only ever supplies a config path, never a
+    // plugin assembly path — so without this fallback, PluginAssemblyPath stays null even when the
+    // installed plugin (and the LiteDB.dll next to it) is sitting right there on disk. That silently
+    // breaks the ModDataDb backend for anyone who has to browse to Penumbra.json manually (e.g. a
+    // Linux/Proton setup where auto-discovery's candidate base paths don't match).
+    private static string? ResolvePluginAssemblyPath(string configPath, string? providedPluginAssemblyPath)
+    {
+        if (!string.IsNullOrWhiteSpace(providedPluginAssemblyPath))
+            return providedPluginAssemblyPath;
+
+        var pluginConfigsDirectory = Path.GetDirectoryName(configPath);
+        var basePath = pluginConfigsDirectory is null ? null : Path.GetDirectoryName(pluginConfigsDirectory);
+        if (string.IsNullOrWhiteSpace(basePath))
+            return null;
+
+        return FindNewestPluginAssembly(Path.Combine(basePath, "installedPlugins", "Penumbra"));
     }
 
     private static string? FindNewestPluginAssembly(string pluginDirectory)
