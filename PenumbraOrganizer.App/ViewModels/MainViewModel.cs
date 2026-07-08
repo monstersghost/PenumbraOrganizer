@@ -2010,7 +2010,9 @@ public sealed class MainViewModel : ObservableObject
 
         if (!_currentDryRunPlan.ApplyPermitted || _currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
         {
-            BackupStatus = "Backup and Apply is blocked until the review issues are fixed.";
+            BackupStatus = HasNoProposedChanges(_currentDryRunPlan)
+                ? "There are no proposed changes to apply yet."
+                : "Backup and Apply is blocked until the review issues are fixed.";
             ApplyChecklist = BuildApplyChecklist();
             ApplyUnavailableReason = BuildApplyUnavailableReason();
             RefreshDryRunCommandState();
@@ -2083,6 +2085,7 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Backup and Apply failed");
+            AppendLog("Backup and Apply failed: " + ex.Message);
             await _backups.RefreshAsync();
             await RefreshRecoveryStatusAsync();
 
@@ -2275,6 +2278,9 @@ public sealed class MainViewModel : ObservableObject
         if (_currentDryRunPlan.Validation.Status != DryRunPlanValidationStatus.Valid)
             return "The review plan is out of date. Scan again before applying changes.";
 
+        if (HasNoProposedChanges(_currentDryRunPlan))
+            return "There are no proposed changes to apply. Choose an organization strategy or assign mods to folders, then return to Review Changes.";
+
         if (_preparedApplyOperation is null)
             return "A verified backup will be created automatically before Apply.";
 
@@ -2386,6 +2392,13 @@ public sealed class MainViewModel : ObservableObject
 
     private string BuildPlanBlockedMessage(DryRunPlan plan)
     {
+        if (HasNoProposedChanges(plan))
+        {
+            return "There are no proposed changes to apply yet." +
+                   Environment.NewLine + Environment.NewLine +
+                   "Choose an organization strategy or assign mods to folders in Organize, then return to Review Changes.";
+        }
+
         var blockers = plan.Validation.Errors
             .Concat(plan.Validation.Warnings)
             .Where(message => !string.IsNullOrWhiteSpace(message))
@@ -2400,6 +2413,12 @@ public sealed class MainViewModel : ObservableObject
                Environment.NewLine + Environment.NewLine +
                string.Join(Environment.NewLine, blockers);
     }
+
+    // ApplyPermitted is false with zero real validation errors when the plan simply has nothing to
+    // write (no strategy chosen yet, or every row already matches its current folder). That is not
+    // a data problem, so it gets its own message instead of falling into the generic blockers list.
+    private static bool HasNoProposedChanges(DryRunPlan plan)
+        => plan.FileChanges.Count == 0 && plan.Validation.Errors.Count == 0;
 
     private static string BuildHomeSummary(PenumbraInstallation? installation, ScanInventory? inventory)
     {
@@ -2430,8 +2449,8 @@ public sealed class MainViewModel : ObservableObject
             UnauthorizedAccessException => "Windows blocked access to sort_order.json." + Environment.NewLine + "No files were changed.",
             IOException ioException when ioException.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
                 => "Penumbra's data is locked right now." + Environment.NewLine + "Close FFXIV and any tool that may be holding sort_order.json open, then try again.",
-            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("blocking process", StringComparison.OrdinalIgnoreCase)
-                => "FFXIV is currently running." + Environment.NewLine + "Close the game before applying changes.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("processes are running", StringComparison.OrdinalIgnoreCase)
+                => invalidOperation.Message + Environment.NewLine + "Close FFXIV and any related launcher or plugin process, then try again.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("authoritative target", StringComparison.OrdinalIgnoreCase)
                 => "The Penumbra data changed after the scan." + Environment.NewLine + "Scan again before applying changes.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("no supported writable changes", StringComparison.OrdinalIgnoreCase)
