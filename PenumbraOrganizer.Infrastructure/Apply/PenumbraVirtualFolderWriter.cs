@@ -50,7 +50,7 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
 
             proposalsById.TryGetValue(mod.StableScanId, out var proposal);
             var warnings = new List<string>(mod.Warnings);
-            if (!string.IsNullOrWhiteSpace(row.Message))
+            if (!string.IsNullOrWhiteSpace(row.Message) && IsNoteworthyRowStatus(row.Status))
                 warnings.Add(row.Message);
 
             var effectiveProtected = mod.Protected || proposal?.Protected == true;
@@ -94,6 +94,13 @@ public sealed class PenumbraVirtualFolderWriter : IPenumbraVirtualFolderWriter
 
         return Task.FromResult<IReadOnlyList<DryRunPlanEntry>>(entries);
     }
+
+    // Unchanged/ValidChange/Protected messages ("No folder change.", "Ready for Review Changes.",
+    // "Protected and unchanged.") are display-only Notes-column text, not warnings -- surfacing them
+    // here would make an "Apply is blocked" dialog list normal, expected rows as if they were the
+    // reason Apply is blocked.
+    private static bool IsNoteworthyRowStatus(OrganizerRowStatus status)
+        => status is not (OrganizerRowStatus.Unchanged or OrganizerRowStatus.ValidChange or OrganizerRowStatus.Protected);
 
     public async Task<IReadOnlyList<DryRunFileChange>> BuildExpectedFileChangesAsync(
         PenumbraInstallation installation,
