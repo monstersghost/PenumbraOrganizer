@@ -2083,6 +2083,7 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "Backup and Apply failed");
+            AppendLog("Backup and Apply failed: " + ex.Message);
             await _backups.RefreshAsync();
             await RefreshRecoveryStatusAsync();
 
