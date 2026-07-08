@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Infrastructure.Exports;
 using ClosedXML.Excel;
 using System.IO.Compression;
 using Microsoft.Extensions.Logging;
+using PenumbraOrganizer.Core.Classification;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Infrastructure.Sessions;
@@ -407,7 +408,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         var code = category.Code.ToString();
         return organizationPreferences.Strategy switch
         {
-            OrganizationStrategy.CreatorOnly => string.IsNullOrWhiteSpace(creator) ? WorkbookCategoryCatalog.GetRequiredByCode(7).Code.ToString() : creator,
+            OrganizationStrategy.CreatorOnly => string.IsNullOrWhiteSpace(creator) ? WorkbookCategoryCatalog.GetRequiredByCode((int)ModCategory.Others).Code.ToString() : creator,
             OrganizationStrategy.TypeOnly => code,
             OrganizationStrategy.TypeThenCreator => string.IsNullOrWhiteSpace(creator) ? code : $"{code}/{creator}",
             OrganizationStrategy.CreatorThenType => string.IsNullOrWhiteSpace(creator) ? code : $"{creator}/{code}",
