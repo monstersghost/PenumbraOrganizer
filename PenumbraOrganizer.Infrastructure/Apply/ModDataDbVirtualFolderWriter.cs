@@ -61,8 +61,16 @@ public sealed class ModDataDbVirtualFolderWriter : IPenumbraVirtualFolderWriter
             if (!string.Equals(currentFolder, row.CurrentVirtualFolder, StringComparison.Ordinal))
                 warnings.Add("The authoritative mod_data.db folder no longer matches the scan snapshot.");
 
+            // A mod can exist on disk (and scan successfully) while mod_data.db has no
+            // LocalModData document for it at all -- Penumbra never registered it in its LiteDB
+            // store. There is nothing to update in that case, so exclude it from the write plan
+            // (same treatment as a protected mod) instead of failing the whole apply.
+            var hasModDataDbDocument = state.Data.GetEntry(mod.StableScanId) is not null;
+            if (!hasModDataDbDocument)
+                warnings.Add("mod_data.db has no record for this mod yet. Open it in Penumbra once, then re-scan, before it can be reorganized here.");
+
             var folderChanged = row.Status == OrganizerRowStatus.ValidChange;
-            var requiresWrite = folderChanged && !effectiveProtected;
+            var requiresWrite = folderChanged && !effectiveProtected && hasModDataDbDocument;
 
             entries.Add(new DryRunPlanEntry(
                 mod.StableScanId,
