@@ -21,8 +21,9 @@ Minion/Mount/Pet/Ornament, or Furniture/Sound detection at all.
 
 ## Decided category list
 
-15 categories, replacing the old 8 (Clothing, Accessories, Bodies, Skin, VFX and Animation,
-Minions, Review, Others), plus an `Others` fallback:
+15 primary categories, replacing the old 8 (Clothing, Accessories, Bodies, Skin, VFX and
+Animation, Minions, Review, Others), plus an `Others` fallback — 16 `ModCategory` enum values
+total:
 
 | Category | Example path (from real mods) |
 |---|---|
@@ -62,25 +63,40 @@ suffixes instead of keywords — and fixes a live bug: today's `ClassifySignal` 
 If no Gear signal is found but any target is under `chara/weapon/` → **Weapon**, same hard-rule
 priority, checked second so Gear wins if a mod somehow touches both.
 
-**2. Character-model branch** — targets under `chara/human/c{race}/obj/{slot}/...`:
-- Parse the 4-digit race code. FFXIV's playable race codes all end `01` (e.g. `0101` Hyur
-  Midlander Male); every race has a matching NPC-only code ending `04` (e.g. `0104`). Plus two
-  generic NPC buckets: `9104` (NPC_Male), `9204` (NPC_Female). If the code ends `04`, or is
-  `9104`/`9204` → **NPC**, regardless of which subfolder.
+**2. Character-model branch** — targets under `chara/human/c{race}/obj/{slot}/...`. Checked in
+this exact order, per target:
+
+```
+if IsNpcRaceCode(raceCode)          -> NPC          // checked first, wins regardless of subfolder
+else if slot == "face"              -> Face
+else if slot == "hair"              -> Hair
+else if slot == "body" and textureOrMaterialOnly(target)  -> Skin
+else if slot in {"body", "tail", "zear"}                  -> Body
+```
+
+- **Race code check (first, always):** FFXIV's playable race codes all end `01` (e.g. `0101`
+  Hyur Midlander Male); every race has a matching NPC-only code ending `04` (e.g. `0104`). Plus
+  two generic NPC buckets: `9104` (NPC_Male), `9204` (NPC_Female). If the code ends `04`, or is
+  `9104`/`9204` → **NPC**, regardless of which subfolder — including `obj/face` and `obj/hair`,
+  which never independently produce Face/Hair for an NPC race code.
   (Verified against `xivModdingFramework`'s `XivRace` enum: `c1304` = AuRa_Male_NPC, `c0804` =
   Miqote_Female_NPC — both confirmed NPC-only codes, contrasted against the playable `c0101`
   Body example which has the same file shape but code `0101`.)
-- Otherwise dispatch by `BodySlot` (confirmed against Penumbra's own `BodySlot.cs`, which has
-  exactly six slots: `hair`, `face`, `tail`, `body`, `zear` (ear), `met` (head, character-
+- **Otherwise**, dispatch by `BodySlot` (confirmed against Penumbra's own `BodySlot.cs`, which
+  has exactly six slots: `hair`, `face`, `tail`, `body`, `zear` (ear), `met` (head, character-
   customization sense only, not equipment)): `obj/face` → **Face**; `obj/hair` → **Hair**;
-  `obj/body`, `obj/tail`, `obj/zear` → **Body**. Penumbra's own category list only promotes
-  Hair and Face out of `BodySlot` — Tail and Ear fold into Body, matching that precedent.
-- Within `obj/body`: if the mod's targets under that path are texture/material only (no
+  `obj/tail`, `obj/zear` → **Body** always. Penumbra's own category list only promotes Hair and
+  Face out of `BodySlot` — Tail and Ear fold into Body, matching that precedent. The Skin carve-
+  out below applies **only** to `obj/body`; a texture-only Face or Hair mod stays Face/Hair.
+- **Within `obj/body` only:** if the mod's targets under that path are texture/material only (no
   `.mdl`) → **Skin** instead of Body (retexture vs. full mesh replacement).
 
 **3. Creature-model branch** — targets under `chara/monster/m####/...` or
 `chara/demihuman/d####/...`: look up the model ID against the bundled ID table (below) →
-**Minion** / **Mount** / **Pet** / **Ornament**.
+**Minion** / **Mount** / **Pet** / **Ornament**. If the ID is not found in the table → **Others**,
+with a note recording the unresolved ID (e.g. `"m9999 not found in bundled monster ID table"`).
+Do not guess — an unmapped ID is most often new-patch content the table hasn't been refreshed
+for, not a new category.
 
 **4. Remaining path patterns:** `bgcommon/hou/` → **Furniture**; `/vfx/` or `.avfx` →
 **VFX**; `.scd` → **Sound**; `.pap` or `/animation/` → **Animation**.
@@ -125,11 +141,13 @@ Replaces `WorkbookCategoryCatalog`'s flat `WorkbookCategoryDefinition` list and 
 ```csharp
 public enum ModCategory
 {
-    Gear, Weapon, Face, Hair, Body, Skin, Minion, Mount, Pet, Ornament,
-    Furniture, VFX, Sound, Animation, NPC, Others
+    Gear, Weapon,
+    Face, Hair, Body, Skin, NPC,
+    Minion, Mount, Pet, Ornament,
+    Furniture, VFX, Sound, Animation,
+    Others
 }
 
-public enum ClassificationSource { GamePath, ManualOverride }
 public enum CanonicalTargetKind { GameFile, MetaManipulation }
 
 public sealed record CanonicalGameTarget(
@@ -143,19 +161,26 @@ public sealed record ModTargetClassification(
     CanonicalTargetKind TargetKind,
     ModCategory Category,
     string? DerivedSlotName,
-    CanonicalGameTarget GameTarget,
-    ClassificationSource Source,
-    string? Notes);
+    CanonicalGameTarget? GameTarget,   // null for MetaManipulation entries (a bare "slot:Head"
+    string? Notes);                    // has no resolvable game path to parse Root/Suffix/Ids from)
 ```
 
 `ModScanResult` gains `IReadOnlyList<ModTargetClassification> Targets` (one per distinct
 content path/Manipulation) and a rolled-up `ModCategory DetectedCategory` computed from
-`Targets` via the priority order above.
+`Targets` via the priority order above. Every entry in `Targets` is produced purely from
+scanning the mod's own files/manipulations — there is no `ClassificationSource` enum, because
+every target-level classification has exactly one source (the mod's own paths). `Targets` never
+contains a manual-override entry.
 
-`ClassificationSource.ManualOverride` isn't speculative — it maps onto existing functionality:
-`WorkbookImportRow.ModType`/`ResolvedModType` (`WorkbookWorkflowModels.cs:19-29`) already lets a
-user override the detected category via the workbook. No new UI is needed for it; it's just the
-source tag for a classification that came from a workbook edit rather than path detection.
+**Manual override stays out of `Targets`/`ModScanResult` and lives where it already lives
+today.** Checked `MainViewModel.cs:909` (`mod.DetectedType = row.ResolvedModType;`): overriding
+the detected category via the workbook is already a post-scan merge applied directly to
+`ModRowViewModel.DetectedType`, not a property of `ModScanResult` — `ModScanResult` is a pure
+scan-time snapshot built before any workbook exists, so it has no business knowing about a later
+pipeline stage. This design keeps that same shape: `ModRowViewModel` continues to hold
+`DetectedType`, now sourced from `ModScanResult.DetectedCategory` by default and overwritten by
+`WorkbookImportRow.ResolvedModType` on import exactly as it is today. No new override plumbing,
+no `ManualOverride` enum case anywhere in the scanning-side model.
 
 **Explicitly out of scope:** a `RuntimeTarget`/Glamourer-compatibility layer (runtime
 `EquipSlot`/`BonusItemFlag`/`CustomizeIndex` state) was considered and dropped. This app
@@ -169,7 +194,7 @@ actors, so that layer would be scaffolding with no consumer.
 | Category definitions + `Detect` | `PenumbraOrganizer.Core/Models/WorkbookWorkflowModels.cs` | Replace `WorkbookCategoryCatalog` keyword matching with the pipeline above, consuming `ModScanResult.Targets` |
 | Path/slot signal extraction | `PenumbraOrganizer.Infrastructure/Scanning/PenumbraScanService.cs` | Extend `ClassifySignal`/`ExtractContentSignals` to produce `ModTargetClassification` per path, add the race-code/BodySlot/ID-table logic |
 | Bundled ID table | New resource under `PenumbraOrganizer.Infrastructure` (exact path TBD at plan time) | Static JSON, generated once from `ffxiv-datamining` CSVs |
-| Detected-type display | `PenumbraOrganizer.App/ViewModels/ModRowViewModel.cs`, `MainWindow.xaml` Mods grid | Consumes new `DetectedCategory` instead of old `WorkbookCategoryDefinition` |
+| Detected-type display | `PenumbraOrganizer.App/ViewModels/ModRowViewModel.cs`, `MainWindow.xaml` Mods grid | `DetectedType` sourced from `ModScanResult.DetectedCategory`; `MainViewModel.cs:909`'s existing `mod.DetectedType = row.ResolvedModType` override on workbook import is unchanged |
 | Organize strategies | `PenumbraOrganizer.App/ViewModels/MainViewModel.cs` | "By mod type" / "Type then creator" / "Creator then type" strategies consume `DetectedCategory` |
 
 ## Testing
@@ -181,9 +206,20 @@ with real path examples per category, including:
   `c0804` (NPC), confirming the race-code suffix rule, not just presence of a human path
 - Gear hard-rule precedence: a mod with one `_sho` (feet) file plus ten accessory rings still
   resolves to Gear
-- Skin vs. Body: texture-only vs. `.mdl`-present under `obj/body`
-- Monster ID table resolution for at least one confirmed Minion/Mount/Pet/Ornament ID
+- Skin vs. Body: texture-only vs. `.mdl`-present under `obj/body`; and Skin's scope is narrow —
+  texture-only under `obj/face` stays Face, texture-only under `obj/hair` stays Hair,
+  texture-only under `obj/tail`/`obj/zear` stays Body (no Skin carve-out outside `obj/body`)
+- NPC precedence over Face/Hair/Skin: texture-only `obj/face` or `.mdl` `obj/hair` under an
+  NPC-only race code (`c1304`, `c0804`) resolves to NPC, not Face/Hair/Skin
+- Monster ID table resolution for at least one confirmed Minion/Mount/Pet/Ornament ID, plus an
+  unmapped `m####`/`d####` ID resolving to Others with a note (not silently guessed)
 - Weapon vs. Gear: `chara/weapon/` path does not trigger the Gear hard rule
+- Gear suffix completeness: each of `_met`/`_top`/`_glv`/`_dwn`/`_sho`/`_ear`/`_nek`/`_wrs`/
+  `_ril`/`_rir` individually resolves to Gear
+- Mixed-target rollup: a mod with one Gear-slot file and one `.avfx` file still rolls up to
+  Gear at the mod level, while `Targets` retains both entries as evidence
+- `MetaManipulation`-only entries (a bare `Manipulations[].Slot` with no `Files` backing it) are
+  classified with `GameTarget = null` and don't crash/no-op the rollup
 
 ## Open items for the implementation plan
 
@@ -193,3 +229,16 @@ with real path examples per category, including:
   sheet exists
 - Whether `Others`/Review-fallback triggers (scan warnings, missing author) carry over unchanged
   from today's `Detect` logic or need adjustment now that signal-based detection is much richer
+
+## Revision note
+
+Reviewed 2026-07-08 against an external scope review. Accepted: category-count wording, nullable
+`GameTarget` (for `MetaManipulation` entries), explicit unmapped-ID → Others-with-note behavior,
+explicit Skin/NPC precedence ordering, enum member reordering, and the additional test cases
+above. Corrected: manual override is a `ModRowViewModel`-layer concern (matching the existing
+`DetectedType`/`ResolvedModType` merge at `MainViewModel.cs:909`), not a field on `ModScanResult`
+— `ModScanResult` is a pre-workbook scan snapshot and has no reason to know about workbook
+overrides. Rejected: adding `MetaManipulation` to a `ClassificationSource` enum and adding
+`ManualOverride` to `CanonicalTargetKind` — both conflated the "file vs. manipulation" axis with
+the "automated vs. manual" axis; `ClassificationSource` was dropped entirely since, with override
+excluded from `Targets`, every target-level classification has exactly one source.
