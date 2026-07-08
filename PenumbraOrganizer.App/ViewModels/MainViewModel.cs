@@ -2431,8 +2431,8 @@ public sealed class MainViewModel : ObservableObject
             UnauthorizedAccessException => "Windows blocked access to sort_order.json." + Environment.NewLine + "No files were changed.",
             IOException ioException when ioException.Message.Contains("used by another process", StringComparison.OrdinalIgnoreCase)
                 => "Penumbra's data is locked right now." + Environment.NewLine + "Close FFXIV and any tool that may be holding sort_order.json open, then try again.",
-            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("blocking process", StringComparison.OrdinalIgnoreCase)
-                => "FFXIV is currently running." + Environment.NewLine + "Close the game before applying changes.",
+            InvalidOperationException invalidOperation when invalidOperation.Message.Contains("processes are running", StringComparison.OrdinalIgnoreCase)
+                => invalidOperation.Message + Environment.NewLine + "Close FFXIV and any related launcher or plugin process, then try again.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("authoritative target", StringComparison.OrdinalIgnoreCase)
                 => "The Penumbra data changed after the scan." + Environment.NewLine + "Scan again before applying changes.",
             InvalidOperationException invalidOperation when invalidOperation.Message.Contains("no supported writable changes", StringComparison.OrdinalIgnoreCase)
