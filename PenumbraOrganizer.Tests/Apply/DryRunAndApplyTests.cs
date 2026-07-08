@@ -473,7 +473,14 @@ public sealed class DryRunAndApplyTests
         var orphanEntry = plan.Entries.Single(entry => entry.StableScanId == "Orphan");
         orphanEntry.RequiresWrite.Should().BeFalse();
         orphanEntry.Warnings.Should().Contain(w => w.Contains("mod_data.db has no record", StringComparison.Ordinal));
+        // Downgraded to NeedsReview (not left as ValidChange) so DryRunPlanner's ChangedRowCount
+        // and MainViewModel's "All target records mapped" apply-checklist line -- both of which
+        // key off ValidationStatus == ValidChange -- don't misreport this as a mapped-but-unwritten
+        // change.
+        orphanEntry.ValidationStatus.Should().Be(OrganizerRowStatus.NeedsReview);
         plan.Entries.Single(entry => entry.StableScanId == "Mover").RequiresWrite.Should().BeTrue();
+        plan.Summary.ChangedRowCount.Should().Be(1);
+        plan.Summary.AffectedModCount.Should().Be(1);
 
         var operation = await context.ApplyService.PrepareAsync(plan, context.Installation, snapshot, CancellationToken.None);
         var result = await context.ApplyService.ApplyAsync(plan, operation, context.Installation, snapshot, CancellationToken.None);
@@ -482,6 +489,7 @@ public sealed class DryRunAndApplyTests
         var afterApply = PenumbraModDataDb.Load(context.Fixture.PenumbraConfigPath, context.Installation);
         afterApply.Status.Should().Be(PenumbraModDataDbLoadStatus.Success);
         afterApply.Data!.GetFolderFor("Mover").Should().Be("Target/Folder");
+        afterApply.Data.GetEntry("Orphan").Should().BeNull();
     }
 
     [Fact]
