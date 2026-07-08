@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Infrastructure.Scanning;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using PenumbraOrganizer.Core.Classification;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
@@ -215,6 +216,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
             ? ReadLocalModDataFromDb(modDataDbEntries, directoryName)
             : ReadLocalModData(modDataDirectory, directoryName, warnings);
 
+        var targets = ModPathClassifier.Classify(contentPaths);
+        var (detectedCategory, detectedSubcategory) = ModPathClassifier.Resolve(targets);
+
         return new ModScanResult
         {
             StableScanId = directoryName,
@@ -240,6 +244,9 @@ public sealed class PenumbraScanService : IPenumbraScanService
             ContentSignalSummary = SummarizeContentSignals(contentPaths),
             SchemaFingerprints = schemaFingerprints,
             RawMetadata = new JsonReadOnlyMemory(rawFiles),
+            Targets = targets,
+            DetectedCategory = detectedCategory,
+            DetectedSubcategory = detectedSubcategory,
         };
     }
 
