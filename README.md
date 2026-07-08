@@ -7,7 +7,7 @@ https://discord.gg/MhQzVJ65c
 
 ## Current status
 
-**0.3.1-beta**
+**0.3.2-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
 file-based config (`sort_order.json` or `mod_data.db`, collections), lets you reorganize
@@ -58,7 +58,7 @@ Penumbra Organizer does not:
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.3.1-beta-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.3.2-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
 4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.

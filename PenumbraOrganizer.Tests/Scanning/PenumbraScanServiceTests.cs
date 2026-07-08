@@ -2,6 +2,7 @@ namespace PenumbraOrganizer.Tests.Scanning;
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using PenumbraOrganizer.Core.Classification;
 using PenumbraOrganizer.Core.Models;
 using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Scanning;
@@ -263,5 +264,184 @@ public sealed class PenumbraScanServiceTests
         inventory.Mods.Should().ContainSingle();
         inventory.Mods[0].MalformedMetadataFiles.Should().Contain("meta.json");
         inventory.Mods[0].Warnings.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ScanAsync_ClassifiesModsByStructuralPathSignals()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod(
+            "Gear Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "Gear Mod",
+              "Author": "Bizu"
+            }
+            """,
+            """
+            {
+              "Files": {
+                "chara/equipment/e1234/model/c0201e1234_top.mdl": "files\\top.mdl"
+              },
+              "Manipulations": []
+            }
+            """);
+        fixture.CreateMod(
+            "NPC Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "NPC Mod",
+              "Author": "Someone"
+            }
+            """,
+            """
+            {
+              "Files": {
+                "chara/human/c1304/obj/body/b0001/model/c1304b0001_top.mdl": "files\\body.mdl"
+              },
+              "Manipulations": []
+            }
+            """);
+        fixture.WriteSortOrder(
+            ("Gear Mod", "Gear Mod"),
+            ("NPC Mod", "NPC Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var gearMod = inventory.Mods.Should().ContainSingle(m => m.Name == "Gear Mod").Subject;
+        gearMod.DetectedCategory.Should().Be(ModCategory.Gear);
+        gearMod.DetectedSubcategory.Should().Be("top");
+        gearMod.Targets.Should().ContainSingle(t => t.Category == ModCategory.Gear);
+
+        var npcMod = inventory.Mods.Should().ContainSingle(m => m.Name == "NPC Mod").Subject;
+        npcMod.DetectedCategory.Should().Be(ModCategory.NPC);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ExtractsSignalsFromMultiModGroupOptions()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        var modPath = fixture.CreateMod(
+            "Boots Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "Boots Mod",
+              "Author": "Someone"
+            }
+            """);
+        File.WriteAllText(Path.Combine(modPath, "group_001.json"), """
+        {
+          "Name": "Color",
+          "Type": "Multi",
+          "Options": [
+            {
+              "Name": "Black",
+              "Files": {
+                "chara/equipment/e0387/model/c0101e0387_sho.mdl": "files\\black.mdl"
+              },
+              "Manipulations": []
+            },
+            {
+              "Name": "White",
+              "Files": {
+                "chara/equipment/e0387/texture/v01_c0101e0387_sho_d.tex": "files\\white.tex"
+              },
+              "Manipulations": []
+            }
+          ]
+        }
+        """);
+        fixture.WriteSortOrder(("Boots Mod", "Boots Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Boots Mod").Subject;
+        mod.DetectedCategory.Should().Be(ModCategory.Gear);
+        mod.DetectedSubcategory.Should().Be("sho");
+        mod.Targets.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ScanAsync_ExtractsSignalsFromCombiningModGroupContainers()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        var modPath = fixture.CreateMod(
+            "Combining Mod",
+            """
+            {
+              "FileVersion": 3,
+              "Name": "Combining Mod",
+              "Author": "Someone"
+            }
+            """);
+        File.WriteAllText(Path.Combine(modPath, "group_001.json"), """
+        {
+          "Name": "Toggles",
+          "Type": "Combining",
+          "Options": [
+            { "Name": "Toggle A" },
+            { "Name": "Toggle B" }
+          ],
+          "Containers": [
+            {
+              "Files": {
+                "chara/equipment/e0387/model/c0101e0387_sho.mdl": "files\\a.mdl"
+              },
+              "Manipulations": []
+            }
+          ]
+        }
+        """);
+        fixture.WriteSortOrder(("Combining Mod", "Combining Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.6.1.10",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Combining Mod").Subject;
+        mod.DetectedCategory.Should().Be(ModCategory.Gear);
     }
 }
