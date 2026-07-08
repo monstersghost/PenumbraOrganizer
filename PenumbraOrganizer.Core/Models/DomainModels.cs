@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using PenumbraOrganizer.Core.Classification;
 
 namespace PenumbraOrganizer.Core.Models;
 
@@ -196,6 +197,9 @@ public sealed class ModScanResult
     public string ContentSignalSummary { get; init; } = string.Empty;
     public IReadOnlyList<SchemaFingerprint> SchemaFingerprints { get; init; } = Array.Empty<SchemaFingerprint>();
     public JsonReadOnlyMemory RawMetadata { get; init; } = JsonReadOnlyMemory.Empty;
+    public IReadOnlyList<ModTargetClassification> Targets { get; init; } = Array.Empty<ModTargetClassification>();
+    public ModCategory DetectedCategory { get; init; } = ModCategory.Others;
+    public string? DetectedSubcategory { get; init; }
 }
 
 public readonly record struct JsonReadOnlyMemory(IReadOnlyDictionary<string, string> Files)
