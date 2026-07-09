@@ -71,6 +71,76 @@ public sealed class ValidationAndImportTests
     }
 
     [Fact]
+    public async Task OrganizationJson_MoreThanThreeSelections_WithoutBypass_BlocksApply()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""
+        {
+          "Version": 1,
+          "Folders": {
+            "Orphan/One": {},
+            "Orphan/Two": {},
+            "Orphan/Three": {},
+            "Orphan/Four": {}
+          },
+          "Separators": {}
+        }
+        """);
+
+        await context.ScanAsync();
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with
+        {
+            OrganizationCleanupSelections = ["Orphan/One", "Orphan/Two", "Orphan/Three", "Orphan/Four"],
+        };
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var result = await context.ValidationService.ValidateAsync(plan, context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(DryRunPlanValidationStatus.Invalid);
+        result.ApplyPermitted.Should().BeFalse();
+        result.Errors.Should().Contain(error => error.Contains("limited to 3 folder", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task OrganizationJson_MoreThanThreeSelections_WithBypass_AllowsApply_AndWarns()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""
+        {
+          "Version": 1,
+          "Folders": {
+            "Orphan/One": {},
+            "Orphan/Two": {},
+            "Orphan/Three": {},
+            "Orphan/Four": {}
+          },
+          "Separators": {}
+        }
+        """);
+
+        await context.ScanAsync();
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with
+        {
+            OrganizationCleanupSelections = ["Orphan/One", "Orphan/Two", "Orphan/Three", "Orphan/Four"],
+            OrganizationCleanupBypassSafetyCap = true,
+        };
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var result = await context.ValidationService.ValidateAsync(plan, context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        result.Status.Should().Be(DryRunPlanValidationStatus.Valid);
+        result.ApplyPermitted.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+        result.Warnings.Should().Contain(warning => warning.Contains("Advanced Cleanup", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task RealValidation_RequiresExplicitAuthorization()
     {
         using var context = await ValidationContext.CreateAsync();

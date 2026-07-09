@@ -5,7 +5,7 @@ $appProject = Join-Path $root 'PenumbraOrganizer.App\PenumbraOrganizer.App.cspro
 $releaseRoot = Join-Path $root 'artifacts\release'
 $publishDir = Join-Path $releaseRoot 'publish'
 $packageDir = Join-Path $releaseRoot 'package'
-$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.2-beta-win-x64.zip'
+$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.3-beta-win-x64.zip'
 $exePath = Join-Path $publishDir 'PenumbraOrganizer.exe'
 
 if (Test-Path $releaseRoot) {
@@ -25,6 +25,12 @@ Copy-Item $exePath $packageDir
 Copy-Item (Join-Path $root 'README_FOR_USERS.txt') $packageDir
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.txt') $packageDir
 Copy-Item (Join-Path $root 'LICENSE') $packageDir
+
+$howToUsePdf = Join-Path $root 'docs\HOW_TO_USE.pdf'
+if (-not (Test-Path $howToUsePdf)) {
+    throw "How-to-use PDF not found at $howToUsePdf. Run docs\build_how_to_use_pdf.py first."
+}
+Copy-Item $howToUsePdf $packageDir
 
 Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath
 

@@ -187,6 +187,8 @@ public sealed class MainViewModel : ObservableObject
         SelectNonePlainCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupPlainView, false));
         SelectAllCustomizedCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupCustomizedView, true));
         SelectNoneCustomizedCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupCustomizedView, false));
+        EnableAdvancedCleanupCommand = new RelayCommand(_ => EnableAdvancedCleanup(), _ => !IsAdvancedCleanupEnabled);
+        DisableAdvancedCleanupCommand = new RelayCommand(_ => DisableAdvancedCleanup(), _ => IsAdvancedCleanupEnabled);
         CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null && !IsBusy);
         ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null && !IsBusy);
         BackupAndApplyCommand = new AsyncRelayCommand(BackupAndApplyAsync, () => _inventory is not null && !IsBusy);
@@ -254,6 +256,30 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand SelectNonePlainCleanupCommand { get; }
     public RelayCommand SelectAllCustomizedCleanupCommand { get; }
     public RelayCommand SelectNoneCustomizedCleanupCommand { get; }
+    public RelayCommand EnableAdvancedCleanupCommand { get; }
+    public RelayCommand DisableAdvancedCleanupCommand { get; }
+
+    private bool _isAdvancedCleanupEnabled;
+    public bool IsAdvancedCleanupEnabled
+    {
+        get => _isAdvancedCleanupEnabled;
+        private set
+        {
+            if (SetProperty(ref _isAdvancedCleanupEnabled, value))
+            {
+                EnableAdvancedCleanupCommand.RaiseCanExecuteChanged();
+                DisableAdvancedCleanupCommand.RaiseCanExecuteChanged();
+                RaisePropertyChanged(nameof(IsAdvancedCleanupDisabled));
+                RaisePropertyChanged(nameof(AdvancedCleanupStatusText));
+            }
+        }
+    }
+
+    public bool IsAdvancedCleanupDisabled => !IsAdvancedCleanupEnabled;
+
+    public string AdvancedCleanupStatusText => IsAdvancedCleanupEnabled
+        ? "Advanced Cleanup: ON, cap bypassed at your own risk"
+        : "Advanced Cleanup: OFF";
 
     public ICollectionView OrganizationCleanupPlainView
     {
@@ -1325,6 +1351,27 @@ public sealed class MainViewModel : ObservableObject
             candidate.IsSelected = isSelected;
     }
 
+    private void EnableAdvancedCleanup()
+    {
+        var dialog = new AdvancedCleanupRiskDialog
+        {
+            Owner = Application.Current.MainWindow,
+        };
+        if (dialog.ShowDialog() != true || !dialog.Confirmed)
+            return;
+
+        IsAdvancedCleanupEnabled = true;
+        InvalidateDryRunState("Advanced Cleanup was enabled. Your review needs to be refreshed before applying changes.");
+        AppendLog("Advanced Cleanup enabled for this session: the per-Apply safety cap on Folder Cleanup is bypassed at your own risk.");
+    }
+
+    private void DisableAdvancedCleanup()
+    {
+        IsAdvancedCleanupEnabled = false;
+        InvalidateDryRunState("Advanced Cleanup was disabled. Your review needs to be refreshed before applying changes.");
+        AppendLog("Advanced Cleanup disabled; the per-Apply safety cap on Folder Cleanup is back in effect.");
+    }
+
     private bool FilterMod(object item)
     {
         if (item is not ModRowViewModel mod)
@@ -2370,7 +2417,8 @@ public sealed class MainViewModel : ObservableObject
             proposals,
             folders,
             validation,
-            organizationCleanupSelections);
+            organizationCleanupSelections,
+            IsAdvancedCleanupEnabled);
     }
 
     private ProposalSnapshot BuildActiveProposalSnapshot()
@@ -2507,10 +2555,20 @@ public sealed class MainViewModel : ObservableObject
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
         var organizationCleanupChange = fileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
-        var organizationCleanupBlock = organizationCleanupChange is null
-            ? string.Empty
-            : $"{organizationCleanupChange.AffectedRecordKeys.Count} orphaned folder(s) will also be removed from Penumbra's organization.json:{Environment.NewLine}" +
-              $"{string.Join(Environment.NewLine, organizationCleanupChange.AffectedRecordKeys)}{Environment.NewLine}{Environment.NewLine}";
+        var organizationCleanupBlock = string.Empty;
+        if (organizationCleanupChange is not null)
+        {
+            var cleanupPaths = organizationCleanupChange.AffectedRecordKeys;
+            var cleanupExamples = cleanupPaths.Take(20).ToArray();
+            var cleanupList = string.Join(Environment.NewLine, cleanupExamples) +
+                (cleanupPaths.Count > cleanupExamples.Length ? $"{Environment.NewLine}+ {cleanupPaths.Count - cleanupExamples.Length} more" : string.Empty);
+            var advancedNotice = IsAdvancedCleanupEnabled
+                ? $"Advanced Cleanup is ON: the 3-folder-per-Apply safety cap is bypassed at your own risk.{Environment.NewLine}"
+                : string.Empty;
+            organizationCleanupBlock =
+                $"{advancedNotice}{cleanupPaths.Count} orphaned folder(s) will also be removed from Penumbra's organization.json:{Environment.NewLine}" +
+                $"{cleanupList}{Environment.NewLine}{Environment.NewLine}";
+        }
 
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
