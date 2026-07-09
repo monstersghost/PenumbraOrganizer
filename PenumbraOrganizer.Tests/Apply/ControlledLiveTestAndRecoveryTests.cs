@@ -97,6 +97,26 @@ public sealed class ControlledLiveTestAndRecoveryTests
     }
 
     [Fact]
+    public async Task ControlledSnapshot_PreservesOrganizationCleanupSelections()
+    {
+        using var context = await LiveWorkflowContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Author"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"));
+        await context.ScanAsync();
+
+        var baseSnapshot = context.BuildSnapshot(("Alpha", "Manual/Alpha"));
+        baseSnapshot = baseSnapshot with { OrganizationCleanupSelections = ["Some/Orphaned/Folder"] };
+
+        var controlled = context.ControlledService.BuildControlledSnapshot(
+            context.Installation,
+            context.Inventory!,
+            baseSnapshot,
+            new ControlledTestRequest("PenumbraOrganizer Test", ["Alpha"]));
+
+        controlled.OrganizationCleanupSelections.Should().BeEquivalentTo(["Some/Orphaned/Folder"]);
+    }
+
+    [Fact]
     public async Task ControlledSnapshot_RejectsInvalidTestFolder()
     {
         using var context = await LiveWorkflowContext.CreateAsync();

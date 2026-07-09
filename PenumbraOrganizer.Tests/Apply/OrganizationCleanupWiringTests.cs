@@ -166,6 +166,47 @@ public sealed class OrganizationCleanupWiringTests
         reasons.Should().NotBeNull();
     }
 
+    [Fact]
+    public async Task CreatePlanAsync_CleanupSelectionsWithinCap_IsApplyPermitted()
+    {
+        using var context = await DryRunAndApplyTests.ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""{"Version":1,"Folders":{"A":{},"B":{},"C":{}},"Separators":{}}""");
+        await context.ScanAsync();
+
+        var cleanupWriter = new OrganizationCleanupWriter();
+        var planner = new DryRunPlanner(context.Writer, context.ValidationService, cleanupWriter);
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with { OrganizationCleanupSelections = ["A", "B", "C"] };
+
+        var plan = await planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.ApplyPermitted.Should().BeTrue();
+        plan.Validation.Errors.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreatePlanAsync_CleanupSelectionsExceedCap_BlocksApply()
+    {
+        using var context = await DryRunAndApplyTests.ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""{"Version":1,"Folders":{"A":{},"B":{},"C":{},"D":{}},"Separators":{}}""");
+        await context.ScanAsync();
+
+        var cleanupWriter = new OrganizationCleanupWriter();
+        var planner = new DryRunPlanner(context.Writer, context.ValidationService, cleanupWriter);
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with { OrganizationCleanupSelections = ["A", "B", "C", "D"] };
+
+        var plan = await planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.ApplyPermitted.Should().BeFalse();
+        plan.Validation.Status.Should().Be(DryRunPlanValidationStatus.Invalid);
+        plan.Validation.Errors.Should().Contain(error => error.Contains("limited to 3 folder"));
+    }
+
     private sealed class AlwaysThrowingOrganizationCleanupWriter : IOrganizationCleanupWriter
     {
         public Task<DryRunSourceFileSnapshot?> CaptureSourceFileAsync(PenumbraInstallation installation, CancellationToken cancellationToken)
