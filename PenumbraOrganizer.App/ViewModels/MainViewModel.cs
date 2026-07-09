@@ -274,8 +274,7 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _cleanupFilterText, value))
             {
-                OrganizationCleanupPlainView.Refresh();
-                OrganizationCleanupCustomizedView.Refresh();
+                RefreshOrganizationCleanupViews();
             }
         }
     }
@@ -1836,6 +1835,23 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
+    private void RefreshOrganizationCleanupViews()
+    {
+        try
+        {
+            OrganizationCleanupPlainView.Refresh();
+            OrganizationCleanupCustomizedView.Refresh();
+        }
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Organization cleanup view refresh failed; rebuilding cleanup views");
+            OrganizationCleanupPlainView = new CollectionViewSource { Source = OrganizationCleanupPlainCandidates }.View;
+            OrganizationCleanupPlainView.Filter = FilterCleanupCandidate;
+            OrganizationCleanupCustomizedView = new CollectionViewSource { Source = OrganizationCleanupCustomizedCandidates }.View;
+            OrganizationCleanupCustomizedView.Filter = FilterCleanupCandidate;
+        }
+    }
+
     private void RefreshSelectedFolderView()
     {
         CommitPendingGridEdits();
@@ -2389,6 +2405,8 @@ public sealed class MainViewModel : ObservableObject
         var parts = new List<string>();
         var sortCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
         if (sortCount > 0) parts.Add("sort_order.json (organization)");
+        var organizationJsonCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        if (organizationJsonCount > 0) parts.Add("organization.json folder cleanup");
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
@@ -2470,10 +2488,17 @@ public sealed class MainViewModel : ObservableObject
             : string.Join(Environment.NewLine, examples) +
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
+        var organizationCleanupChange = fileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        var organizationCleanupBlock = organizationCleanupChange is null
+            ? string.Empty
+            : $"{organizationCleanupChange.AffectedRecordKeys.Count} orphaned folder(s) will also be removed from Penumbra's organization.json:{Environment.NewLine}" +
+              $"{string.Join(Environment.NewLine, organizationCleanupChange.AffectedRecordKeys)}{Environment.NewLine}{Environment.NewLine}";
+
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
             $"Planned folder changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
+            organizationCleanupBlock +
             $"Authoritative targets: {DescribeWriteTargets(fileChanges)}{Environment.NewLine}" +
             $"Write operations: {fileChanges.Count}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
