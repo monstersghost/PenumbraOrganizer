@@ -123,7 +123,8 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
     public static string BuildProposalSnapshotIdentity(
         IReadOnlyList<OrganizerModProposal> proposals,
         IReadOnlyList<OrganizerFolder> folders,
-        OrganizationPreferences preferences)
+        OrganizationPreferences preferences,
+        IReadOnlyList<string>? organizationCleanupSelections = null)
     {
         var builder = new StringBuilder();
         builder.AppendLine(preferences.Strategy.ToString());
@@ -135,6 +136,13 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
 
         foreach (var proposal in proposals.OrderBy(proposal => proposal.StableScanId, StringComparer.Ordinal))
             builder.AppendLine($"{proposal.StableScanId}|{proposal.CurrentVirtualFolder}|{proposal.ProposedVirtualFolder}|{proposal.Protected}|{proposal.Source}|{proposal.NeedsReview}|{proposal.OrganizerCreatorLabel}|{proposal.OrganizerTypeLabel}");
+
+        // Cleanup selections aren't a mod proposal or a folder, but the user confirming/unconfirming
+        // one is exactly the kind of "what would be written differs now" change ProposalChanged
+        // already exists to catch -- folding it into the same hash reuses that proven invalidation
+        // path instead of inventing a parallel one.
+        foreach (var selection in (organizationCleanupSelections ?? Array.Empty<string>()).OrderBy(path => path, StringComparer.Ordinal))
+            builder.AppendLine($"cleanup:{selection}");
 
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
     }
