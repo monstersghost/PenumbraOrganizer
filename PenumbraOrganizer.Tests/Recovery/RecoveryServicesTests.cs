@@ -193,6 +193,50 @@ public sealed class RecoveryServicesTests
     }
 
     [Fact]
+    public async Task OnlyTargetPaths_RestoresOnlyMatchingFile_SkipsOthers()
+    {
+        using var context = new RecoveryTestContext();
+        var pathA = context.WriteTextFile(@"state\a.txt", "original-a");
+        var pathB = context.WriteTextFile(@"state\b.txt", "original-b");
+        var details = await context.CreateBackupAsync(new SourceFile(pathA), new SourceFile(pathB));
+        await File.WriteAllTextAsync(pathA, "applied-a");
+        await File.WriteAllTextAsync(pathB, "applied-b");
+        await context.SaveTransactionAsync(
+            details,
+            new TransactionEntry(pathA, Hash("applied-a"), true, ApplyResultStatus.Applied),
+            new TransactionEntry(pathB, Hash("applied-b"), true, ApplyResultStatus.Applied));
+
+        var options = RollbackExecutionOptions.Default with { OnlyTargetPaths = new HashSet<string>([pathA], StringComparer.OrdinalIgnoreCase) };
+        var result = await context.RollbackService.ExecuteAsync(details.Operation.OperationId, options, CancellationToken.None);
+
+        (await File.ReadAllTextAsync(pathA)).Should().Be("original-a");
+        (await File.ReadAllTextAsync(pathB)).Should().Be("applied-b");
+        result.Files.Should().ContainSingle(file => file.TargetPath == pathA && file.Status == RollbackFileStatus.Restored);
+        result.Files.Should().ContainSingle(file => file.TargetPath == pathB && file.Status == RollbackFileStatus.Skipped && file.Message == "Not included in this restore selection.");
+    }
+
+    [Fact]
+    public async Task OnlyTargetPathsNull_RestoresAllFiles_UnchangedBehavior()
+    {
+        using var context = new RecoveryTestContext();
+        var pathA = context.WriteTextFile(@"state\a.txt", "original-a");
+        var pathB = context.WriteTextFile(@"state\b.txt", "original-b");
+        var details = await context.CreateBackupAsync(new SourceFile(pathA), new SourceFile(pathB));
+        await File.WriteAllTextAsync(pathA, "applied-a");
+        await File.WriteAllTextAsync(pathB, "applied-b");
+        await context.SaveTransactionAsync(
+            details,
+            new TransactionEntry(pathA, Hash("applied-a"), true, ApplyResultStatus.Applied),
+            new TransactionEntry(pathB, Hash("applied-b"), true, ApplyResultStatus.Applied));
+
+        var result = await context.RollbackService.ExecuteAsync(details.Operation.OperationId, RollbackExecutionOptions.Default, CancellationToken.None);
+
+        (await File.ReadAllTextAsync(pathA)).Should().Be("original-a");
+        (await File.ReadAllTextAsync(pathB)).Should().Be("original-b");
+        result.Status.Should().Be(RollbackTransactionStatus.Completed);
+    }
+
+    [Fact]
     public async Task RestoredBytes_ExactlyEqualOriginal()
     {
         using var context = new RecoveryTestContext();
