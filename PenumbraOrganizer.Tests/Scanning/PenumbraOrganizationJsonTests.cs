@@ -154,6 +154,21 @@ public sealed class PenumbraOrganizationJsonTests
     }
 
     [Fact]
+    public void Load_FileLockedExclusively_ReturnsMalformed()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteOrganizationJson("""{"Version":1,"Folders":{}}""");
+
+        // Open the file with exclusive access (FileShare.None) to simulate an access-denied scenario
+        using var lockStream = File.Open(fixture.OrganizationJsonPath, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var result = PenumbraOrganizationJson.Load(fixture.PenumbraConfigPath);
+
+        result.Status.Should().Be(PenumbraOrganizationJsonLoadStatus.Malformed);
+        result.Data.Should().BeNull();
+    }
+
+    [Fact]
     public void Parse_NegativeExpandedColor_FolderIncludedWithNullColor()
     {
         var result = PenumbraOrganizationJson.Parse("""{"Version":1,"Folders":{"F":{"ExpandedColor":-1}}}""");
