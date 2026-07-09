@@ -128,7 +128,8 @@ public sealed class PenumbraOrganizationJson
             if (!root.TryGetProperty("Version", out var versionElement) || versionElement.ValueKind != JsonValueKind.Number)
                 return PenumbraOrganizationJsonLoadResult.Malformed;
 
-            var version = versionElement.GetInt32();
+            if (!versionElement.TryGetInt32(out var version))
+                return PenumbraOrganizationJsonLoadResult.Malformed;
             if (version != SupportedVersion)
                 return PenumbraOrganizationJsonLoadResult.UnsupportedVersion(version);
 
@@ -140,12 +141,19 @@ public sealed class PenumbraOrganizationJson
                     if (entry.Value.ValueKind != JsonValueKind.Object)
                         continue;
 
-                    uint? expandedColor = entry.Value.TryGetProperty("ExpandedColor", out var expandedElement) && expandedElement.ValueKind == JsonValueKind.Number
-                        ? expandedElement.GetUInt32()
-                        : null;
-                    uint? collapsedColor = entry.Value.TryGetProperty("CollapsedColor", out var collapsedElement) && collapsedElement.ValueKind == JsonValueKind.Number
-                        ? collapsedElement.GetUInt32()
-                        : null;
+                    uint? expandedColor = null;
+                    if (entry.Value.TryGetProperty("ExpandedColor", out var expandedElement) && expandedElement.ValueKind == JsonValueKind.Number)
+                    {
+                        if (expandedElement.TryGetUInt32(out var color))
+                            expandedColor = color;
+                    }
+
+                    uint? collapsedColor = null;
+                    if (entry.Value.TryGetProperty("CollapsedColor", out var collapsedElement) && collapsedElement.ValueKind == JsonValueKind.Number)
+                    {
+                        if (collapsedElement.TryGetUInt32(out var color))
+                            collapsedColor = color;
+                    }
                     string? sortMode = entry.Value.TryGetProperty("SortMode", out var sortModeElement) && sortModeElement.ValueKind == JsonValueKind.String
                         ? sortModeElement.GetString()
                         : null;
