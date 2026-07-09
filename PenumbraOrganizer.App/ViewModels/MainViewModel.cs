@@ -1743,8 +1743,6 @@ public sealed class MainViewModel : ObservableObject
             .Where(candidate => candidate.IsSelected)
             .Select(candidate => candidate.Path)
             .ToHashSet(StringComparer.Ordinal);
-        var isFirstBuild = !_organizationCleanupDefaultsApplied;
-        _organizationCleanupDefaultsApplied = true;
 
         OrganizationCleanupPlainCandidates.Clear();
         OrganizationCleanupCustomizedCandidates.Clear();
@@ -1767,6 +1765,9 @@ public sealed class MainViewModel : ObservableObject
             OrganizationCleanupStatus = "Penumbra's folder-structure file couldn't be read (unsupported format), so cleanup is unavailable for this install.";
             return;
         }
+
+        var isFirstBuild = !_organizationCleanupDefaultsApplied;
+        _organizationCleanupDefaultsApplied = true;
 
         var candidates = OrganizationCleanupAnalyzer.FindCandidates(loadResult.Data!, CurrentProposalRows().ToArray());
         foreach (var candidate in candidates)
