@@ -2,12 +2,12 @@
 
 A beginner-friendly, unofficial Windows utility for viewing and reorganizing Penumbra virtual mod folders without physically moving mod files.
 
-## Suport Server on Discord ( I Hope i don't regret this)
+## Support Server on Discord ( I Hope i don't regret this)
 https://discord.gg/MhQzVJ65c
 
 ## Current status
 
-**0.3.2-beta**
+**0.3.3-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
 file-based config (`sort_order.json` or `mod_data.db`, collections), lets you reorganize
@@ -16,8 +16,8 @@ your virtual folders, and writes the changes back behind a verified backup.
 Penumbra has used more than one on-disk format for virtual-folder organization across
 versions. This build detects which one your install is actually using (whichever file
 Penumbra touched most recently) and reads/writes that one, instead of assuming
-`sort_order.json` is always authoritative — so an install on an older or newer Penumbra
-version isn't silently shown an empty or stale folder structure.
+`sort_order.json` is always authoritative. That way an install on an older or newer
+Penumbra version isn't silently shown an empty or stale folder structure.
 
 The current build includes:
 
@@ -35,8 +35,14 @@ The current build includes:
 * undo and redo
 * organizer session saving
 * Review Changes validation
+* Folder Cleanup: detects orphaned (empty) folders left behind in Penumbra's own
+  `organization.json` after re-sorting or a rollback, and lets you select specific ones to
+  prune through the same dry run and Apply flow as everything else. Limited to 3 folders per
+  Apply by default; an explicit, confirmation-gated Advanced Cleanup mode can bypass that limit
+  for libraries with a lot of orphaned folders
 * verified backup and restore (rollback), backing up the entire Penumbra
-  configuration directory before every Apply, not just the file being written
+  configuration directory before every Apply, not just the file being written, with the option
+  to restore a single backed-up file (such as `organization.json`) on its own
 * dry run and guarded Apply
 * controlled live-test Apply
 * incomplete-operation recovery
@@ -51,14 +57,15 @@ Penumbra Organizer does not:
 * rewrite textures, models, animations, sounds, or VFX
 * edit `.pmp` packages
 * edit Penumbra collections, priorities, enabled states, or option groups
-* write `organization.json`
+* write to `organization.json` beyond removing orphaned folder entries you explicitly select
+  in Folder Cleanup
 * require command-line knowledge
 
 ## Download
 
 Download the latest package from [GitHub Releases](../../releases).
 
-1. Download `PenumbraOrganizer-v0.3.2-beta-win-x64.zip`.
+1. Download `PenumbraOrganizer-v0.3.3-beta-win-x64.zip`.
 2. Extract the ZIP.
 3. Double-click `PenumbraOrganizer.exe`.
 4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
@@ -83,10 +90,14 @@ The app is self-contained and requires no separate .NET installation.
    tree; Protect Selected/Unprotect Selected act on the mods selected in the grid).
 6. Open **Proposed Changes** to adjust proposed folders and assignments, using Undo or Redo as
    needed.
-7. Open **Review Changes** and resolve anything flagged.
-8. **Close FFXIV.**
-9. Create a backup, then **Backup and Apply**.
-10. If you need to undo a previous operation, open **Backups** and use **Restore Backup**.
+7. Open **Folder Cleanup** to review orphaned (empty) folders left behind by Penumbra after
+   past re-sorts or rollbacks, and select any you want removed. This step is optional: skip it
+   if you have nothing to clean up.
+8. Open **Review Changes** and resolve anything flagged.
+9. **Close FFXIV.**
+10. Create a backup, then **Backup and Apply**.
+11. If you need to undo a previous operation, open **Backups** and use **Restore Backup** (or
+    **Restore Selected File Only** to roll back just one file, such as `organization.json`).
 
 ## Workbook workflow
 
@@ -94,7 +105,7 @@ The app can **Export Workbook** to an Excel file you can review and edit offline
 spreadsheet tool, then **Import Workbook** to bring the edited assignments back in. The
 import is validated against your live Penumbra inventory before anything is applied. If your
 mod library changed since export (a mod moved, or one row no longer matches), only the
-affected rows are skipped with a reason — every other valid row still imports. Import is only
+affected rows are skipped with a reason, and every other valid row still imports. Import is only
 fully blocked when nothing in the workbook can be applied at all (wrong Penumbra library,
 unsupported format, or missing columns).
 
@@ -134,7 +145,7 @@ not yet been validated on a real Linux install.
 
 The current beta does not yet include:
 
-* per-mod metadata editing (out of scope — edit metadata in-game)
+* per-mod metadata editing (out of scope: edit metadata in-game)
 * drag-and-drop
 * collection editing
 * `.pmp` handling

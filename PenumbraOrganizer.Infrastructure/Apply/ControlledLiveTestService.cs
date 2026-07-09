@@ -148,7 +148,8 @@ public sealed class ControlledLiveTestService : IControlledLiveTestService
             proposals,
             folders,
             validation,
-            proposalSnapshot.OrganizationCleanupSelections);
+            proposalSnapshot.OrganizationCleanupSelections,
+            proposalSnapshot.OrganizationCleanupBypassSafetyCap);
     }
 
     private static (ControlledTestCandidateStatus Status, string Message) GetStatus(

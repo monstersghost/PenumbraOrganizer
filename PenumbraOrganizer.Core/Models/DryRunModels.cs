@@ -70,7 +70,12 @@ public sealed record ProposalSnapshot(
     // see OrganizationCleanupWriter.BuildFileChangeAsync. Null/empty by default: every existing
     // builder of ProposalSnapshot keeps working unchanged and produces zero organization.json
     // writes, exactly like today.
-    IReadOnlyList<string>? OrganizationCleanupSelections = null);
+    IReadOnlyList<string>? OrganizationCleanupSelections = null,
+    // User explicitly opted in (Advanced Cleanup dialog) to bypass the per-Apply folder cleanup
+    // cap in DryRunValidationService. False by default -- every existing builder keeps the cap
+    // enforced exactly like today. Set only by MainViewModel after a strict confirmation dialog;
+    // never persisted, so it resets on app restart.
+    bool OrganizationCleanupBypassSafetyCap = false);
 
 public sealed record DryRunSourceFileSnapshot(
     string Path,

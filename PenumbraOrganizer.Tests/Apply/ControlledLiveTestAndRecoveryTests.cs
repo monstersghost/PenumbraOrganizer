@@ -117,6 +117,26 @@ public sealed class ControlledLiveTestAndRecoveryTests
     }
 
     [Fact]
+    public async Task ControlledSnapshot_PreservesOrganizationCleanupBypassSafetyCap()
+    {
+        using var context = await LiveWorkflowContext.CreateAsync();
+        context.Fixture.CreateMod("Alpha", """{"FileVersion":3,"Name":"Alpha","Author":"Author"}""");
+        context.Fixture.WriteModData(("Alpha", "Current/Alpha"));
+        await context.ScanAsync();
+
+        var baseSnapshot = context.BuildSnapshot(("Alpha", "Manual/Alpha"));
+        baseSnapshot = baseSnapshot with { OrganizationCleanupBypassSafetyCap = true };
+
+        var controlled = context.ControlledService.BuildControlledSnapshot(
+            context.Installation,
+            context.Inventory!,
+            baseSnapshot,
+            new ControlledTestRequest("PenumbraOrganizer Test", ["Alpha"]));
+
+        controlled.OrganizationCleanupBypassSafetyCap.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ControlledSnapshot_RejectsInvalidTestFolder()
     {
         using var context = await LiveWorkflowContext.CreateAsync();

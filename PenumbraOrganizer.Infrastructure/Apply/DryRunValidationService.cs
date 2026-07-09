@@ -62,9 +62,19 @@ public sealed class DryRunValidationService : IDryRunValidationService
         var organizationCleanupChange = plan.FileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
         if (organizationCleanupChange is not null && organizationCleanupChange.AffectedRecordKeys.Count > MaxOrganizationCleanupFoldersPerApply)
         {
-            errors.Add(
-                $"Folder cleanup is limited to {MaxOrganizationCleanupFoldersPerApply} folder(s) per Apply while this feature is being validated on real installs. " +
-                $"{organizationCleanupChange.AffectedRecordKeys.Count} folder(s) would be pruned in this Apply -- uncheck some in the Folder Cleanup tab, or apply in smaller batches.");
+            if (proposalSnapshot.OrganizationCleanupBypassSafetyCap)
+            {
+                warnings.Add(
+                    $"Advanced Cleanup is active: the {MaxOrganizationCleanupFoldersPerApply}-folder-per-Apply safety cap was bypassed at your own risk. " +
+                    $"{organizationCleanupChange.AffectedRecordKeys.Count} folder(s) will be pruned in this Apply.");
+            }
+            else
+            {
+                errors.Add(
+                    $"Folder cleanup is limited to {MaxOrganizationCleanupFoldersPerApply} folder(s) per Apply while this feature is being validated on real installs. " +
+                    $"{organizationCleanupChange.AffectedRecordKeys.Count} folder(s) would be pruned in this Apply -- uncheck some in the Folder Cleanup tab, or apply in smaller batches, " +
+                    "or enable Advanced Cleanup in the Folder Cleanup tab to bypass this limit at your own risk.");
+            }
         }
 
         var invalidationReasons = await _planInvalidationService.GetInvalidationReasonsAsync(
