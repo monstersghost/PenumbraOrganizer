@@ -684,7 +684,7 @@ public sealed class DryRunAndApplyTests
         context.Fixture.CurrentFolderOf("Conflict Mod").Should().Be("External/Change");
     }
 
-    private sealed class ApplyTestContext : IDisposable
+    internal sealed class ApplyTestContext : IDisposable
     {
         private ApplyTestContext(TemporaryPenumbraFixture fixture)
         {

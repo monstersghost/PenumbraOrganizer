@@ -8,13 +8,16 @@ public sealed class DryRunPlanner : IDryRunPlanner
 {
     private readonly IPenumbraVirtualFolderWriter _writer;
     private readonly IDryRunValidationService _validationService;
+    private readonly IOrganizationCleanupWriter? _organizationCleanupWriter;
 
     public DryRunPlanner(
         IPenumbraVirtualFolderWriter writer,
-        IDryRunValidationService validationService)
+        IDryRunValidationService validationService,
+        IOrganizationCleanupWriter? organizationCleanupWriter = null)
     {
         _writer = writer;
         _validationService = validationService;
+        _organizationCleanupWriter = organizationCleanupWriter;
     }
 
     public async Task<DryRunPlan> CreatePlanAsync(
@@ -35,7 +38,21 @@ public sealed class DryRunPlanner : IDryRunPlanner
             throw new InvalidOperationException("The authoritative Penumbra schema is unsupported for virtual-folder Apply.");
 
         var entries = await _writer.MapPlanEntriesAsync(installation, inventory, proposalSnapshot, cancellationToken);
-        IReadOnlyList<DryRunFileChange> fileChanges = await _writer.BuildExpectedFileChangesAsync(installation, entries, proposalSnapshot, cancellationToken);
+        var fileChanges = (await _writer.BuildExpectedFileChangesAsync(installation, entries, proposalSnapshot, cancellationToken)).ToList();
+
+        // organization.json cleanup is a second, independent write target. Its own source file
+        // and schema state deliberately never enter `sourceFiles`/`schemaFingerprints` above --
+        // those feed the blocking schema-mismatch throw a few lines up, which exists for the
+        // primary mod-placement writer only. A missing/malformed/unsupported-version
+        // organization.json must never block sort_order.json/mod_data.db writes.
+        DryRunSourceFileSnapshot? organizationCleanupSourceFile = null;
+        if (_organizationCleanupWriter is not null)
+        {
+            organizationCleanupSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
+            var organizationFileChange = await _organizationCleanupWriter.BuildFileChangeAsync(installation, proposalSnapshot, cancellationToken);
+            if (organizationFileChange is not null)
+                fileChanges.Add(organizationFileChange);
+        }
 
         var warnings = new List<string>();
         warnings.AddRange(proposalSnapshot.ValidationResult.Warnings.Select(warning => warning.Message));
@@ -66,7 +83,8 @@ public sealed class DryRunPlanner : IDryRunPlanner
             new DryRunValidationResult(DryRunPlanValidationStatus.Valid, false, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<PlanInvalidationReason>()),
             summary,
             ApplyPermitted: false,
-            warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+            warnings.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            organizationCleanupSourceFile);
 
         var validation = await _validationService.ValidateAsync(provisionalPlan, installation, inventory, proposalSnapshot, cancellationToken);
         return provisionalPlan with
