@@ -139,6 +139,33 @@ public sealed class OrganizationCleanupWiringTests
         plan.OrganizationCleanupSourceFile.Should().BeNull();
     }
 
+    [Fact]
+    public async Task GetInvalidationReasonsAsync_OrganizationCleanupWriterThrows_NeverBlocksThePrimaryCheck()
+    {
+        using var context = await DryRunAndApplyTests.ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""{"Version":1,"Folders":{"Orphaned":{}},"Separators":{}}""");
+        await context.ScanAsync();
+
+        // Build a real plan using a normal cleanup writer.
+        var normalCleanupWriter = new OrganizationCleanupWriter();
+        var planner = new DryRunPlanner(context.Writer, context.ValidationService, normalCleanupWriter);
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with { OrganizationCleanupSelections = ["Orphaned"] };
+        var plan = await planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        // A real TOCTOU race or internal validation failure in the cleanup writer must not block
+        // the primary schema/source-file validation in PlanInvalidationService.
+        var throwingCleanupWriter = new AlwaysThrowingOrganizationCleanupWriter();
+        var invalidationService = new PlanInvalidationService(context.Writer, throwingCleanupWriter);
+
+        var reasons = await invalidationService.GetInvalidationReasonsAsync(plan, context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        // The call must complete without throwing, proving the cleanup writer exception didn't block primary checks.
+        reasons.Should().NotBeNull();
+    }
+
     private sealed class AlwaysThrowingOrganizationCleanupWriter : IOrganizationCleanupWriter
     {
         public Task<DryRunSourceFileSnapshot?> CaptureSourceFileAsync(PenumbraInstallation installation, CancellationToken cancellationToken)
