@@ -6,6 +6,7 @@ public enum PenumbraWriteTargetKind
 {
     SortOrderJson,
     ModDataDb,
+    OrganizationJson,
 }
 
 public enum DryRunPlanValidationStatus
@@ -63,7 +64,13 @@ public sealed record ProposalSnapshot(
     OrganizationPreferences OrganizationPreferences,
     IReadOnlyList<OrganizerModProposal> Proposals,
     IReadOnlyList<OrganizerFolder> Folders,
-    OrganizerValidationResult ValidationResult);
+    OrganizerValidationResult ValidationResult,
+    // Folder paths from organization.json the user confirmed for pruning (Folder Cleanup tab,
+    // Plan 3). Re-verified against live proposals at write-build time, never trusted as-is --
+    // see OrganizationCleanupWriter.BuildFileChangeAsync. Null/empty by default: every existing
+    // builder of ProposalSnapshot keeps working unchanged and produces zero organization.json
+    // writes, exactly like today.
+    IReadOnlyList<string>? OrganizationCleanupSelections = null);
 
 public sealed record DryRunSourceFileSnapshot(
     string Path,
@@ -152,7 +159,13 @@ public sealed record DryRunPlan(
     DryRunValidationResult Validation,
     DryRunSummary Summary,
     bool ApplyPermitted,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings,
+    // Snapshot of organization.json's own source file at plan-build time, kept separate from
+    // SourceFiles/SourceSchemaFingerprints (those feed DryRunPlanner's blocking schema-mismatch
+    // gate for the *primary* writer -- organization.json must never trip that gate). Null when
+    // organization.json cleanup wasn't active for this plan (no writer configured, or the file
+    // didn't exist). PlanInvalidationService compares this against a fresh capture for staleness.
+    DryRunSourceFileSnapshot? OrganizationCleanupSourceFile = null);
 
 public sealed record ApplyOperation(
     Guid OperationId,
