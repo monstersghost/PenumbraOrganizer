@@ -64,7 +64,7 @@ public sealed class DryRunValidationService : IDryRunValidationService
         {
             errors.Add(
                 $"Folder cleanup is limited to {MaxOrganizationCleanupFoldersPerApply} folder(s) per Apply while this feature is being validated on real installs. " +
-                $"{organizationCleanupChange.AffectedRecordKeys.Count} are currently selected -- uncheck some in the Folder Cleanup tab, or apply in smaller batches.");
+                $"{organizationCleanupChange.AffectedRecordKeys.Count} folder(s) would be pruned in this Apply -- uncheck some in the Folder Cleanup tab, or apply in smaller batches.");
         }
 
         var invalidationReasons = await _planInvalidationService.GetInvalidationReasonsAsync(
