@@ -2240,6 +2240,7 @@ public sealed class MainViewModel : ObservableObject
                 title,
                 MessageBoxButton.OK,
                 details?.PostApplyVerification?.Succeeded == true ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            await PromptForPenumbraObservationAsync(details);
         }
         catch (Exception ex)
         {
@@ -2299,6 +2300,7 @@ public sealed class MainViewModel : ObservableObject
             await RefreshRecoveryStatusAsync();
             ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
             AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
+            await PromptForPenumbraObservationAsync(details);
         }
         catch (Exception ex)
         {
@@ -2640,7 +2642,16 @@ public sealed class MainViewModel : ObservableObject
         if (_preparedApplyOperation is null || details?.PostApplyVerification?.Succeeded != true)
             return;
 
-        var dialog = new PenumbraObservationDialog
+        // Gated to cleanup-involving applies only: this prompt was previously wired up nowhere in
+        // the app. Firing it on every ordinary mod-reorganization apply would be a new, unrelated
+        // interruption for users who never touched Folder Cleanup. It is specifically valuable for
+        // organization.json cleanup right now because that write target has no real-install
+        // validation behind it yet -- see Plan 4's Task 3.
+        var includesOrganizationCleanup = details.Plan?.FileChanges.Any(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson) == true;
+        if (!includesOrganizationCleanup)
+            return;
+
+        var dialog = new PenumbraObservationDialog(includesOrganizationCleanup: true)
         {
             Owner = Application.Current.MainWindow,
         };
