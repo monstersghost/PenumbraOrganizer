@@ -7,10 +7,12 @@ using PenumbraOrganizer.Infrastructure.Sessions;
 public sealed class PlanInvalidationService : IPlanInvalidationService
 {
     private readonly IPenumbraVirtualFolderWriter _writer;
+    private readonly IOrganizationCleanupWriter? _organizationCleanupWriter;
 
-    public PlanInvalidationService(IPenumbraVirtualFolderWriter writer)
+    public PlanInvalidationService(IPenumbraVirtualFolderWriter writer, IOrganizationCleanupWriter? organizationCleanupWriter = null)
     {
         _writer = writer;
+        _organizationCleanupWriter = organizationCleanupWriter;
     }
 
     public async Task<IReadOnlyList<PlanInvalidationReason>> GetInvalidationReasonsAsync(
@@ -81,6 +83,13 @@ public sealed class PlanInvalidationService : IPlanInvalidationService
         if (!EquivalentSourceFiles(plan.SourceFiles, currentSourceFiles))
             reasons.Add(PlanInvalidationReason.SourceFileHashChanged);
 
+        if (_organizationCleanupWriter is not null)
+        {
+            var currentOrganizationSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
+            if (!EquivalentOptionalSourceFile(plan.OrganizationCleanupSourceFile, currentOrganizationSourceFile))
+                reasons.Add(PlanInvalidationReason.SourceFileHashChanged);
+        }
+
         try
         {
             var currentSchemaFingerprints = await _writer.CaptureSchemaFingerprintsAsync(installation, cancellationToken);
@@ -137,6 +146,16 @@ public sealed class PlanInvalidationService : IPlanInvalidationService
         }
 
         return true;
+    }
+
+    private static bool EquivalentOptionalSourceFile(DryRunSourceFileSnapshot? expected, DryRunSourceFileSnapshot? current)
+    {
+        if (expected is null && current is null)
+            return true;
+        if (expected is null || current is null)
+            return false;
+
+        return expected.Length == current.Length && string.Equals(expected.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool EquivalentSchemaFingerprints(
