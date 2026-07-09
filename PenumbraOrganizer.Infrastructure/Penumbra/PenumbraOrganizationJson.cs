@@ -99,7 +99,7 @@ public sealed class PenumbraOrganizationJson
         {
             text = File.ReadAllText(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return PenumbraOrganizationJsonLoadResult.Malformed;
         }
