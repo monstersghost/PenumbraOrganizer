@@ -13,6 +13,10 @@ public partial class PenumbraObservationDialog : Window
         {
             HeaderText.Text = "Open Penumbra and check whether the new virtual folder appears, and whether the pruned folder(s) disappeared from the mod list.";
             DisclaimerText.Text = "This observation is stored as diagnostic evidence only. It confirms whether Penumbra's own UI actually reflects the folder cleanup this app just applied.";
+
+            AppearedImmediatelyButton.Content = "Reflected immediately";
+            AppearedAfterReloadButton.Content = "Reflected after reload/restart";
+            DidNotAppearButton.Content = "Not reflected yet";
         }
     }
 

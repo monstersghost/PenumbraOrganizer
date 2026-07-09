@@ -2240,7 +2240,15 @@ public sealed class MainViewModel : ObservableObject
                 title,
                 MessageBoxButton.OK,
                 details?.PostApplyVerification?.Succeeded == true ? MessageBoxImage.Information : MessageBoxImage.Warning);
-            await PromptForPenumbraObservationAsync(details);
+            try
+            {
+                await PromptForPenumbraObservationAsync(details);
+            }
+            catch (Exception observationEx)
+            {
+                _logger.LogWarning(observationEx, "Recording the Penumbra UI observation failed");
+                StartupBootstrapLogger.RecordException("Recording the Penumbra UI observation failed.", observationEx);
+            }
         }
         catch (Exception ex)
         {
@@ -2300,7 +2308,15 @@ public sealed class MainViewModel : ObservableObject
             await RefreshRecoveryStatusAsync();
             ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
             AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
-            await PromptForPenumbraObservationAsync(details);
+            try
+            {
+                await PromptForPenumbraObservationAsync(details);
+            }
+            catch (Exception observationEx)
+            {
+                _logger.LogWarning(observationEx, "Recording the Penumbra UI observation failed");
+                StartupBootstrapLogger.RecordException("Recording the Penumbra UI observation failed.", observationEx);
+            }
         }
         catch (Exception ex)
         {
