@@ -16,6 +16,8 @@ using PenumbraOrganizer.App.Commands;
 using PenumbraOrganizer.App.Dialogs;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
+using PenumbraOrganizer.Infrastructure.Apply;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 using PenumbraOrganizer.Infrastructure.Sessions;
 
 public sealed class MainViewModel : ObservableObject
@@ -88,8 +90,13 @@ public sealed class MainViewModel : ObservableObject
     private ICollectionView _filteredMods = null!;
     private ICollectionView _selectedFolderMods = null!;
     private ICollectionView _changedMods = null!;
+    private ICollectionView _organizationCleanupPlainView = null!;
+    private ICollectionView _organizationCleanupCustomizedView = null!;
     private bool _suspendOrganizerRefresh;
     private bool _suspendSelectedFolderRefresh;
+    private bool _organizationCleanupDefaultsApplied;
+    private string _cleanupFilterText = string.Empty;
+    private string _organizationCleanupStatus = "Scan your mods to check for orphaned Penumbra folders.";
 
     public MainViewModel(
         IPenumbraDiscoveryService discoveryService,
@@ -132,12 +139,18 @@ public sealed class MainViewModel : ObservableObject
         Collections = new ObservableCollection<CollectionInventory>();
         FolderTree = new ObservableCollection<VirtualFolderNode>();
         ProposedFolders = new ObservableCollection<OrganizerFolderViewModel>();
+        OrganizationCleanupPlainCandidates = new ObservableCollection<OrganizationCleanupCandidateViewModel>();
+        OrganizationCleanupCustomizedCandidates = new ObservableCollection<OrganizationCleanupCandidateViewModel>();
         SelectedOrganizerMods = new ObservableCollection<ModRowViewModel>();
         ReviewRows = new ObservableCollection<OrganizerValidationRow>();
         ScanWarnings = new ObservableCollection<string>();
         _filteredMods = CreateCollectionView(FilterMod);
         _selectedFolderMods = CreateCollectionView(FilterSelectedFolderMod);
         _changedMods = CreateCollectionView(item => item is ModRowViewModel mod && mod.IsChanged);
+        _organizationCleanupPlainView = new CollectionViewSource { Source = OrganizationCleanupPlainCandidates }.View;
+        _organizationCleanupPlainView.Filter = FilterCleanupCandidate;
+        _organizationCleanupCustomizedView = new CollectionViewSource { Source = OrganizationCleanupCustomizedCandidates }.View;
+        _organizationCleanupCustomizedView.Filter = FilterCleanupCandidate;
 
         DetectCommand = new AsyncRelayCommand(DetectAsync);
         ScanCommand = new AsyncRelayCommand(ScanAsync, () => _installation is not null && !IsBusy);
@@ -170,6 +183,10 @@ public sealed class MainViewModel : ObservableObject
         ClearControlledTestCommand = new RelayCommand(_ => ClearControlledTest(), _ => _controlledTestRequest is not null);
         SetOrganizeFilterCommand = new RelayCommand(SetOrganizeFilter);
         CreateDryRunCommand = new AsyncRelayCommand(CreateDryRunAsync, () => _inventory is not null && !IsBusy);
+        SelectAllPlainCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupPlainView, true));
+        SelectNonePlainCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupPlainView, false));
+        SelectAllCustomizedCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupCustomizedView, true));
+        SelectNoneCustomizedCleanupCommand = new RelayCommand(_ => SetCleanupSelection(_organizationCleanupCustomizedView, false));
         CreateBackupCommand = new AsyncRelayCommand(CreateBackupAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is null && !IsBusy);
         ApplyVirtualFolderChangesCommand = new AsyncRelayCommand(ApplyVirtualFolderChangesAsync, () => _currentDryRunPlan?.ApplyPermitted == true && _preparedApplyOperation is not null && !IsBusy);
         BackupAndApplyCommand = new AsyncRelayCommand(BackupAndApplyAsync, () => _inventory is not null && !IsBusy);
@@ -230,6 +247,43 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<ModRowViewModel> SelectedOrganizerMods { get; }
     public ObservableCollection<OrganizerValidationRow> ReviewRows { get; }
     public ObservableCollection<string> ScanWarnings { get; }
+    public ObservableCollection<OrganizationCleanupCandidateViewModel> OrganizationCleanupPlainCandidates { get; }
+    public ObservableCollection<OrganizationCleanupCandidateViewModel> OrganizationCleanupCustomizedCandidates { get; }
+
+    public RelayCommand SelectAllPlainCleanupCommand { get; }
+    public RelayCommand SelectNonePlainCleanupCommand { get; }
+    public RelayCommand SelectAllCustomizedCleanupCommand { get; }
+    public RelayCommand SelectNoneCustomizedCleanupCommand { get; }
+
+    public ICollectionView OrganizationCleanupPlainView
+    {
+        get => _organizationCleanupPlainView;
+        private set => SetProperty(ref _organizationCleanupPlainView, value);
+    }
+
+    public ICollectionView OrganizationCleanupCustomizedView
+    {
+        get => _organizationCleanupCustomizedView;
+        private set => SetProperty(ref _organizationCleanupCustomizedView, value);
+    }
+
+    public string CleanupFilterText
+    {
+        get => _cleanupFilterText;
+        set
+        {
+            if (SetProperty(ref _cleanupFilterText, value))
+            {
+                RefreshOrganizationCleanupViews();
+            }
+        }
+    }
+
+    public string OrganizationCleanupStatus
+    {
+        get => _organizationCleanupStatus;
+        private set => SetProperty(ref _organizationCleanupStatus, value);
+    }
     public ICollectionView FilteredMods
     {
         get => _filteredMods;
@@ -1255,6 +1309,22 @@ public sealed class MainViewModel : ObservableObject
                string.Join(Environment.NewLine, compatibility.Warnings);
     }
 
+    private bool FilterCleanupCandidate(object item)
+    {
+        if (item is not OrganizationCleanupCandidateViewModel candidate)
+            return false;
+        if (string.IsNullOrWhiteSpace(CleanupFilterText))
+            return true;
+
+        return candidate.Path.Contains(CleanupFilterText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void SetCleanupSelection(ICollectionView view, bool isSelected)
+    {
+        foreach (OrganizationCleanupCandidateViewModel candidate in view)
+            candidate.IsSelected = isSelected;
+    }
+
     private bool FilterMod(object item)
     {
         if (item is not ModRowViewModel mod)
@@ -1645,6 +1715,7 @@ public sealed class MainViewModel : ObservableObject
         RebuildProposedFolders();
         RefreshCollectionViews();
         RecountProposedFolders();
+        RebuildOrganizationCleanupCandidates();
         ChangedProposalCount = Mods.Count(mod => mod.IsChanged);
         NeedsReviewCount = Mods.Count(mod => mod.ProposedVirtualFolder.Contains("Review", StringComparison.OrdinalIgnoreCase) ||
                                              mod.DetectedType == "Unknown type" ||
@@ -1655,6 +1726,77 @@ public sealed class MainViewModel : ObservableObject
         RaisePropertyChanged(nameof(UndoDescription));
         RaisePropertyChanged(nameof(RedoDescription));
         RefreshReviewChanges();
+    }
+
+    // Reads organization.json fresh and reclassifies against the *current* proposed folder set, the
+    // same "recompute don't trust stale state" discipline OrganizationCleanupWriter applies again at
+    // write-build time. A prior selection survives a rebuild by path; on the very first rebuild for
+    // this scan, plain-empty candidates default to selected (matches the Folder Cleanup tab's
+    // documented default) and customized ones default to unselected. Reads organization.json
+    // synchronously on every RefreshOrganizerViews call (a small local file, called from many UI
+    // interactions) -- acceptable given the file's expected size; revisit if real installs show lag.
+    private void RebuildOrganizationCleanupCandidates()
+    {
+        var previousSelections = OrganizationCleanupPlainCandidates
+            .Concat(OrganizationCleanupCustomizedCandidates)
+            .Where(candidate => candidate.IsSelected)
+            .Select(candidate => candidate.Path)
+            .ToHashSet(StringComparer.Ordinal);
+
+        OrganizationCleanupPlainCandidates.Clear();
+        OrganizationCleanupCustomizedCandidates.Clear();
+
+        if (_installation is null)
+        {
+            OrganizationCleanupStatus = "Scan your mods to check for orphaned Penumbra folders.";
+            return;
+        }
+
+        var loadResult = PenumbraOrganizationJson.Load(_installation.ConfigDirectory);
+        if (loadResult.Status == PenumbraOrganizationJsonLoadStatus.NotFound)
+        {
+            OrganizationCleanupStatus = "Nothing to clean up. Penumbra hasn't recorded any folder structure for this install yet.";
+            return;
+        }
+
+        if (loadResult.Status != PenumbraOrganizationJsonLoadStatus.Success)
+        {
+            OrganizationCleanupStatus = "Penumbra's folder-structure file couldn't be read (unsupported format), so cleanup is unavailable for this install.";
+            return;
+        }
+
+        var isFirstBuild = !_organizationCleanupDefaultsApplied;
+        _organizationCleanupDefaultsApplied = true;
+
+        var candidates = OrganizationCleanupAnalyzer.FindCandidates(loadResult.Data!, CurrentProposalRows().ToArray());
+        foreach (var candidate in candidates)
+        {
+            var isCustomized = candidate.Kind == OrganizationCleanupCandidateKind.CustomizedEmpty;
+            var isSelected = previousSelections.Contains(candidate.Path) ||
+                              (isFirstBuild && !isCustomized);
+            var viewModel = new OrganizationCleanupCandidateViewModel(candidate.Path, isCustomized, DescribeCleanupCustomization(candidate.Entry), isSelected);
+            if (isCustomized)
+                OrganizationCleanupCustomizedCandidates.Add(viewModel);
+            else
+                OrganizationCleanupPlainCandidates.Add(viewModel);
+        }
+
+        OrganizationCleanupStatus = candidates.Count == 0
+            ? "No orphaned folders detected."
+            : $"{OrganizationCleanupPlainCandidates.Count} plain, {OrganizationCleanupCustomizedCandidates.Count} customized.";
+    }
+
+    private static string DescribeCleanupCustomization(PenumbraOrganizationFolderEntry entry)
+    {
+        var parts = new List<string>();
+        if (entry.ExpandedColor.HasValue || entry.CollapsedColor.HasValue)
+            parts.Add("custom color");
+        if (!string.IsNullOrEmpty(entry.SortMode))
+            parts.Add($"sort mode: {entry.SortMode}");
+        if (entry.IsSeparator == true)
+            parts.Add("drawn as separator");
+
+        return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
     }
 
     private void ModRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1690,6 +1832,23 @@ public sealed class MainViewModel : ObservableObject
             FilteredMods.Refresh();
             SelectedFolderMods.Refresh();
             ChangedMods.Refresh();
+        }
+    }
+
+    private void RefreshOrganizationCleanupViews()
+    {
+        try
+        {
+            OrganizationCleanupPlainView.Refresh();
+            OrganizationCleanupCustomizedView.Refresh();
+        }
+        catch (Exception ex) when (ex is NullReferenceException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Organization cleanup view refresh failed; rebuilding cleanup views");
+            OrganizationCleanupPlainView = new CollectionViewSource { Source = OrganizationCleanupPlainCandidates }.View;
+            OrganizationCleanupPlainView.Filter = FilterCleanupCandidate;
+            OrganizationCleanupCustomizedView = new CollectionViewSource { Source = OrganizationCleanupCustomizedCandidates }.View;
+            OrganizationCleanupCustomizedView.Filter = FilterCleanupCandidate;
         }
     }
 
@@ -2081,6 +2240,15 @@ public sealed class MainViewModel : ObservableObject
                 title,
                 MessageBoxButton.OK,
                 details?.PostApplyVerification?.Succeeded == true ? MessageBoxImage.Information : MessageBoxImage.Warning);
+            try
+            {
+                await PromptForPenumbraObservationAsync(details);
+            }
+            catch (Exception observationEx)
+            {
+                _logger.LogWarning(observationEx, "Recording the Penumbra UI observation failed");
+                StartupBootstrapLogger.RecordException("Recording the Penumbra UI observation failed.", observationEx);
+            }
         }
         catch (Exception ex)
         {
@@ -2140,6 +2308,15 @@ public sealed class MainViewModel : ObservableObject
             await RefreshRecoveryStatusAsync();
             ProgressMessage = $"Apply finished: {_latestApplyResult.Status}.";
             AppendLog($"Apply operation {_preparedApplyOperation.OperationId} finished with status {_latestApplyResult.Status}.");
+            try
+            {
+                await PromptForPenumbraObservationAsync(details);
+            }
+            catch (Exception observationEx)
+            {
+                _logger.LogWarning(observationEx, "Recording the Penumbra UI observation failed");
+                StartupBootstrapLogger.RecordException("Recording the Penumbra UI observation failed.", observationEx);
+            }
         }
         catch (Exception ex)
         {
@@ -2178,16 +2355,22 @@ public sealed class MainViewModel : ObservableObject
             })
             .ToArray();
         var folders = _organizerFolders.Select(folder => folder with { }).ToArray();
+        var organizationCleanupSelections = OrganizationCleanupPlainCandidates
+            .Concat(OrganizationCleanupCustomizedCandidates)
+            .Where(candidate => candidate.IsSelected)
+            .Select(candidate => candidate.Path)
+            .ToArray();
 
         var validation = _organizerValidationService.Validate(_inventory, proposals, folders, preferences);
         var session = BuildSessionDocument();
         return new ProposalSnapshot(
-            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences),
+            OrganizerSessionService.BuildProposalSnapshotIdentity(proposals, folders, preferences, organizationCleanupSelections),
             OrganizerSessionService.BuildSessionIdentity(session),
             preferences,
             proposals,
             folders,
-            validation);
+            validation,
+            organizationCleanupSelections);
     }
 
     private ProposalSnapshot BuildActiveProposalSnapshot()
@@ -2240,6 +2423,8 @@ public sealed class MainViewModel : ObservableObject
         var parts = new List<string>();
         var sortCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.SortOrderJson);
         if (sortCount > 0) parts.Add("sort_order.json (organization)");
+        var organizationJsonCount = fileChanges.Count(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        if (organizationJsonCount > 0) parts.Add("organization.json folder cleanup");
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
 
@@ -2321,10 +2506,17 @@ public sealed class MainViewModel : ObservableObject
             : string.Join(Environment.NewLine, examples) +
               (changedRows.Count > examples.Length ? $"{Environment.NewLine}+ {changedRows.Count - examples.Length} more" : string.Empty);
 
+        var organizationCleanupChange = fileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        var organizationCleanupBlock = organizationCleanupChange is null
+            ? string.Empty
+            : $"{organizationCleanupChange.AffectedRecordKeys.Count} orphaned folder(s) will also be removed from Penumbra's organization.json:{Environment.NewLine}" +
+              $"{string.Join(Environment.NewLine, organizationCleanupChange.AffectedRecordKeys)}{Environment.NewLine}{Environment.NewLine}";
+
         return
             $"{changedRows.Count} mod(s) will be reorganized.{Environment.NewLine}" +
             $"{protectedCount} protected mod(s) will remain unchanged.{Environment.NewLine}{Environment.NewLine}" +
             $"Planned folder changes:{Environment.NewLine}{exampleBlock}{Environment.NewLine}{Environment.NewLine}" +
+            organizationCleanupBlock +
             $"Authoritative targets: {DescribeWriteTargets(fileChanges)}{Environment.NewLine}" +
             $"Write operations: {fileChanges.Count}{Environment.NewLine}" +
             $"Backup location: {operationFolder}{Environment.NewLine}" +
@@ -2466,7 +2658,16 @@ public sealed class MainViewModel : ObservableObject
         if (_preparedApplyOperation is null || details?.PostApplyVerification?.Succeeded != true)
             return;
 
-        var dialog = new PenumbraObservationDialog
+        // Gated to cleanup-involving applies only: this prompt was previously wired up nowhere in
+        // the app. Firing it on every ordinary mod-reorganization apply would be a new, unrelated
+        // interruption for users who never touched Folder Cleanup. It is specifically valuable for
+        // organization.json cleanup right now because that write target has no real-install
+        // validation behind it yet -- see Plan 4's Task 3.
+        var includesOrganizationCleanup = details.Plan?.FileChanges.Any(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson) == true;
+        if (!includesOrganizationCleanup)
+            return;
+
+        var dialog = new PenumbraObservationDialog(includesOrganizationCleanup: true)
         {
             Owner = Application.Current.MainWindow,
         };

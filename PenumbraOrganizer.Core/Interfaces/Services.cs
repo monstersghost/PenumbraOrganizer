@@ -138,6 +138,21 @@ public interface IPenumbraVirtualFolderWriter
         CancellationToken cancellationToken);
 }
 
+public interface IOrganizationCleanupWriter
+{
+    // Null when organization.json doesn't exist at this installation. Used only for staleness
+    // detection (PlanInvalidationService) -- never gates or blocks anything on its own.
+    Task<DryRunSourceFileSnapshot?> CaptureSourceFileAsync(PenumbraInstallation installation, CancellationToken cancellationToken);
+
+    // Null when there is nothing to write: no confirmed selections, organization.json is
+    // missing/malformed/an unsupported version, or every confirmed selection turned out to be
+    // stale (no longer orphaned) once re-verified against the live proposal set.
+    Task<DryRunFileChange?> BuildFileChangeAsync(
+        PenumbraInstallation installation,
+        ProposalSnapshot proposalSnapshot,
+        CancellationToken cancellationToken);
+}
+
 public interface IApplyService
 {
     Task<ApplyOperation> PrepareAsync(

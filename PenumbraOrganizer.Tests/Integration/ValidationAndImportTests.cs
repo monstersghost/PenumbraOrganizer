@@ -1,6 +1,7 @@
 namespace PenumbraOrganizer.Tests.Integration;
 
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,6 +11,7 @@ using PenumbraOrganizer.Core.Services;
 using PenumbraOrganizer.Infrastructure.Apply;
 using PenumbraOrganizer.Infrastructure.Diagnostics;
 using PenumbraOrganizer.Infrastructure.Exports;
+using PenumbraOrganizer.Infrastructure.Penumbra;
 using PenumbraOrganizer.Infrastructure.Recovery;
 using PenumbraOrganizer.Infrastructure.Scanning;
 using PenumbraOrganizer.Infrastructure.Sessions;
@@ -18,12 +20,12 @@ using PenumbraOrganizer.Tests.Fixtures;
 public sealed class ValidationAndImportTests
 {
     [Fact]
-    public async Task OrganizationJson_IsIgnoredForAuthoritativeMapping_AndNoWriteTargetsPointToIt()
+    public async Task OrganizationJson_NoConfirmedSelections_IsNeverAWriteTarget()
     {
         using var context = await ValidationContext.CreateAsync();
         context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
         context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
-        context.Fixture.WriteOrganizationJson("""{"Folders":[{"Name":"Stale/Presentation","Identifier":"Mapped Mod"}]}""");
+        context.Fixture.WriteOrganizationJson("""{"Version":1,"Folders":{"Orphaned/Empty":{}},"Separators":{}}""");
 
         await context.ScanAsync();
         var snapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
@@ -32,6 +34,40 @@ public sealed class ValidationAndImportTests
         context.Inventory!.Mods.Single().CurrentVirtualFolder.Should().Be("Current/FromDb");
         plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.SortOrderPath);
         plan.FileChanges.Should().NotContain(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task OrganizationJson_ConfirmedSelection_PrunesOnlyThatFolder_LeavesEverythingElseUntouched()
+    {
+        using var context = await ValidationContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""
+        {
+          "Version": 1,
+          "Folders": {
+            "Orphaned/Empty": {},
+            "Kept/Customized": { "ExpandedColor": 123 }
+          },
+          "Separators": {}
+        }
+        """);
+
+        await context.ScanAsync();
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with { OrganizationCleanupSelections = ["Orphaned/Empty"] };
+        var plan = await context.Planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        var organizationChange = plan.FileChanges.Should()
+            .ContainSingle(change => change.TargetPath.Equals(context.Fixture.OrganizationJsonPath, StringComparison.OrdinalIgnoreCase))
+            .Subject;
+        var updatedJson = Encoding.UTF8.GetString(Convert.FromBase64String(organizationChange.ExpectedBytesBase64));
+        var updated = PenumbraOrganizationJson.Parse(updatedJson).Data!;
+        updated.Folders.Should().NotContainKey("Orphaned/Empty");
+        updated.Folders.Should().ContainKey("Kept/Customized");
+        // Mod placement is unaffected by organization.json cleanup -- confirms the two write
+        // targets are genuinely independent.
+        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.SortOrderPath);
     }
 
     [Fact]
@@ -184,8 +220,9 @@ public sealed class ValidationAndImportTests
             ScanService = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, protectionService);
             ProposalValidationService = new OrganizerProposalValidationService();
             Writer = new PenumbraOrganizationWriter();
-            ValidationService = new DryRunValidationService(new PlanInvalidationService(Writer));
-            Planner = new DryRunPlanner(Writer, ValidationService);
+            var organizationCleanupWriter = new OrganizationCleanupWriter();
+            ValidationService = new DryRunValidationService(new PlanInvalidationService(Writer, organizationCleanupWriter));
+            Planner = new DryRunPlanner(Writer, ValidationService, organizationCleanupWriter);
             PreflightService = new WritePermissionPreflightService(
                 BackupsRoot,
                 () => processes,
