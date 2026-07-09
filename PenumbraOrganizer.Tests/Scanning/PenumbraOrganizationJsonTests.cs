@@ -134,4 +134,42 @@ public sealed class PenumbraOrganizationJsonTests
 
         path.Should().Be(Path.Combine(@"C:\Config", "mod_filesystem", "organization.json"));
     }
+
+    [Fact]
+    public void Parse_NonIntegerVersion_ReturnsMalformed()
+    {
+        var result = PenumbraOrganizationJson.Parse("""{"Version":1.5,"Folders":{}}""");
+
+        result.Status.Should().Be(PenumbraOrganizationJsonLoadStatus.Malformed);
+        result.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_Int32OverflowVersion_ReturnsMalformed()
+    {
+        var result = PenumbraOrganizationJson.Parse("""{"Version":99999999999,"Folders":{}}""");
+
+        result.Status.Should().Be(PenumbraOrganizationJsonLoadStatus.Malformed);
+        result.Data.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_NegativeExpandedColor_FolderIncludedWithNullColor()
+    {
+        var result = PenumbraOrganizationJson.Parse("""{"Version":1,"Folders":{"F":{"ExpandedColor":-1}}}""");
+
+        result.Status.Should().Be(PenumbraOrganizationJsonLoadStatus.Success);
+        result.Data!.Folders.Should().ContainKey("F");
+        result.Data.Folders["F"].ExpandedColor.Should().BeNull();
+    }
+
+    [Fact]
+    public void Parse_NonIntegerCollapsedColor_FolderIncludedWithNullColor()
+    {
+        var result = PenumbraOrganizationJson.Parse("""{"Version":1,"Folders":{"F":{"CollapsedColor":1.5}}}""");
+
+        result.Status.Should().Be(PenumbraOrganizationJsonLoadStatus.Success);
+        result.Data!.Folders.Should().ContainKey("F");
+        result.Data.Folders["F"].CollapsedColor.Should().BeNull();
+    }
 }
