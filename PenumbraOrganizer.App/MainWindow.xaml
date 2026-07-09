@@ -917,6 +917,7 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <TextBlock Text="Selected backup"
                                            FontSize="18"
@@ -933,6 +934,7 @@
                                 <DataGrid Grid.Row="3"
                                           Margin="0,12,0,0"
                                           ItemsSource="{Binding Backups.AffectedFiles}"
+                                          SelectedItem="{Binding Backups.SelectedAffectedFile}"
                                           AutoGenerateColumns="False"
                                           IsReadOnly="True"
                                           CanUserAddRows="False">
@@ -943,6 +945,13 @@
                                         <DataGridTextColumn Header="JSON" Binding="{Binding JsonStatus}" Width="90" />
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <Button Grid.Row="4"
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Left"
+                                        Command="{Binding Backups.RestoreSelectedFileOnlyCommand}"
+                                        Content="Restore Selected File Only"
+                                        MinWidth="180"
+                                        Height="34" />
                             </Grid>
                         </Border>
                     </Grid>
