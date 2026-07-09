@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IPenumbraScanService, PenumbraScanService>();
         services.AddSingleton<IPenumbraCompatibilityService, PenumbraCompatibilityService>();
         services.AddSingleton<IPenumbraVirtualFolderWriter, PenumbraOrganizationWriter>();
+        services.AddSingleton<IOrganizationCleanupWriter, OrganizationCleanupWriter>();
         services.AddSingleton<IPlanInvalidationService, PlanInvalidationService>();
         services.AddSingleton<IDryRunValidationService, DryRunValidationService>();
         services.AddSingleton<IDryRunPlanner, DryRunPlanner>();

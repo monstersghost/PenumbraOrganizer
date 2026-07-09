@@ -5,6 +5,11 @@ using PenumbraOrganizer.Core.Models;
 
 public sealed class DryRunValidationService : IDryRunValidationService
 {
+    // Matches the existing ControlledTestOptions.MaximumSelectedModCount convention (3 mods per
+    // controlled test) -- caps blast radius per Apply while this write target has not yet been
+    // validated against a real Penumbra install. See docs/superpowers/plans/2026-07-09-organization-json-cleanup-plan-4-safety-gating.md.
+    private const int MaxOrganizationCleanupFoldersPerApply = 3;
+
     private readonly IPlanInvalidationService _planInvalidationService;
 
     public DryRunValidationService(IPlanInvalidationService planInvalidationService)
@@ -53,6 +58,14 @@ public sealed class DryRunValidationService : IDryRunValidationService
             .ToArray();
         foreach (var record in duplicateRecords)
             errors.Add($"Duplicate authoritative state write detected: {record}");
+
+        var organizationCleanupChange = plan.FileChanges.FirstOrDefault(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        if (organizationCleanupChange is not null && organizationCleanupChange.AffectedRecordKeys.Count > MaxOrganizationCleanupFoldersPerApply)
+        {
+            errors.Add(
+                $"Folder cleanup is limited to {MaxOrganizationCleanupFoldersPerApply} folder(s) per Apply while this feature is being validated on real installs. " +
+                $"{organizationCleanupChange.AffectedRecordKeys.Count} folder(s) would be pruned in this Apply -- uncheck some in the Folder Cleanup tab, or apply in smaller batches.");
+        }
 
         var invalidationReasons = await _planInvalidationService.GetInvalidationReasonsAsync(
             plan,

@@ -15,21 +15,23 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Open Penumbra and check whether the new virtual folder appears."
+        <TextBlock x:Name="HeaderText"
+                   Text="Open Penumbra and check whether the new virtual folder appears."
                    FontSize="20"
                    FontWeight="SemiBold"
                    TextWrapping="Wrap" />
 
-        <TextBlock Grid.Row="1"
+        <TextBlock x:Name="DisclaimerText"
+                   Grid.Row="1"
                    Margin="0,16,0,16"
                    Text="This observation is stored as diagnostic evidence only. It does not prove that organization.json must be written, and it does not change the write path."
                    TextWrapping="Wrap" />
 
         <UniformGrid Grid.Row="2" Columns="2" Rows="2">
-            <Button Content="Appeared immediately" Margin="0,0,10,10" Height="40" Click="AppearedImmediately_Click" />
-            <Button Content="Appeared after reload/restart" Margin="0,0,0,10" Height="40" Click="AppearedAfterReload_Click" />
-            <Button Content="Did not appear" Margin="0,0,10,0" Height="40" Click="DidNotAppear_Click" />
-            <Button Content="I have not checked yet" Height="40" Click="NotCheckedYet_Click" />
+            <Button x:Name="AppearedImmediatelyButton" Content="Appeared immediately" Margin="0,0,10,10" Height="40" Click="AppearedImmediately_Click" />
+            <Button x:Name="AppearedAfterReloadButton" Content="Appeared after reload/restart" Margin="0,0,0,10" Height="40" Click="AppearedAfterReload_Click" />
+            <Button x:Name="DidNotAppearButton" Content="Did not appear" Margin="0,0,10,0" Height="40" Click="DidNotAppear_Click" />
+            <Button x:Name="NotCheckedYetButton" Content="I have not checked yet" Height="40" Click="NotCheckedYet_Click" />
         </UniformGrid>
     </Grid>
 </Window>

@@ -16,6 +16,7 @@ public sealed class BackupsViewModel : ObservableObject
     private readonly IRollbackService _rollbackService;
     private readonly ILogger<BackupsViewModel> _logger;
     private BackupOperationRowViewModel? _selectedOperation;
+    private BackupAffectedFileViewModel? _selectedAffectedFile;
     private string _statusMessage = "Backup history will appear here.";
     private string _selectionSummary = "Select a backup to review its result and affected files.";
     private string _selectedOperationFolder = string.Empty;
@@ -38,6 +39,7 @@ public sealed class BackupsViewModel : ObservableObject
         VerifyBackupCommand = new AsyncRelayCommand(VerifySelectedBackupAsync, () => SelectedOperation is not null);
         OpenBackupFolderCommand = new AsyncRelayCommand(OpenSelectedFolderAsync, () => SelectedOperation is not null);
         RollbackCommand = new AsyncRelayCommand(RollbackSelectedAsync, CanRollbackSelected);
+        RestoreSelectedFileOnlyCommand = new AsyncRelayCommand(RestoreSelectedFileOnlyAsync, CanRestoreSelectedFileOnly);
     }
 
     public ObservableCollection<BackupOperationRowViewModel> Operations { get; }
@@ -46,6 +48,7 @@ public sealed class BackupsViewModel : ObservableObject
     public AsyncRelayCommand VerifyBackupCommand { get; }
     public AsyncRelayCommand OpenBackupFolderCommand { get; }
     public AsyncRelayCommand RollbackCommand { get; }
+    public AsyncRelayCommand RestoreSelectedFileOnlyCommand { get; }
 
     public BackupOperationRowViewModel? SelectedOperation
     {
@@ -58,7 +61,18 @@ public sealed class BackupsViewModel : ObservableObject
             VerifyBackupCommand.RaiseCanExecuteChanged();
             OpenBackupFolderCommand.RaiseCanExecuteChanged();
             RollbackCommand.RaiseCanExecuteChanged();
+            RestoreSelectedFileOnlyCommand.RaiseCanExecuteChanged();
             _ = LoadSelectedOperationAsync(value);
+        }
+    }
+
+    public BackupAffectedFileViewModel? SelectedAffectedFile
+    {
+        get => _selectedAffectedFile;
+        set
+        {
+            if (SetProperty(ref _selectedAffectedFile, value))
+                RestoreSelectedFileOnlyCommand.RaiseCanExecuteChanged();
         }
     }
 
@@ -192,6 +206,48 @@ public sealed class BackupsViewModel : ObservableObject
         {
             _logger.LogError(ex, "Failed to roll back operation {OperationId}", SelectedOperation.OperationId);
             StartupBootstrapLogger.RecordException("Backup restore failed.", ex);
+            StatusMessage = "Restore failed before completion.";
+        }
+    }
+
+    private bool CanRestoreSelectedFileOnly()
+        => SelectedAffectedFile is not null && CanRollbackSelected();
+
+    private async Task RestoreSelectedFileOnlyAsync()
+    {
+        if (SelectedOperation is null || SelectedAffectedFile is null)
+            return;
+
+        var targetPath = SelectedAffectedFile.TargetPath;
+        var isOrganizationJson = targetPath.EndsWith("organization.json", StringComparison.OrdinalIgnoreCase);
+        var warning = isOrganizationJson
+            ? "This restores Penumbra's folder structure/colors from the backup, independently of your mod placements. If this backup predates a folder cleanup, restoring it will bring back the orphaned folders that cleanup just removed. Mod positions won't be reverted unless you also restore those files.\n\n"
+            : string.Empty;
+
+        if (MessageBox.Show(
+                $"{warning}Restore only this file?\n\n{targetPath}\n\nOther files from this backup will not be touched.",
+                "Restore Selected File Only",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Restoring the selected file.";
+            var options = RollbackExecutionOptions.Default with { OnlyTargetPaths = new HashSet<string> { targetPath } };
+            var result = await _rollbackService.ExecuteAsync(SelectedOperation.OperationId, options, CancellationToken.None);
+            await RefreshAsync();
+            StatusMessage =
+                $"Restore finished with status {result.Status}. " +
+                $"Restored: {result.Files.Count(file => file.Status == RollbackFileStatus.Restored)}, " +
+                $"Skipped: {result.Files.Count(file => file.Status == RollbackFileStatus.Skipped)}.";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to restore file {TargetPath} for operation {OperationId}", targetPath, SelectedOperation.OperationId);
+            StartupBootstrapLogger.RecordException("Single-file restore failed.", ex);
             StatusMessage = "Restore failed before completion.";
         }
     }

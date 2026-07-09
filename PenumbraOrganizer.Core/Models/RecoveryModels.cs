@@ -236,7 +236,12 @@ public sealed record OperationPackageDetails(
     PostApplyVerificationResult? PostApplyVerification);
 
 public sealed record RollbackExecutionOptions(
-    IReadOnlySet<string>? ForceRestoreTargets = null)
+    IReadOnlySet<string>? ForceRestoreTargets = null,
+    // When set, restore only files whose TargetPath is in this set; every other file in the
+    // transaction is marked Skipped instead of restored. Null (the default) restores the whole
+    // transaction, unchanged from today's behavior. Compared case-insensitively regardless of the
+    // comparer the caller's set was built with -- see RollbackService.ExecuteAsync.
+    IReadOnlySet<string>? OnlyTargetPaths = null)
 {
     public static RollbackExecutionOptions Default { get; } = new();
 }

@@ -102,6 +102,10 @@ public sealed class RollbackService : IRollbackService
         };
         await PersistRollbackStateAsync(operation with { RollbackStatus = RollbackTransactionStatus.InProgress }, transaction, cancellationToken);
 
+        var onlyTargetPaths = options.OnlyTargetPaths is { } configured
+            ? new HashSet<string>(configured, StringComparer.OrdinalIgnoreCase)
+            : null;
+
         try
         {
             for (var index = 0; index < files.Count; index++)
@@ -110,7 +114,15 @@ public sealed class RollbackService : IRollbackService
                 var file = files[index];
 
                 RollbackFileEntry updatedFile;
-                if (file.ApplyResultStatus != ApplyResultStatus.Applied)
+                if (onlyTargetPaths is not null && !onlyTargetPaths.Contains(file.TargetPath))
+                {
+                    updatedFile = file with
+                    {
+                        Status = RollbackFileStatus.Skipped,
+                        Message = "Not included in this restore selection.",
+                    };
+                }
+                else if (file.ApplyResultStatus != ApplyResultStatus.Applied)
                 {
                     updatedFile = file with
                     {
