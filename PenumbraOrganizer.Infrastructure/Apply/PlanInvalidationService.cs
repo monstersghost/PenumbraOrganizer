@@ -85,9 +85,20 @@ public sealed class PlanInvalidationService : IPlanInvalidationService
 
         if (_organizationCleanupWriter is not null)
         {
-            var currentOrganizationSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
-            if (!EquivalentOptionalSourceFile(plan.OrganizationCleanupSourceFile, currentOrganizationSourceFile))
-                reasons.Add(PlanInvalidationReason.SourceFileHashChanged);
+            try
+            {
+                var currentOrganizationSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
+                if (!EquivalentOptionalSourceFile(plan.OrganizationCleanupSourceFile, currentOrganizationSourceFile))
+                    reasons.Add(PlanInvalidationReason.SourceFileHashChanged);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // organization.json cleanup is a bonus, independent write target -- a race against
+                // Penumbra rewriting the file mid-read (or any other internal failure) must never
+                // block staleness detection for the primary sort_order.json/mod_data.db plan.
+                // Treat the current source file as unchanged from the plan's recorded state rather
+                // than reporting a spurious invalidation reason or letting the exception propagate.
+            }
         }
 
         try

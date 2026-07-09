@@ -112,4 +112,42 @@ public sealed class OrganizationCleanupWiringTests
 
         reasons.Should().NotContain(PlanInvalidationReason.SourceFileHashChanged);
     }
+
+    [Fact]
+    public async Task CreatePlanAsync_OrganizationCleanupWriterThrows_NeverBlocksThePrimaryWrite()
+    {
+        using var context = await DryRunAndApplyTests.ApplyTestContext.CreateAsync();
+        context.Fixture.CreateMod("Mapped Mod", """{"FileVersion":3,"Name":"Mapped Mod","Author":"Author"}""");
+        context.Fixture.WriteModData(("Mapped Mod", "Current/FromDb"));
+        context.Fixture.WriteOrganizationJson("""{"Version":1,"Folders":{"Orphaned":{}},"Separators":{}}""");
+        await context.ScanAsync();
+
+        // A real TOCTOU race (Penumbra rewrites organization.json between the writer's two internal
+        // reads) or an internal self-consistency-validation failure surfaces as an uncaught
+        // InvalidOperationException from IOrganizationCleanupWriter. DryRunPlanner must degrade to
+        // "no organization.json cleanup this run" rather than letting that exception propagate and
+        // take down the primary sort_order.json plan with it.
+        var cleanupWriter = new AlwaysThrowingOrganizationCleanupWriter();
+        var planner = new DryRunPlanner(context.Writer, context.ValidationService, cleanupWriter);
+        var baseSnapshot = context.BuildSnapshot(("Mapped Mod", "Target/Folder"));
+        var snapshot = baseSnapshot with { OrganizationCleanupSelections = ["Orphaned"] };
+
+        var plan = await planner.CreatePlanAsync(context.Installation, context.Inventory!, snapshot, CancellationToken.None);
+
+        plan.FileChanges.Should().ContainSingle(change => change.TargetPath == context.Fixture.SortOrderPath);
+        plan.FileChanges.Should().NotContain(change => change.WriteTargetKind == PenumbraWriteTargetKind.OrganizationJson);
+        plan.OrganizationCleanupSourceFile.Should().BeNull();
+    }
+
+    private sealed class AlwaysThrowingOrganizationCleanupWriter : IOrganizationCleanupWriter
+    {
+        public Task<DryRunSourceFileSnapshot?> CaptureSourceFileAsync(PenumbraInstallation installation, CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Simulated TOCTOU race / internal validation failure while capturing organization.json.");
+
+        public Task<DryRunFileChange?> BuildFileChangeAsync(
+            PenumbraInstallation installation,
+            ProposalSnapshot proposalSnapshot,
+            CancellationToken cancellationToken)
+            => throw new InvalidOperationException("Simulated TOCTOU race / internal validation failure while building organization.json change.");
+    }
 }

@@ -48,10 +48,22 @@ public sealed class DryRunPlanner : IDryRunPlanner
         DryRunSourceFileSnapshot? organizationCleanupSourceFile = null;
         if (_organizationCleanupWriter is not null)
         {
-            organizationCleanupSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
-            var organizationFileChange = await _organizationCleanupWriter.BuildFileChangeAsync(installation, proposalSnapshot, cancellationToken);
-            if (organizationFileChange is not null)
-                fileChanges.Add(organizationFileChange);
+            try
+            {
+                organizationCleanupSourceFile = await _organizationCleanupWriter.CaptureSourceFileAsync(installation, cancellationToken);
+                var organizationFileChange = await _organizationCleanupWriter.BuildFileChangeAsync(installation, proposalSnapshot, cancellationToken);
+                if (organizationFileChange is not null)
+                    fileChanges.Add(organizationFileChange);
+            }
+            catch (Exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // organization.json cleanup is a bonus, independent write target -- any failure here
+                // (a race against Penumbra rewriting the file mid-read, an internal validation
+                // failure) must never block the primary sort_order.json/mod_data.db plan from
+                // being built. Degrade to "no cleanup this run", same as the already-handled
+                // missing/malformed/unsupported-version cases.
+                organizationCleanupSourceFile = null;
+            }
         }
 
         var warnings = new List<string>();
