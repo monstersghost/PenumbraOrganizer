@@ -44,7 +44,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IOperationObservationService, OperationObservationService>();
         services.AddSingleton<IApplyService, ApplyService>();
         services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
-        services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromSeconds(10) });
+        services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromSeconds(100) });
         services.AddSingleton<IUpdateCheckService, GitHubUpdateCheckService>();
         services.AddSingleton<IAppUpdateService, AppUpdateService>();
         return services;
