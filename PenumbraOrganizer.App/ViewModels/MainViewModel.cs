@@ -877,7 +877,7 @@ public sealed class MainViewModel : ObservableObject
             await RunBusyAsync("Exporting your workbook.", async () =>
             {
                 var workbookPath = ResolveWorkbookExportPath();
-                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, BuildOrganizationPreferences(), workbookPath, CancellationToken.None);
+                _lastWorkbookExport = await _workbookWorkflowService.ExportAsync(_inventory, CurrentProposalRows().ToList(), BuildOrganizationPreferences(), workbookPath, CancellationToken.None);
                 _lastWorkbookImport = null;
                 RaisePropertyChanged(nameof(WorkbookPath));
                 WorkbookStatus = $"{_lastWorkbookExport.Summary}{Environment.NewLine}Saved to: {_lastWorkbookExport.WorkbookPath}";
