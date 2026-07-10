@@ -87,6 +87,30 @@ public sealed class UpdateApplierTests
         File.ReadAllText(Path.Combine(destDir, "nested", "asset.dat")).Should().Be("nested-content");
     }
 
+    [Fact]
+    public void Apply_DoesNotTouchDestination_WhenStaleBackupCannotBeCleared()
+    {
+        var (sourceDir, destDir) = CreateTempDirs();
+        File.WriteAllText(Path.Combine(sourceDir, "PenumbraOrganizer.exe"), "new-exe-content");
+        File.WriteAllText(Path.Combine(destDir, "PenumbraOrganizer.exe"), "old-exe-content");
+
+        var staleBackupDir = destDir + ".old";
+        Directory.CreateDirectory(staleBackupDir);
+        var lockedStaleFile = Path.Combine(staleBackupDir, "locked.txt");
+        File.WriteAllText(lockedStaleFile, "locked");
+
+        UpdateApplyResult result;
+        using (new FileStream(lockedStaleFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = UpdateApplier.Apply(sourceDir, destDir);
+        }
+
+        result.Success.Should().BeFalse();
+        // The working install must be completely untouched -- not deleted, not replaced.
+        File.Exists(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().BeTrue();
+        File.ReadAllText(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().Be("old-exe-content");
+    }
+
     private static (string SourceDir, string DestDir) CreateTempDirs()
     {
         var root = Path.Combine(Path.GetTempPath(), "PenumbraOrganizer.Tests.Updater", Guid.NewGuid().ToString("N"));
