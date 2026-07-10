@@ -32,10 +32,17 @@ if (!result.Success)
     return 1;
 
 var exePath = Path.Combine(options.DestinationDirectory, "PenumbraOrganizer.exe");
-Process.Start(new ProcessStartInfo(exePath)
+try
 {
-    UseShellExecute = true,
-    WorkingDirectory = options.DestinationDirectory,
-});
+    Process.Start(new ProcessStartInfo(exePath)
+    {
+        UseShellExecute = true,
+        WorkingDirectory = options.DestinationDirectory,
+    });
+}
+catch (Exception ex)
+{
+    File.AppendAllText(logPath, $"{Environment.NewLine}Relaunch failed at {DateTimeOffset.UtcNow:O}: {ex.Message}");
+}
 
 return 0;

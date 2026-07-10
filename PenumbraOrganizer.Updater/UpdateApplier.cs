@@ -4,23 +4,21 @@ public sealed record UpdateApplyResult(bool Success, string? ErrorMessage);
 
 public static class UpdateApplier
 {
-    private const string MainExeName = "PenumbraOrganizer.exe";
-
     public static UpdateApplyResult Apply(string sourceDirectory, string destinationDirectory)
     {
-        var destExePath = Path.Combine(destinationDirectory, MainExeName);
-        var backupExePath = destExePath + ".old";
-        var renamedBackup = false;
+        var backupDirectory = destinationDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + ".old";
 
         try
         {
-            if (File.Exists(destExePath))
-            {
-                if (File.Exists(backupExePath))
-                    File.Delete(backupExePath);
-                File.Move(destExePath, backupExePath);
-                renamedBackup = true;
-            }
+            // Clear any stale backup left behind by a previous failed/interrupted update.
+            TryDeleteDirectory(backupDirectory);
+
+            // Whole-directory swap: move the current install aside first, so a failure
+            // partway through the copy loop leaves either the fully-old or fully-new
+            // install, never a mix -- and restoring is a single directory move, not
+            // dependent on how far the copy loop got or what order it visited files in.
+            Directory.Move(destinationDirectory, backupDirectory);
+            Directory.CreateDirectory(destinationDirectory);
 
             foreach (var sourceFile in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
             {
@@ -32,30 +30,50 @@ public static class UpdateApplier
                 File.Copy(sourceFile, destFile, overwrite: true);
             }
 
-            if (File.Exists(backupExePath))
-                File.Delete(backupExePath);
-
-            if (Directory.Exists(sourceDirectory))
-                Directory.Delete(sourceDirectory, recursive: true);
+            // Cleanup is best-effort and must never turn an already-successful swap into
+            // a reported failure -- a leftover backup or temp folder is harmless, unlike
+            // reporting "update failed" and skipping the relaunch after it actually worked
+            // (this is Finding 2 -- see below).
+            TryDeleteDirectory(backupDirectory);
+            TryDeleteDirectory(sourceDirectory);
 
             return new UpdateApplyResult(true, null);
         }
         catch (Exception ex)
         {
-            if (renamedBackup && File.Exists(backupExePath) && !File.Exists(destExePath))
-            {
-                try
-                {
-                    File.Move(backupExePath, destExePath);
-                }
-                catch
-                {
-                    // Best-effort restore — the original failure message below is more useful
-                    // to the user than a secondary failure from the restore attempt itself.
-                }
-            }
-
+            RestoreBackup(destinationDirectory, backupDirectory);
             return new UpdateApplyResult(false, ex.Message);
+        }
+    }
+
+    private static void RestoreBackup(string destinationDirectory, string backupDirectory)
+    {
+        if (!Directory.Exists(backupDirectory))
+            return; // Nothing to restore -- the swap never got far enough to move anything aside.
+
+        try
+        {
+            if (Directory.Exists(destinationDirectory))
+                Directory.Delete(destinationDirectory, recursive: true);
+            Directory.Move(backupDirectory, destinationDirectory);
+        }
+        catch
+        {
+            // Best-effort restore -- the original failure message is more useful to the
+            // user than a secondary failure from the restore attempt itself.
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Best-effort cleanup -- a leftover temp/backup folder is harmless.
         }
     }
 }
