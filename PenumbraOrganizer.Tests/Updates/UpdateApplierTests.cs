@@ -38,21 +38,53 @@ public sealed class UpdateApplierTests
     public void Apply_RestoresBackup_WhenCopyFails()
     {
         var (sourceDir, destDir) = CreateTempDirs();
+        var lockedSourceFile = Path.Combine(sourceDir, "locked.txt");
         File.WriteAllText(Path.Combine(sourceDir, "PenumbraOrganizer.exe"), "new-exe-content");
-        // Force a copy failure: make the destination path for "extra.txt" a directory instead of
-        // a file, so File.Copy throws when it tries to write there.
-        File.WriteAllText(Path.Combine(sourceDir, "extra.txt"), "extra-content");
-        Directory.CreateDirectory(Path.Combine(destDir, "extra.txt"));
+        File.WriteAllText(lockedSourceFile, "locked-content");
+        File.WriteAllText(Path.Combine(destDir, "PenumbraOrganizer.exe"), "old-exe-content");
+
+        UpdateApplyResult result;
+        using (new FileStream(lockedSourceFile, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            result = UpdateApplier.Apply(sourceDir, destDir);
+        }
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().NotBeNullOrEmpty();
+        File.Exists(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().BeTrue();
+        File.ReadAllText(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().Be("old-exe-content");
+        Directory.Exists(destDir + ".old").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Apply_ClearsStaleBackup_FromPreviousFailedAttempt()
+    {
+        var (sourceDir, destDir) = CreateTempDirs();
+        File.WriteAllText(Path.Combine(sourceDir, "PenumbraOrganizer.exe"), "new-exe-content");
+        File.WriteAllText(Path.Combine(destDir, "PenumbraOrganizer.exe"), "old-exe-content");
+        Directory.CreateDirectory(destDir + ".old");
+        File.WriteAllText(Path.Combine(destDir + ".old", "stale.txt"), "stale");
+
+        var result = UpdateApplier.Apply(sourceDir, destDir);
+
+        result.Success.Should().BeTrue();
+        File.ReadAllText(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().Be("new-exe-content");
+        Directory.Exists(destDir + ".old").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Apply_PreservesNestedSubdirectoryStructure()
+    {
+        var (sourceDir, destDir) = CreateTempDirs();
+        File.WriteAllText(Path.Combine(sourceDir, "PenumbraOrganizer.exe"), "new-exe-content");
+        Directory.CreateDirectory(Path.Combine(sourceDir, "nested"));
+        File.WriteAllText(Path.Combine(sourceDir, "nested", "asset.dat"), "nested-content");
         File.WriteAllText(Path.Combine(destDir, "PenumbraOrganizer.exe"), "old-exe-content");
 
         var result = UpdateApplier.Apply(sourceDir, destDir);
 
-        result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().NotBeNullOrEmpty();
-        // The old exe must be restored, not left renamed to .old or missing.
-        File.Exists(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().BeTrue();
-        File.ReadAllText(Path.Combine(destDir, "PenumbraOrganizer.exe")).Should().Be("old-exe-content");
-        File.Exists(Path.Combine(destDir, "PenumbraOrganizer.exe.old")).Should().BeFalse();
+        result.Success.Should().BeTrue();
+        File.ReadAllText(Path.Combine(destDir, "nested", "asset.dat")).Should().Be("nested-content");
     }
 
     private static (string SourceDir, string DestDir) CreateTempDirs()
