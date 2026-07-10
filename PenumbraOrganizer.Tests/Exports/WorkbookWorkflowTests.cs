@@ -18,7 +18,7 @@ public sealed class WorkbookWorkflowTests
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
         var preferences = Preferences(OrganizationStrategy.TypeThenCreator);
 
-        var export = await service.ExportAsync(inventory, preferences, CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), preferences, CreateWorkbookPath(), CancellationToken.None);
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
             var sheet = workbook.Worksheet("Edit Destinations");
@@ -40,7 +40,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -62,7 +62,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -84,7 +84,7 @@ public sealed class WorkbookWorkflowTests
         var service = CreateService();
         var inventory = CreateInventory(("00123", "Bizu Dress", "Bizu", "Old/Folder"));
 
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using var workbook = new XLWorkbook(export.WorkbookPath);
         var sheet = workbook.Worksheet("Edit Destinations");
@@ -115,7 +115,7 @@ public sealed class WorkbookWorkflowTests
         var inventory = CreateInventory(
             ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
             ("Body01", "Gen3 Body", "Author", "Bodies/Old"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -136,7 +136,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var exportedInventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
-        var export = await service.ExportAsync(exportedInventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(exportedInventory, Proposals(exportedInventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -163,7 +163,7 @@ public sealed class WorkbookWorkflowTests
         var exportedInventory = CreateInventory(
             ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
             ("Body01", "Gen3 Body", "Author", "Bodies/Old"));
-        var export = await service.ExportAsync(exportedInventory, Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(exportedInventory, Proposals(exportedInventory), Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
 
         // Simulates closing the app, someone (or Penumbra itself) moving one mod, then reopening and rescanning.
         var driftedInventory = CreateInventory(
@@ -185,7 +185,7 @@ public sealed class WorkbookWorkflowTests
         var inventory = CreateInventory(
             ("Dress01", "Bizu Dress", "Bizu", "Old/Folder"),
             ("Body01", "Gen3 Body", "Author", "Bodies/Old"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.TypeOnly), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -207,7 +207,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -226,7 +226,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var archive = ZipFile.Open(export.WorkbookPath, ZipArchiveMode.Update))
         {
@@ -236,7 +236,7 @@ public sealed class WorkbookWorkflowTests
         var macroAct = () => service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
         await macroAct.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Macro-enabled*");
 
-        export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
         using (var archive = ZipFile.Open(export.WorkbookPath, ZipArchiveMode.Update))
         {
             archive.CreateEntry("xl/externalLinks/externalLink1.xml");
@@ -251,7 +251,7 @@ public sealed class WorkbookWorkflowTests
     {
         var service = CreateService();
         var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder", true));
-        var export = await service.ExportAsync(inventory, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
 
         using (var workbook = new XLWorkbook(export.WorkbookPath))
         {
@@ -268,15 +268,47 @@ public sealed class WorkbookWorkflowTests
             && error.Contains("protected mod", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task Export_ReflectsLiveProtectionState_EvenWhenScanSnapshotDisagrees()
+    {
+        var service = CreateService();
+        // Simulates the real app: the scan snapshot says unprotected (the pre-fix state, always
+        // false), but the user has since protected this mod in the live organizer proposal.
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder", false));
+        var proposals = Proposals(inventory);
+        proposals.Single(p => p.StableScanId == "Dress01").Protected = true;
+
+        var export = await service.ExportAsync(inventory, proposals, Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+
+        using var workbook = new XLWorkbook(export.WorkbookPath);
+        var sheet = workbook.Worksheet("Edit Destinations");
+        sheet.Cell(2, 6).GetString().Should().Be("TRUE");
+    }
+
     private static WorkbookWorkflowService CreateService()
         => new(new CreatorCanonicalizer(), NullLogger<WorkbookWorkflowService>.Instance);
+
+    private static IReadOnlyList<OrganizerModProposal> Proposals(ScanInventory inventory)
+        => inventory.Mods.Select(mod => new OrganizerModProposal
+        {
+            StableScanId = mod.StableScanId,
+            Name = mod.Name,
+            CurrentVirtualFolder = mod.CurrentVirtualFolder,
+            ProposedVirtualFolder = mod.CurrentVirtualFolder,
+            OriginalCreator = mod.Author,
+            OrganizerCreatorLabel = mod.Author,
+            OrganizerTypeLabel = WorkbookCategoryCatalog.Detect(mod).Name,
+            Protected = mod.Protected,
+            OriginalProtected = mod.Protected,
+            Source = OrganizerProposalSource.PreservedCurrent,
+        }).ToList();
 
     private static async Task<string> ReadDestinationAsync(
         WorkbookWorkflowService service,
         ScanInventory inventory,
         OrganizationStrategy strategy)
     {
-        var export = await service.ExportAsync(inventory, Preferences(strategy), CreateWorkbookPath(), CancellationToken.None);
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(strategy), CreateWorkbookPath(), CancellationToken.None);
         using var workbook = new XLWorkbook(export.WorkbookPath);
         return workbook.Worksheet("Edit Destinations").Cell(2, 7).GetString();
     }

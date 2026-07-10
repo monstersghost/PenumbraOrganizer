@@ -23,6 +23,7 @@ public interface IWorkbookWorkflowService
 {
     Task<WorkbookExportResult> ExportAsync(
         ScanInventory inventory,
+        IReadOnlyList<OrganizerModProposal> proposals,
         OrganizationPreferences organizationPreferences,
         string workbookPath,
         CancellationToken cancellationToken);
