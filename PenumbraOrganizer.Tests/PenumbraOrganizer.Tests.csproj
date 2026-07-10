@@ -26,6 +26,7 @@
     <ProjectReference Include="..\PenumbraOrganizer.App\PenumbraOrganizer.App.csproj" />
     <ProjectReference Include="..\PenumbraOrganizer.Core\PenumbraOrganizer.Core.csproj" />
     <ProjectReference Include="..\PenumbraOrganizer.Infrastructure\PenumbraOrganizer.Infrastructure.csproj" />
+    <ProjectReference Include="..\PenumbraOrganizer.Updater\PenumbraOrganizer.Updater.csproj" />
   </ItemGroup>
 
 </Project>

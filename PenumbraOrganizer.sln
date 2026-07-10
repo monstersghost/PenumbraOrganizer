@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PenumbraOrganizer.Infrastru
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PenumbraOrganizer.Tests", "PenumbraOrganizer.Tests\PenumbraOrganizer.Tests.csproj", "{04E3D99A-C481-4B7F-8DC9-4A9B694DFDAA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PenumbraOrganizer.Updater", "PenumbraOrganizer.Updater\PenumbraOrganizer.Updater.csproj", "{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{04E3D99A-C481-4B7F-8DC9-4A9B694DFDAA}.Release|x64.Build.0 = Release|Any CPU
 		{04E3D99A-C481-4B7F-8DC9-4A9B694DFDAA}.Release|x86.ActiveCfg = Release|Any CPU
 		{04E3D99A-C481-4B7F-8DC9-4A9B694DFDAA}.Release|x86.Build.0 = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|x64.Build.0 = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Debug|x86.Build.0 = Debug|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|x64.ActiveCfg = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|x64.Build.0 = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|x86.ActiveCfg = Release|Any CPU
+		{505A03A5-DB48-44CA-AAFB-3F865B2AD40A}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
