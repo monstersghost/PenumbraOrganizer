@@ -6,11 +6,13 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
 $appProject = Join-Path $root 'PenumbraOrganizer.App\PenumbraOrganizer.App.csproj'
+$updaterProject = Join-Path $root 'PenumbraOrganizer.Updater\PenumbraOrganizer.Updater.csproj'
 $releaseRoot = Join-Path $root 'artifacts\release'
 $publishDir = Join-Path $releaseRoot 'publish'
 $packageDir = Join-Path $releaseRoot 'package'
 $zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.3-beta-win-x64.zip'
 $exePath = Join-Path $publishDir 'PenumbraOrganizer.exe'
+$updaterExePath = Join-Path $publishDir 'PenumbraOrganizer.Updater.exe'
 
 if (Test-Path $releaseRoot) {
     Remove-Item -Recurse -Force $releaseRoot
@@ -26,6 +28,14 @@ if (-not (Test-Path $exePath)) {
 }
 
 Copy-Item $exePath $packageDir
+
+dotnet publish $updaterProject -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir
+
+if (-not (Test-Path $updaterExePath)) {
+    throw "Publish failed: PenumbraOrganizer.Updater.exe was not created."
+}
+
+Copy-Item $updaterExePath $packageDir
 Copy-Item (Join-Path $root 'README_FOR_USERS.txt') $packageDir
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.txt') $packageDir
 Copy-Item (Join-Path $root 'LICENSE') $packageDir
@@ -41,7 +51,7 @@ Copy-Item $howToUsePdf $packageDir
 Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath
 
 $hashes = @()
-foreach ($file in @($zipPath, (Join-Path $packageDir 'PenumbraOrganizer.exe'))) {
+foreach ($file in @($zipPath, (Join-Path $packageDir 'PenumbraOrganizer.exe'), (Join-Path $packageDir 'PenumbraOrganizer.Updater.exe'))) {
     $hash = Get-FileHash $file -Algorithm SHA256
     $hashes += "{0} *{1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path -Leaf $file)
 }
