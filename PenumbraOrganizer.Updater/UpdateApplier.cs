@@ -7,17 +7,23 @@ public static class UpdateApplier
     public static UpdateApplyResult Apply(string sourceDirectory, string destinationDirectory)
     {
         var backupDirectory = destinationDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + ".old";
+        var movedDestinationAside = false;
 
         try
         {
             // Clear any stale backup left behind by a previous failed/interrupted update.
+            // If this doesn't fully succeed, stop here -- do NOT proceed to Directory.Move
+            // below (it would collide with the stale backup), and do not set
+            // movedDestinationAside, since nothing has touched the working install yet.
             TryDeleteDirectory(backupDirectory);
+            if (Directory.Exists(backupDirectory))
+                return new UpdateApplyResult(false, "Could not clear a stale backup from a previous update attempt.");
 
             // Whole-directory swap: move the current install aside first, so a failure
             // partway through the copy loop leaves either the fully-old or fully-new
-            // install, never a mix -- and restoring is a single directory move, not
-            // dependent on how far the copy loop got or what order it visited files in.
+            // install, never a mix.
             Directory.Move(destinationDirectory, backupDirectory);
+            movedDestinationAside = true;
             Directory.CreateDirectory(destinationDirectory);
 
             foreach (var sourceFile in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
@@ -31,9 +37,7 @@ public static class UpdateApplier
             }
 
             // Cleanup is best-effort and must never turn an already-successful swap into
-            // a reported failure -- a leftover backup or temp folder is harmless, unlike
-            // reporting "update failed" and skipping the relaunch after it actually worked
-            // (this is Finding 2 -- see below).
+            // a reported failure.
             TryDeleteDirectory(backupDirectory);
             TryDeleteDirectory(sourceDirectory);
 
@@ -41,7 +45,11 @@ public static class UpdateApplier
         }
         catch (Exception ex)
         {
-            RestoreBackup(destinationDirectory, backupDirectory);
+            // Only restore if THIS call actually moved the destination aside -- otherwise
+            // the working install was never touched and must be left exactly as it was.
+            if (movedDestinationAside)
+                RestoreBackup(destinationDirectory, backupDirectory);
+
             return new UpdateApplyResult(false, ex.Message);
         }
     }
@@ -49,7 +57,7 @@ public static class UpdateApplier
     private static void RestoreBackup(string destinationDirectory, string backupDirectory)
     {
         if (!Directory.Exists(backupDirectory))
-            return; // Nothing to restore -- the swap never got far enough to move anything aside.
+            return;
 
         try
         {
