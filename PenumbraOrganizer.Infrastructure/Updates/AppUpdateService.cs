@@ -22,6 +22,7 @@ public sealed class AppUpdateService : IAppUpdateService
         if (string.IsNullOrWhiteSpace(update.ZipDownloadUrl) || string.IsNullOrWhiteSpace(update.ChecksumsDownloadUrl))
             return new AppUpdatePrepareResult(false, null, "This release doesn't provide a downloadable update package.");
 
+        string? extractedFolder = null;
         try
         {
             progress?.Report("Downloading checksums...");
@@ -39,7 +40,7 @@ public sealed class AppUpdateService : IAppUpdateService
                 return new AppUpdatePrepareResult(false, null, "The downloaded update failed checksum verification.");
 
             progress?.Report("Extracting update...");
-            var extractedFolder = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerUpdate", Guid.NewGuid().ToString("N"));
+            extractedFolder = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerUpdate", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(extractedFolder);
             using (var zipStream = new MemoryStream(zipBytes))
             using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Read))
@@ -49,21 +50,46 @@ public sealed class AppUpdateService : IAppUpdateService
 
             var extractedExePath = Path.Combine(extractedFolder, "PenumbraOrganizer.exe");
             if (!File.Exists(extractedExePath))
-                return new AppUpdatePrepareResult(false, null, "The extracted update is missing PenumbraOrganizer.exe.");
-
-            if (checksums.TryGetValue("PenumbraOrganizer.exe", out var expectedExeHash))
             {
-                var actualExeHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(extractedExePath, cancellationToken))).ToLowerInvariant();
-                if (!string.Equals(actualExeHash, expectedExeHash, StringComparison.OrdinalIgnoreCase))
-                    return new AppUpdatePrepareResult(false, null, "The extracted update failed checksum verification.");
+                TryDeleteDirectory(extractedFolder);
+                return new AppUpdatePrepareResult(false, null, "The extracted update is missing PenumbraOrganizer.exe.");
+            }
+
+            if (!checksums.TryGetValue("PenumbraOrganizer.exe", out var expectedExeHash))
+            {
+                TryDeleteDirectory(extractedFolder);
+                return new AppUpdatePrepareResult(false, null, "No checksum entry found for PenumbraOrganizer.exe.");
+            }
+
+            var actualExeHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(extractedExePath, cancellationToken))).ToLowerInvariant();
+            if (!string.Equals(actualExeHash, expectedExeHash, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteDirectory(extractedFolder);
+                return new AppUpdatePrepareResult(false, null, "The extracted update failed checksum verification.");
             }
 
             return new AppUpdatePrepareResult(true, extractedFolder, null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UriFormatException)
         {
             _logger.LogWarning(ex, "Failed to prepare update");
+            if (extractedFolder is not null)
+                TryDeleteDirectory(extractedFolder);
             return new AppUpdatePrepareResult(false, null, "Could not download or prepare the update.");
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch
+        {
+            // Best-effort cleanup -- a leftover temp folder is harmless, unlike surfacing a
+            // secondary error that would mask the real failure reason.
         }
     }
 

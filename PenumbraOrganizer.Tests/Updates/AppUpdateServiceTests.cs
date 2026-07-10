@@ -97,4 +97,47 @@ public sealed class AppUpdateServiceTests
         result.Success.Should().BeFalse();
         result.ExtractedFolderPath.Should().BeNull();
     }
+
+    [Fact]
+    public async Task PrepareUpdateAsync_FailsClosed_WhenExeChecksumEntryIsMissing()
+    {
+        var (zipBytes, checksums) = BuildFixture("new-exe-content");
+        var checksumsWithoutExe = string.Join('\n', checksums.Split('\n').Where(line => !line.Contains("PenumbraOrganizer.exe")));
+        var service = new AppUpdateService(new HttpClient(new RoutingHandler(zipBytes, checksumsWithoutExe)), NullLogger<AppUpdateService>.Instance);
+
+        var result = await service.PrepareUpdateAsync(Update(), null, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ExtractedFolderPath.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PrepareUpdateAsync_CleansUpTempFolder_WhenExeVerificationFails()
+    {
+        var (zipBytes, checksums) = BuildFixture("new-exe-content");
+        var checksumsWithoutExe = string.Join('\n', checksums.Split('\n').Where(line => !line.Contains("PenumbraOrganizer.exe")));
+        var service = new AppUpdateService(new HttpClient(new RoutingHandler(zipBytes, checksumsWithoutExe)), NullLogger<AppUpdateService>.Instance);
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "PenumbraOrganizerUpdate");
+        var before = Directory.Exists(tempRoot) ? Directory.GetDirectories(tempRoot).Length : 0;
+
+        var result = await service.PrepareUpdateAsync(Update(), null, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        var after = Directory.Exists(tempRoot) ? Directory.GetDirectories(tempRoot).Length : 0;
+        after.Should().Be(before, "a failed verification must not leave an orphaned extraction folder behind");
+    }
+
+    [Fact]
+    public async Task PrepareUpdateAsync_FailsGracefully_WhenZipUrlIsMalformed()
+    {
+        var (zipBytes, checksums) = BuildFixture("new-exe-content");
+        var service = new AppUpdateService(new HttpClient(new RoutingHandler(zipBytes, checksums)), NullLogger<AppUpdateService>.Instance);
+        var updateWithBadUrl = new UpdateCheckResult(true, "v0.3.4-beta", "https://example.com/release", null, "not a valid url", ChecksumsUrl);
+
+        var result = await service.PrepareUpdateAsync(updateWithBadUrl, null, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ExtractedFolderPath.Should().BeNull();
+    }
 }
