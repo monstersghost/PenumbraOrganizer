@@ -17,10 +17,52 @@ each gets its own implementation plan (see "Next steps"), not a single combined 
 | 5 | `HOW_TO_USE.pdf` release-checklist reminder (current improved version lives on a different machine) | Housekeeping | Medium |
 | 6 | Orphaned-folder live-creation root cause (`docs/KNOWN_ISSUE_EMPTY_FOLDERS_AFTER_RESORT.md`) | Bug | **Out of scope — deferred to a separate release** |
 | 7 | Run the `humanizer` skill across all repo docs | Mechanical | Lowest — do last, after 1–5 land |
+| 8 | Special characters in folder names causing "invalid changes" (reported: `-`/`--`) | Bug | **Blocked — no repro yet, see below** |
 
 This spec covers items 1–5 in detail. Item 6 is explicitly excluded — do not fold it into any
 plan derived from this spec. Item 7 has no design (it's a skill invocation, not a feature) and
-should only run once items 1–5 are merged, so it doesn't fight with in-flight doc edits.
+should only run once items 1–5 are merged, so it doesn't fight with in-flight doc edits. Item 8
+has no design yet — it's blocked on a real repro string, see below.
+
+## Item 8 — Special characters in folder names (blocked, no repro yet)
+
+**User report:** a real folder name containing a dash as part of a longer name (not bare `-`/`--`)
+causes Review Changes to report it under "invalid changes" at Apply time. User confirms Penumbra
+itself accepts the same folder name fine — the rejection is this app's own validation.
+
+**Investigation so far (2026-07-10):** reproduced nothing. Tested plain ASCII `-`/`--` — bare,
+as a prefix, embedded inside a longer segment, and doubled — against every layer that touches a
+folder-path string, via temporary scratch tests (each added, run, and reverted; nothing left in
+the tree):
+
+- Workbook export (`WorkbookWorkflowService.ExportAsync`) — round-trips fine.
+- Workbook import/destination resolution (`TryResolveDestination`) — fine, *except* a separate,
+  narrower, confirmed bug: a destination whose first segment is purely a negative integer (e.g.
+  `-16`, `-1`) gets misread as an attempted category-code shorthand and rejected with
+  `"Category code -16 is not defined..."` (`WorkbookWorkflowService.cs:526`, the
+  `int.TryParse(parts[0], ...)` branch). This is real but doesn't match the user's description
+  ("dash as part of a longer name," not a bare negative number) — noted here in case it turns out
+  to be related, but not assumed to be the actual bug.
+- `sort_order.json` Apply backend (`PenumbraVirtualFolderWriter`) — fine.
+- `mod_data.db` (LiteDB) Apply backend (`ModDataDbVirtualFolderWriter`) — fine.
+- Manual "Create Folder" validation (`MainViewModel.IsValidVirtualFolderPath`) — fine.
+- `VirtualFolderPath.IsValid` (`OrganizerMutationService.cs:298`) — this is the actual validator
+  behind the "X invalid changes" count/message the user saw (via
+  `OrganizerProposalValidationService.Validate` → `ReviewInvalid` →
+  `MainWindow.xaml:759`). Tested `Type-Creator`, `Type--Creator`, `Anniversary-2024`,
+  `Studio-Name/Clothing`, `A-B-C`, `16-Others`, `-16`, `--16` — all valid, none rejected.
+
+**Leading hypothesis, unconfirmed:** since plain ASCII hyphen-minus (U+002D) doesn't reproduce
+anything, what the user is describing as "-"/"--" may actually be a visually-similar but
+different Unicode character — an em dash (—, U+2014), en dash (–, U+2013), or minus sign
+(−, U+2212). These are common in real creator/mod names from copy-pasted text (Discord, mod
+pages) and were not covered by any of the ASCII-only tests above. **Not verified — do not build a
+fix around this without confirming first.**
+
+**Status:** deferred until the user can reproduce on their own real install and provide the
+literal folder/creator name (copy-pasted, not retyped, to preserve the exact character) plus
+where in the flow it surfaces. Do not write an implementation plan for this until that repro
+exists — every ASCII-based guess so far has failed to reproduce it.
 
 ## Item 1 — Protection state fix
 
