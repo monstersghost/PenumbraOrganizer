@@ -37,6 +37,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IOperationObservationService _operationObservationService;
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
+    private readonly IUpdateCheckService _updateCheckService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
@@ -114,6 +115,7 @@ public sealed class MainViewModel : ObservableObject
         IOperationObservationService operationObservationService,
         IDiagnosticExportService diagnosticExportService,
         IOperationHistoryService historyService,
+        IUpdateCheckService updateCheckService,
         BackupsViewModel backups,
         ILogger<MainViewModel> logger)
     {
@@ -132,6 +134,7 @@ public sealed class MainViewModel : ObservableObject
         _operationObservationService = operationObservationService;
         _diagnosticExportService = diagnosticExportService;
         _historyService = historyService;
+        _updateCheckService = updateCheckService;
         _backups = backups;
         _logger = logger;
 
@@ -163,6 +166,7 @@ public sealed class MainViewModel : ObservableObject
         ValidateInstallationCommand = new AsyncRelayCommand(ValidateInstallationAsync);
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
         BackupNowCommand = new AsyncRelayCommand(CreateManualBackupAsync, () => !IsBusy);
+        CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
         CreateProposedFolderCommand = new RelayCommand(_ => CreateProposedFolder(), _ => CanCreateProposedFolder());
         AssignSelectedToSelectedFolderCommand = new RelayCommand(_ => AssignSelectedToSelectedFolder(), _ => SelectedProposedFolder is not null && SelectedOrganizerMods.Count > 0);
@@ -377,6 +381,15 @@ public sealed class MainViewModel : ObservableObject
 
     public string AppVersionDisplay { get; } = FormatAppVersion(
         typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+
+    private string _updateStatusMessage = string.Empty;
+    public string UpdateStatusMessage
+    {
+        get => _updateStatusMessage;
+        private set => SetProperty(ref _updateStatusMessage, value);
+    }
+
+    public AsyncRelayCommand CheckForUpdatesCommand { get; }
 
     public string ManualConfigPath
     {
@@ -899,6 +912,21 @@ public sealed class MainViewModel : ObservableObject
             AppendLog("Workbook export failed: " + ex.Message);
             MessageBox.Show(ToUserMessage(ex), "Workbook export failed", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        UpdateStatusMessage = "Checking for updates...";
+        var result = await _updateCheckService.CheckForUpdateAsync(
+            typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0",
+            CancellationToken.None);
+
+        UpdateStatusMessage = result switch
+        {
+            { ErrorMessage: not null } => $"Couldn't check for updates: {result.ErrorMessage}",
+            { UpdateAvailable: true } => $"A newer version is available: {result.LatestVersion}. Visit {result.ReleaseUrl} to download it.",
+            _ => "You're on the latest version.",
+        };
     }
 
     private async Task ImportWorkbookAsync()
