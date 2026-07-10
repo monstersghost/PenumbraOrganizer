@@ -444,4 +444,55 @@ public sealed class PenumbraScanServiceTests
         var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Combining Mod").Subject;
         mod.DetectedCategory.Should().Be(ModCategory.Gear);
     }
+
+    [Fact]
+    public async Task ScanAsync_AutoProtectsAndFlagsHeliosphereManagedMods_ByDirectoryPrefix()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        fixture.CreateMod("hs-Bizu-Dress-1.0.0-abc123", """{"FileVersion":3,"Name":"Bizu Dress","Author":"Heliosphere"}""");
+        fixture.CreateMod("Regular Mod", """{"FileVersion":3,"Name":"Regular Mod","Author":"Someone"}""");
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath, fixture.PenumbraConfigPath, fixture.ModRoot,
+            fixture.PluginAssemblyPath, fixture.PluginManifestPath, "1.6.1.10",
+            DiscoveryConfidence.High, Array.Empty<DiscoveryEvidence>(), Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var heliosphereMod = inventory.Mods.Single(m => m.StableScanId == "hs-Bizu-Dress-1.0.0-abc123");
+        heliosphereMod.IsHeliosphereManaged.Should().BeTrue();
+        heliosphereMod.Protected.Should().BeTrue();
+
+        var regularMod = inventory.Mods.Single(m => m.StableScanId == "Regular Mod");
+        regularMod.IsHeliosphereManaged.Should().BeFalse();
+        regularMod.Protected.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ScanAsync_AutoProtectsAndFlagsHeliosphereManagedMods_ByMetaFileFallback()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        // Externally-imported Heliosphere mod: directory doesn't start with "hs-", but the
+        // heliosphere.json file it ships with is still present — mirrors PackageState.cs's own
+        // "external" detection in the upstream plugin.
+        var modPath = fixture.CreateMod("Bizu Dress", """{"FileVersion":3,"Name":"Bizu Dress","Author":"Heliosphere"}""");
+        File.WriteAllText(Path.Combine(modPath, "heliosphere.json"), "{}");
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath, fixture.PenumbraConfigPath, fixture.ModRoot,
+            fixture.PluginAssemblyPath, fixture.PluginManifestPath, "1.6.1.10",
+            DiscoveryConfidence.High, Array.Empty<DiscoveryEvidence>(), Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Single(m => m.StableScanId == "Bizu Dress");
+        mod.IsHeliosphereManaged.Should().BeTrue();
+        mod.Protected.Should().BeTrue();
+    }
 }
