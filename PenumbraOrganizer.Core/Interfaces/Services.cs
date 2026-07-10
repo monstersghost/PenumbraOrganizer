@@ -245,3 +245,8 @@ public interface IOperationObservationService
         PenumbraUiObservationStatus status,
         CancellationToken cancellationToken);
 }
+
+public interface IUpdateCheckService
+{
+    Task<UpdateCheckResult> CheckForUpdateAsync(string currentVersion, CancellationToken cancellationToken);
+}
