@@ -212,10 +212,18 @@ public sealed class MainViewModel : ObservableObject
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
 
         var updateLogPath = Path.Combine(AppContext.BaseDirectory, "update-log.txt");
-        if (File.Exists(updateLogPath))
+        try
         {
-            AppendLog(File.ReadAllText(updateLogPath));
-            File.Delete(updateLogPath);
+            if (File.Exists(updateLogPath))
+            {
+                AppendLog(File.ReadAllText(updateLogPath));
+                File.Delete(updateLogPath);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort: if the file is transiently locked, just skip surfacing it this run rather
+            // than prevent the app from starting. It will be picked up on a later launch if it clears.
         }
 
         _ = InitializeSidebarStateAsync();

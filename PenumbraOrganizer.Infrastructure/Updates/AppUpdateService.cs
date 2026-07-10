@@ -70,7 +70,7 @@ public sealed class AppUpdateService : IAppUpdateService
 
             return new AppUpdatePrepareResult(true, extractedFolder, null);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UriFormatException)
+        catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to prepare update");
             if (extractedFolder is not null)
