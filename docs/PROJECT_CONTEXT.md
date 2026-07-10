@@ -961,7 +961,7 @@ Unknown structures should remain readable and preserved. They must not be silent
 * Collection matching currently uses mod display names and can be ambiguous when names are duplicated.
 * Top-level mod directories are treated as candidate mod roots and validated using metadata and `sort_order.json`.
 * `.pmp` package handling is intentionally out of scope for the installed-library organizer.
-* Linux is supported by running this app under Wine/Proton: discovery adds the XIVLauncher.Core base (`$HOME/.xlcore/pluginConfigs/Penumbra.json`, reached via the Wine `Z:` drive mapping) and POSIX mod roots are normalized to the `Z:` drive. Needs validation on a real Linux/Wine install.
+* Linux is supported by running this app under Wine, but only one launch path has been confirmed to work: from XIV Launcher, open Wine, then use "Open Wine Explorer" (Run apps in the same prefix) to launch `PenumbraOrganizer.exe` inside that prefix. Discovery adds the XIVLauncher.Core base (`$HOME/.xlcore/pluginConfigs/Penumbra.json`, reached via the Wine `Z:` drive mapping) and POSIX mod roots are normalized to the `Z:` drive. Proton and other Wine launch methods remain unverified.
 * The guarded Apply path writes only `sort_order.json` entries plus per-mod `meta.json` / `mod_data/<id>.json` for metadata edits.
 * The legacy `mod_filesystem\organization.json` is not authoritative and is not written.
 * The manual folder-picker wizard is not yet complete.
