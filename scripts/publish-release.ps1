@@ -1,3 +1,7 @@
+# Before running this script for a new release: confirm docs/HOW_TO_USE.pdf and its source
+# markdown are the latest edited versions. The improved HOW_TO_USE.pdf as of 2026-07-10 was
+# authored on a different machine than the one that normally runs this script — pull that
+# updated file into this checkout first, or this script will silently bundle a stale one.
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -26,6 +30,8 @@ Copy-Item (Join-Path $root 'README_FOR_USERS.txt') $packageDir
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.txt') $packageDir
 Copy-Item (Join-Path $root 'LICENSE') $packageDir
 
+# Reminder: this copies whatever docs/HOW_TO_USE.pdf is on THIS machine right now. See the header
+# comment at the top of this file before proceeding if you're not sure it's current.
 $howToUsePdf = Join-Path $root 'docs\HOW_TO_USE.pdf'
 if (-not (Test-Path $howToUsePdf)) {
     throw "How-to-use PDF not found at $howToUsePdf. Run docs\build_how_to_use_pdf.py first."
