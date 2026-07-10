@@ -82,4 +82,40 @@ public sealed class GitHubUpdateCheckServiceTests
         result.UpdateAvailable.Should().BeFalse();
         result.ErrorMessage.Should().NotBeNullOrEmpty();
     }
+
+    [Fact]
+    public async Task CheckForUpdateAsync_ExposesZipAndChecksumAssetUrls()
+    {
+        var body = """
+        [
+            {
+                "tag_name": "v0.3.4-beta",
+                "html_url": "https://github.com/monstersghost/PenumbraOrganizer/releases/tag/v0.3.4-beta",
+                "draft": false,
+                "assets": [
+                    { "name": "PenumbraOrganizer-v0.3.4-beta-win-x64.zip", "browser_download_url": "https://github.com/monstersghost/PenumbraOrganizer/releases/download/v0.3.4-beta/PenumbraOrganizer-v0.3.4-beta-win-x64.zip" },
+                    { "name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/monstersghost/PenumbraOrganizer/releases/download/v0.3.4-beta/SHA256SUMS.txt" }
+                ]
+            }
+        ]
+        """;
+        var service = new GitHubUpdateCheckService(new HttpClient(new FakeHandler(HttpStatusCode.OK, body)), NullLogger<GitHubUpdateCheckService>.Instance);
+
+        var result = await service.CheckForUpdateAsync("0.3.3-beta", CancellationToken.None);
+
+        result.ZipDownloadUrl.Should().Be("https://github.com/monstersghost/PenumbraOrganizer/releases/download/v0.3.4-beta/PenumbraOrganizer-v0.3.4-beta-win-x64.zip");
+        result.ChecksumsDownloadUrl.Should().Be("https://github.com/monstersghost/PenumbraOrganizer/releases/download/v0.3.4-beta/SHA256SUMS.txt");
+    }
+
+    [Fact]
+    public async Task CheckForUpdateAsync_LeavesAssetUrlsNull_WhenReleaseHasNoAssets()
+    {
+        var body = """[{ "tag_name": "v0.3.4-beta", "html_url": "https://example.com/v0.3.4-beta", "draft": false }]""";
+        var service = new GitHubUpdateCheckService(new HttpClient(new FakeHandler(HttpStatusCode.OK, body)), NullLogger<GitHubUpdateCheckService>.Instance);
+
+        var result = await service.CheckForUpdateAsync("0.3.3-beta", CancellationToken.None);
+
+        result.ZipDownloadUrl.Should().BeNull();
+        result.ChecksumsDownloadUrl.Should().BeNull();
+    }
 }

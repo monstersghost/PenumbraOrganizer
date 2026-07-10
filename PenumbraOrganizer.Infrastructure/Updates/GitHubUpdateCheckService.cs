@@ -45,7 +45,9 @@ public sealed class GitHubUpdateCheckService : IUpdateCheckService
                 return new UpdateCheckResult(false, null, null, "No non-draft releases were found.");
 
             var updateAvailable = AppVersionComparer.IsNewer(currentVersion, latest.TagName);
-            return new UpdateCheckResult(updateAvailable, latest.TagName, latest.HtmlUrl, null);
+            var zipAsset = latest.Assets?.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+            var checksumsAsset = latest.Assets?.FirstOrDefault(a => a.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
+            return new UpdateCheckResult(updateAvailable, latest.TagName, latest.HtmlUrl, null, zipAsset?.BrowserDownloadUrl, checksumsAsset?.BrowserDownloadUrl);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
@@ -59,5 +61,10 @@ public sealed class GitHubUpdateCheckService : IUpdateCheckService
     private sealed record GitHubReleaseDto(
         [property: JsonPropertyName("tag_name")] string TagName,
         [property: JsonPropertyName("html_url")] string HtmlUrl,
-        [property: JsonPropertyName("draft")] bool Draft);
+        [property: JsonPropertyName("draft")] bool Draft,
+        [property: JsonPropertyName("assets")] List<GitHubReleaseAssetDto>? Assets = null);
+
+    private sealed record GitHubReleaseAssetDto(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("browser_download_url")] string BrowserDownloadUrl);
 }
