@@ -11,6 +11,7 @@ using PenumbraOrganizer.Infrastructure.Exports;
 using PenumbraOrganizer.Infrastructure.Recovery;
 using PenumbraOrganizer.Infrastructure.Scanning;
 using PenumbraOrganizer.Infrastructure.Sessions;
+using PenumbraOrganizer.Infrastructure.Updates;
 
 public static class ServiceCollectionExtensions
 {
@@ -43,6 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IOperationObservationService, OperationObservationService>();
         services.AddSingleton<IApplyService, ApplyService>();
         services.AddSingleton<IDiagnosticExportService, DiagnosticExportService>();
+        services.AddSingleton(new HttpClient { Timeout = TimeSpan.FromSeconds(10) });
+        services.AddSingleton<IUpdateCheckService, GitHubUpdateCheckService>();
         return services;
     }
 }
