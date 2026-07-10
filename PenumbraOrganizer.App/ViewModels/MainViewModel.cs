@@ -977,8 +977,22 @@ public sealed class MainViewModel : ObservableObject
         if (!File.Exists(updaterPath))
         {
             // This install predates the self-update feature — fall back to the manual download link.
-            if (!string.IsNullOrWhiteSpace(update.ReleaseUrl))
+            if (string.IsNullOrWhiteSpace(update.ReleaseUrl))
+                return;
+
+            try
+            {
                 Process.Start(new ProcessStartInfo(update.ReleaseUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to open the release page");
+                MessageBox.Show(
+                    $"Couldn't open the release page automatically. Visit {update.ReleaseUrl} to download the update.",
+                    "Update Penumbra Organizer",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
             return;
         }
 
@@ -1010,16 +1024,42 @@ public sealed class MainViewModel : ObservableObject
             return;
         }
 
-        Process.Start(new ProcessStartInfo(updaterPath)
+        try
         {
-            ArgumentList =
+            Process.Start(new ProcessStartInfo(updaterPath)
             {
-                "--pid", Environment.ProcessId.ToString(),
-                "--source", prepareResult.ExtractedFolderPath!,
-                "--dest", AppContext.BaseDirectory,
-            },
-            UseShellExecute = false,
-        });
+                ArgumentList =
+                {
+                    "--pid", Environment.ProcessId.ToString(),
+                    "--source", prepareResult.ExtractedFolderPath!,
+                    "--dest", AppContext.BaseDirectory,
+                },
+                UseShellExecute = false,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch the updater");
+            // The update was fully prepared but never handed off -- clean up the temp extraction
+            // so it doesn't linger, and leave the app running normally rather than shutting down
+            // into a state where nothing will actually apply the update.
+            try
+            {
+                if (Directory.Exists(prepareResult.ExtractedFolderPath))
+                    Directory.Delete(prepareResult.ExtractedFolderPath!, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup -- a leftover temp folder is harmless.
+            }
+
+            MessageBox.Show(
+                $"Couldn't launch the updater: {ex.Message}. The update was not applied — Penumbra Organizer will keep running normally.",
+                "Update failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
 
         System.Windows.Application.Current.Shutdown();
     }
