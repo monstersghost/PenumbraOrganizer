@@ -37,6 +37,7 @@ public sealed class ModRowViewModel : ObservableObject
         _proposedVirtualFolder = mod.CurrentVirtualFolder;
         PhysicalDirectory = mod.PhysicalDirectory;
         _protected = mod.Protected;
+        IsHeliosphereManaged = mod.IsHeliosphereManaged;
         ContentSignalSummary = mod.ContentSignalSummary;
         CollectionCount = mod.CollectionStates.Count;
         WarningSummary = mod.Warnings.Count == 0 ? string.Empty : string.Join(" | ", mod.Warnings.Take(3));
@@ -51,6 +52,7 @@ public sealed class ModRowViewModel : ObservableObject
     public string CurrentVirtualFolder { get; }
     public string PhysicalDirectory { get; }
     public string? DetectedSubcategory { get; }
+    public bool IsHeliosphereManaged { get; }
     public bool Protected
     {
         get => _protected;

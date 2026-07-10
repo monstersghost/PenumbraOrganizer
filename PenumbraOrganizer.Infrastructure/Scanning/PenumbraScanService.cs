@@ -218,6 +218,7 @@ public sealed class PenumbraScanService : IPenumbraScanService
 
         var targets = ModPathClassifier.Classify(contentPaths);
         var (detectedCategory, detectedSubcategory) = ModPathClassifier.Resolve(targets);
+        var isHeliosphereManaged = HeliosphereModDetector.IsHeliosphereManaged(directoryName, jsonFiles.Select(Path.GetFileName)!);
 
         return new ModScanResult
         {
@@ -239,7 +240,8 @@ public sealed class PenumbraScanService : IPenumbraScanService
             UnknownMetadataFiles = unknown,
             MalformedMetadataFiles = malformed,
             CollectionStates = collectionStates ?? Array.Empty<ModCollectionState>(),
-            Protected = _protectionService.IsProtectedPath(currentVirtualFolder),
+            Protected = isHeliosphereManaged || _protectionService.IsProtectedPath(currentVirtualFolder),
+            IsHeliosphereManaged = isHeliosphereManaged,
             Warnings = warnings,
             ContentSignalSummary = SummarizeContentSignals(contentPaths),
             SchemaFingerprints = schemaFingerprints,

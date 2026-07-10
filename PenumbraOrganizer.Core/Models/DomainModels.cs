@@ -193,6 +193,7 @@ public sealed class ModScanResult
     public IReadOnlyList<string> MalformedMetadataFiles { get; init; } = Array.Empty<string>();
     public IReadOnlyList<ModCollectionState> CollectionStates { get; init; } = Array.Empty<ModCollectionState>();
     public bool Protected { get; init; }
+    public bool IsHeliosphereManaged { get; init; }
     public IReadOnlyList<string> Warnings { get; set; } = Array.Empty<string>();
     public string ContentSignalSummary { get; init; } = string.Empty;
     public IReadOnlyList<SchemaFingerprint> SchemaFingerprints { get; init; } = Array.Empty<SchemaFingerprint>();

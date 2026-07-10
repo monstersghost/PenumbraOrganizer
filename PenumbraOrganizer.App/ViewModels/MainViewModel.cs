@@ -81,6 +81,8 @@ public sealed class MainViewModel : ObservableObject
     private int _protectedModCount;
     private int _collectionCount;
     private int _warningCount;
+    private bool _heliosphereModsDetected;
+    private string _heliosphereReminderMessage = string.Empty;
     private string _installationValidationStatus = "Real-installation validation has not been run yet.";
     private string _workbookStatus = "Scan your mods, then export one workbook, edit mod type / protected / destination, and import it back for review.";
     private string _workbookImportStatus = WorkbookCategoryCatalog.BlankDestinationRule + " " + WorkbookCategoryCatalog.ReviewRule;
@@ -377,6 +379,18 @@ public sealed class MainViewModel : ObservableObject
 
     public string AppVersionDisplay { get; } = FormatAppVersion(
         typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion);
+
+    public bool HeliosphereModsDetected
+    {
+        get => _heliosphereModsDetected;
+        private set => SetProperty(ref _heliosphereModsDetected, value);
+    }
+
+    public string HeliosphereReminderMessage
+    {
+        get => _heliosphereReminderMessage;
+        private set => SetProperty(ref _heliosphereReminderMessage, value);
+    }
 
     public string ManualConfigPath
     {
@@ -710,6 +724,15 @@ public sealed class MainViewModel : ObservableObject
                 row.PropertyChanged += ModRowPropertyChanged;
                 Mods.Add(row);
             }
+
+            var heliosphereCount = Mods.Count(mod => mod.IsHeliosphereManaged);
+            HeliosphereModsDetected = heliosphereCount > 0;
+            HeliosphereReminderMessage = heliosphereCount switch
+            {
+                0 => string.Empty,
+                1 => "1 Heliosphere-managed mod was found and automatically protected. Heliosphere manages its own updates for this mod, so Penumbra Organizer will never move, reclassify, or apply changes to it unless you unprotect it yourself.",
+                _ => $"{heliosphereCount} Heliosphere-managed mods were found and automatically protected. Heliosphere manages its own updates for these mods, so Penumbra Organizer will never move, reclassify, or apply changes to them unless you unprotect them yourself.",
+            };
 
             Collections.Clear();
             foreach (var collection in _inventory.Collections)
