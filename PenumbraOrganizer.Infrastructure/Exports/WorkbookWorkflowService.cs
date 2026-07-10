@@ -24,6 +24,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 
     public Task<WorkbookExportResult> ExportAsync(
         ScanInventory inventory,
+        IReadOnlyList<OrganizerModProposal> proposals,
         OrganizationPreferences organizationPreferences,
         string workbookPath,
         CancellationToken cancellationToken)
@@ -41,7 +42,7 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             var installationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
 
             using var workbook = new XLWorkbook();
-            BuildEditableSheet(workbook, inventory, organizationPreferences);
+            BuildEditableSheet(workbook, inventory, proposals, organizationPreferences);
             BuildCategorySheet(workbook);
             BuildMetadataSheet(workbook, sourceExportId, generatedAtUtc, scanIdentity, installationIdentity, organizationPreferences);
             workbook.SaveAs(workbookPath);
@@ -198,8 +199,14 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             return BuildImportResult(workbookPath, meta, rows, errors, warnings);
         }, cancellationToken);
 
-    private void BuildEditableSheet(XLWorkbook workbook, ScanInventory inventory, OrganizationPreferences organizationPreferences)
+    private void BuildEditableSheet(
+        XLWorkbook workbook,
+        ScanInventory inventory,
+        IReadOnlyList<OrganizerModProposal> proposals,
+        OrganizationPreferences organizationPreferences)
     {
+        var protectedByStableScanId = proposals.ToDictionary(p => p.StableScanId, p => p.Protected, StringComparer.Ordinal);
+
         var sheet = workbook.Worksheets.Add(EditableSheetName);
         var headers = new[] { "#", "mod name", "author", "current folder", "mod type", "protected", "destination", "_internal_key" };
         for (var index = 0; index < headers.Length; index++)
@@ -216,12 +223,15 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
         foreach (var mod in inventory.Mods.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase))
         {
             var category = WorkbookCategoryCatalog.Detect(mod);
+            var isProtected = protectedByStableScanId.TryGetValue(mod.StableScanId, out var liveProtected)
+                ? liveProtected
+                : mod.Protected;
             sheet.Cell(row, 1).Value = displayNumber++;
             sheet.Cell(row, 2).Value = mod.Name;
             sheet.Cell(row, 3).Value = mod.Author;
             sheet.Cell(row, 4).Value = mod.CurrentVirtualFolder;
             sheet.Cell(row, 5).Value = category.Name;
-            sheet.Cell(row, 6).Value = mod.Protected ? "TRUE" : "FALSE";
+            sheet.Cell(row, 6).Value = isProtected ? "TRUE" : "FALSE";
             sheet.Cell(row, 7).Value = BuildSuggestedDestination(mod, category, organizationPreferences);
             sheet.Cell(row, 8).Value = mod.StableScanId;
             row++;
