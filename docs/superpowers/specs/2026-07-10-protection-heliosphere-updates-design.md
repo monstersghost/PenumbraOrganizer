@@ -1,0 +1,122 @@
+# Protection Visibility, Heliosphere Auto-Protect, Update Check, and Docs Housekeeping — Design
+
+**Status:** approved by user, 2026-07-10. Not yet implemented.
+
+**Context:** this design bundles several independent, user-requested backlog items into one
+roadmap so they can be sequenced and planned together. Items are independent units of work —
+each gets its own implementation plan (see "Next steps"), not a single combined plan.
+
+## Scope & priority
+
+| # | Item | Type | Priority |
+|---|------|------|----------|
+| 1 | Protection state doesn't reach workbook export or the Current-folder tree | Bug fix | High |
+| 2 | Heliosphere-managed mods auto-protected + visibly flagged (issue [#12](https://github.com/monstersghost/PenumbraOrganizer/issues/12)) | Feature | High |
+| 3 | Check-for-updates (app's own version, via GitHub Releases, prereleases included) | Feature | High |
+| 4 | Linux/Wine doc note: only confirmed via XIV Launcher → Wine → Open Wine Explorer (Run apps in prefix) | Doc-only | Medium |
+| 5 | `HOW_TO_USE.pdf` release-checklist reminder (current improved version lives on a different machine) | Housekeeping | Medium |
+| 6 | Orphaned-folder live-creation root cause (`docs/KNOWN_ISSUE_EMPTY_FOLDERS_AFTER_RESORT.md`) | Bug | **Out of scope — deferred to a separate release** |
+| 7 | Run the `humanizer` skill across all repo docs | Mechanical | Lowest — do last, after 1–5 land |
+
+This spec covers items 1–5 in detail. Item 6 is explicitly excluded — do not fold it into any
+plan derived from this spec. Item 7 has no design (it's a skill invocation, not a feature) and
+should only run once items 1–5 are merged, so it doesn't fight with in-flight doc edits.
+
+## Item 1 — Protection state fix
+
+**Root cause:** `ProtectionService.IsProtectedPath()` (`PenumbraOrganizer.Core/Services/ProtectionService.cs:7`)
+is a stub that always returns `false`. It seeds the `Protected` flag on `ScanInventory.Mods` at
+scan time (`PenumbraScanService.cs:242`) and on `ScanInventory.CurrentFolderTree` nodes
+(`PenumbraScanService.cs:388`).
+
+The real, live protection state exists only in the in-memory organizer proposal
+(`OrganizerMod.Protected`), driven by Protect/Unprotect actions and restored from saved Organizer
+Sessions (`MainViewModel.RestoreSession`, `MainViewModel.cs:2082`). That path is correct — e.g.
+`RecountProposedFolders()` (`MainViewModel.cs:1748`) recomputes folder-protected badges from live
+`Mods` and works.
+
+Two consumers never see that live truth because they read the frozen scan-time snapshot instead:
+
+- **Workbook export** — `ExportWorkbookAsync` passes `_inventory` (not `Mods`) into
+  `WorkbookWorkflowService.ExportAsync`, which reads `mod.Protected` off the dead snapshot
+  (`WorkbookWorkflowService.cs:224`).
+- **Current-folder tree** (read-only pane) — `FolderTree` is populated once from
+  `_inventory.CurrentFolderTree` at scan time and is never refreshed after Protect/Unprotect or
+  session restore, unlike `ProposedFolders`.
+
+**Fix direction:** there is no external data source that would make `IsProtectedPath` "smart" —
+protection is a pure app-level construct whose only persisted form is the Organizer Session. The
+fix is not to implement the stub, it's to **stop trusting the scan-time flag anywhere it's
+displayed or exported**, and make the live `Mods` collection (already the correct source for
+`ProposedFolders`) the single source of truth for both the workbook export and the Current-folder
+tree badges. Confirm during planning whether `IsProtectedPath`/`IProtectionService` becomes fully
+dead code once nothing reads it, and if so, remove it rather than leaving an unused stub.
+
+## Item 2 — Heliosphere auto-protect (issue #12)
+
+**Current state:** zero Heliosphere-awareness anywhere in the codebase. `PenumbraScanService`
+enumerates every top-level directory under `installation.ModRoot` with no exclusion logic
+(`PenumbraScanService.cs:38`).
+
+**Design:**
+
+- Detect Heliosphere-managed mods at scan time. Signature to confirm against the actual issue
+  reporter before implementing (likely `[HS]`-prefixed directory/display names, possibly a
+  distinct containing subfolder) — guessing the wrong pattern would silently protect nothing.
+- Reuse the existing Protection mechanism: mark detected mods `Protected = true` by default. This
+  means Apply/classification/bulk-move already refuse to touch them — no new enforcement path
+  needed, it rides the same plumbing as manual Protect.
+- Visibility (per user decision — must not be silent):
+  - When a Heliosphere-managed directory is detected during a scan, show an explicit one-time
+    reminder telling the user these mods were auto-protected and why, and prompting them to
+    confirm/protect before Apply.
+  - In the mods list, give Heliosphere-detected mods a distinct **red warning badge/box** — not
+    just the generic lock icon — so they read as "Heliosphere-managed, auto-protected" rather than
+    blending in with manually-protected mods.
+- Auto-protection remains an overridable default (the user can unprotect), consistent with how
+  protection works everywhere else.
+
+## Item 3 — Check-for-updates
+
+**Current state:** no update-check code exists anywhere (confirmed — no references to GitHub API
+clients, Octokit, or release-fetching in the app). Greenfield work.
+
+**Design:**
+
+- New service (e.g. `IUpdateCheckService`) queries GitHub's releases API for
+  `monstersghost/PenumbraOrganizer`, compares the latest tag — **prereleases included**, since the
+  app itself currently ships as beta (`v0.3.3-beta`) — against the running app's own version.
+- Must follow the same philosophy as the existing Penumbra-version check described in
+  `docs/PROJECT_CONTEXT.md`: purely informational, never auto-downloads or installs anything,
+  never blocks core offline functionality, fails silently (logged, not surfaced as an error) if
+  offline.
+- Open for the implementation plan to decide: check on startup vs. a manual button vs. both;
+  where it surfaces in the UI (the Compatibility tab is the natural existing home, alongside the
+  Penumbra-version check).
+
+## Item 4 — Linux/Wine doc note
+
+Update the Linux bullet under "Known assumptions and limitations" in `docs/PROJECT_CONTEXT.md`
+(currently around line 964) to state the only confirmed-working path is: **XIV Launcher → Wine →
+Open Wine Explorer (Run apps in prefix)**. This replaces the current more general/unverified Wine
+claim. Doc-only, no code changes.
+
+## Item 5 — HOW_TO_USE.pdf release-checklist reminder
+
+Not a code task. The improved `HOW_TO_USE.pdf`/`.md` currently exists on a different machine than
+this one. Add an explicit pre-release checklist step (wherever this project tracks release
+process — e.g. `docs/releases/` or a release script comment) to pull in that updated version
+before cutting the next release, rather than regenerating a stale local copy from this machine.
+
+## Next steps
+
+Per `writing-plans`, each item above becomes its own implementation plan:
+
+1. Plan for Item 1 (protection state fix)
+2. Plan for Item 2 (Heliosphere auto-protect)
+3. Plan for Item 3 (check-for-updates)
+4. Plan for Item 4 (Linux/Wine doc note) — likely small enough to be a single-task plan
+5. Plan for Item 5 (release-checklist reminder) — likely small enough to be a single-task plan
+
+Item 6 (orphaned folders) and Item 7 (humanizer pass) are explicitly excluded from this round of
+planning.
