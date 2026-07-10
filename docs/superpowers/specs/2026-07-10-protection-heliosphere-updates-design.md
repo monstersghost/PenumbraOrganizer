@@ -1,6 +1,8 @@
 # Protection Visibility, Heliosphere Auto-Protect, Update Check, and Docs Housekeeping — Design
 
-**Status:** approved by user, 2026-07-10. Not yet implemented.
+**Status:** approved by user, 2026-07-10. Items 1–5 IMPLEMENTED and merged to `main` 2026-07-10
+(268 tests passing, 0 warnings/errors). Item 6 remains out of scope; item 7 remains lowest
+priority/do-last; item 8 remains blocked pending a real repro.
 
 **Context:** this design bundles several independent, user-requested backlog items into one
 roadmap so they can be sequenced and planned together. Items are independent units of work —
