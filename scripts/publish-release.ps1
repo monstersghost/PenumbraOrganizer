@@ -10,7 +10,7 @@ $updaterProject = Join-Path $root 'PenumbraOrganizer.Updater\PenumbraOrganizer.U
 $releaseRoot = Join-Path $root 'artifacts\release'
 $publishDir = Join-Path $releaseRoot 'publish'
 $packageDir = Join-Path $releaseRoot 'package'
-$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.3-beta-win-x64.zip'
+$zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.4-beta-win-x64.zip'
 $exePath = Join-Path $publishDir 'PenumbraOrganizer.exe'
 $updaterExePath = Join-Path $publishDir 'PenumbraOrganizer.Updater.exe'
 
