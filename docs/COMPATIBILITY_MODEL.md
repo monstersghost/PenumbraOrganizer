@@ -1,4 +1,4 @@
-# Compatibility Model
+# Compatibility model
 
 `IPenumbraCompatibilityService` evaluates whether a scanned Penumbra installation is still safe to write.
 

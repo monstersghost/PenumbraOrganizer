@@ -1,4 +1,4 @@
-# Penumbra Organizer - Recovery Foundation Handoff
+# Penumbra Organizer: recovery foundation handoff
 
 > **Storage note (updated):** This historical handoff originally described a `mod_data.db` (LiteDB)
 > write target. That file does not exist on a real Penumbra install. The real, file-based authoritative

@@ -1,4 +1,4 @@
-# Penumbra Discovery
+# Penumbra discovery
 
 `IPenumbraDiscoveryService` discovers candidate Penumbra installations from local XIVLauncher data and manual user selection.
 

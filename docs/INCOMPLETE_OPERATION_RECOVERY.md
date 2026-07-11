@@ -1,4 +1,4 @@
-# Incomplete Operation Recovery
+# Incomplete operation recovery
 
 ## Purpose
 

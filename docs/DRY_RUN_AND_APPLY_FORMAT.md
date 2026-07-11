@@ -1,10 +1,10 @@
-# Dry Run And Apply Format
+# Dry run and apply format
 
 ## Authoritative write target
 
 Apply updates one proven, file-based Penumbra structure (verified live):
 
-* **`sort_order.json`** — authoritative virtual-folder organization.
+* **`sort_order.json`**: authoritative virtual-folder organization.
   Shape: `{ "Data": { "<mod dir name>": "<full path incl. display leaf>" }, "EmptyFolders": [ ... ] }`.
   The `Data` value encodes both the containing folder (everything before the last `/`) and the
   mod's display/sort name (the final segment). `EmptyFolders` is authoritative for empty folders.

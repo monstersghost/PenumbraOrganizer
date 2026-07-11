@@ -1,4 +1,4 @@
-# Penumbra Organizer Architecture
+# Penumbra Organizer architecture
 
 `PenumbraOrganizer` is an unofficial third-party Windows desktop application for scanning and organizing Penumbra's virtual mod folders. It must never modify Final Fantasy XIV game files and must remain usable offline.
 
@@ -31,7 +31,7 @@
 - Penumbra discovery
 - config and metadata parsing
 - filesystem scanning
-- `sort_order.json` read/write for virtual-folder organization (`meta.json` and `mod_data/<id>.json` are read for display only — never written)
+- `sort_order.json` read/write for virtual-folder organization (`meta.json` and `mod_data/<id>.json` are read for display only, never written)
 - backup, rollback, atomic write
 - workbook (Excel) export generation and validated import
 - organizer session persistence under `%LocalAppData%\PenumbraOrganizer\Sessions`
@@ -193,7 +193,7 @@ The app must be able to produce proposals automatically when metadata is suffici
 
 ## Workbook export and import
 
-`IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor — a human, or an external tool the user chooses to involve — works against the same strategy. The export is read-only with respect to the live install.
+`IWorkbookWorkflowService.ExportAsync` writes the inventory and current plan to an Excel workbook (ClosedXML), carrying the active `OrganizationPreferences` so any offline editor (a human, or an external tool the user chooses to involve) works against the same strategy. The export is read-only with respect to the live install.
 
 `ImportAsync` reads an edited workbook back into `WorkbookImportRow` records and validates each against the supplied `ScanInventory`: rows must map to a real installed mod, and a row that targets a protected path or fails validation is rejected rather than silently applied. The result reports accepted rows, rejected rows, and a summary.
 
@@ -269,7 +269,7 @@ The currently proven authoritative write targets are:
 
 The top-level physical mod directory name is the stable scan ID used to map an installed mod to its `sort_order.json` entry, its `meta.json`, and its `mod_data/<id>.json` file. The same string is the physical folder name, the `Data` key, and the `mod_data/<id>.json` filename.
 
-Apply writes only `sort_order.json` (one file); `meta.json` and `mod_data/<id>.json` are read for display but never modified. (Per-mod metadata editing was prototyped and then removed as out of scope — metadata is edited in-game.) The backup taken before every Apply, and the rollback that restores it, both cover the entire Penumbra configuration directory rather than just the one file being written — so unrelated files stay recoverable too, not only the write target.
+Apply writes only `sort_order.json` (one file); `meta.json` and `mod_data/<id>.json` are read for display but never modified. (Per-mod metadata editing was prototyped and then removed as out of scope: metadata is edited in-game.) The backup taken before every Apply, and the rollback that restores it, both cover the entire Penumbra configuration directory rather than just the one file being written, so unrelated files stay recoverable too.
 
 ## Milestone 1
 

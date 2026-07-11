@@ -5,7 +5,7 @@ _Last updated: 2026-06-29. Supersedes the storage assumptions in the older docs 
 > **Metadata editing was REMOVED (2026-06-30, out of scope).** This handoff is now a historical
 > record. The `sort_order.json` retarget it describes is live and unchanged, but the per-mod
 > metadata-editing engine and UI (`ModMetadataEdit`, `PenumbraMetadataWriter`, `ModMetadataDialog`,
-> the session `metadataEdits`) have been deleted — metadata is edited in-game. Apply now writes only
+> the session `metadataEdits`) have been deleted. Metadata is edited in-game. Apply now writes only
 > `sort_order.json`. The scanner still reads `meta.json` / `mod_data/<id>.json` for display.
 
 > **Status update (follow-up session, 2026-06-29):** Every item in "What is LEFT TO DO" below is
@@ -18,14 +18,14 @@ The app was built assuming Penumbra stores virtual-folder organization in a Lite
 database `mod_data.db` with a `LocalModData` collection / `Folder` field. **That file does
 not exist on a real Penumbra install.** The real, file-based format (verified live) is:
 
-- **`<config>/sort_order.json`** — authoritative virtual-folder organization.
+- **`<config>/sort_order.json`** is authoritative virtual-folder organization.
   Shape: `{ "Data": { "<mod dir name>": "<full path incl. display leaf>" }, "EmptyFolders": [ ... ] }`.
   The `Data` value encodes both the containing folder (everything before the last `/`) and the
   mod's display/sort name (the final segment). A mod with no entry sits at the root using its
   `meta.json` name.
-- **`<config>/mod_data/<mod dir name>.json`** — per-user local data: `FileVersion` (mixed **2 and 3**),
+- **`<config>/mod_data/<mod dir name>.json`** is per-user local data: `FileVersion` (mixed **2 and 3**),
   `ImportDate`, `LocalTags`, `Note`, `Favorite`.
-- **`<modRoot>/<mod dir name>/meta.json`** — author metadata: `Name`, `Author`, `Description`,
+- **`<modRoot>/<mod dir name>/meta.json`** is author metadata: `Name`, `Author`, `Description`,
   `Version`, `Website`, `ModTags`.
 
 The same string is the physical folder name, the `sort_order.json` `Data` key, and the
@@ -33,7 +33,7 @@ The same string is the physical folder name, the `sort_order.json` `Data` key, a
 
 Real install paths on the original dev machine:
 - config: `%AppData%\XIVLauncher\pluginConfigs\Penumbra`
-- mod library (assets — never edited): `C:\Mods`
+- mod library (assets, never edited): `C:\Mods`
 
 ## What is DONE (merged in PR #1)
 
@@ -53,11 +53,11 @@ of the real install (the live config and `C:\Mods` were never modified).
   `PenumbraMetadataWriter` emit one `DryRunFileChange` per touched `meta.json` and
   `mod_data/<id>.json` (preserving unknown fields and `FileVersion`). `DryRunPlanner` produces
   **multi-file** plans that flow through the existing N-file backup/apply/rollback.
-- All LiteDB usage removed from production **code** (the package reference still lingers — see below).
+- All LiteDB usage removed from production **code** (the package reference still lingers; see below).
 
 ## What is LEFT TO DO  →  ALL DONE
 
-### P1 — Metadata-editing UI ✅ DONE
+### P1: Metadata-editing UI ✅ DONE
 The scanner now reads local data (`Favorite`/`LocalTags`/`Note` from `mod_data/<id>.json`).
 `ModRowViewModel` tracks per-field edits (`BuildMetadataEdit` diffs against scanned values). A new
 `ModMetadataDialog` plus an inline Favorite checkbox and an "Edits" indicator column edit all nine
@@ -67,7 +67,7 @@ in `OrganizerSessionDocument.MetadataEdits` and restore on resume; metadata chan
 the dry-run summary and Apply confirmation. Editing a placed mod's `Name` also rewrites its
 `sort_order.json` display leaf (root mods are renamed by `meta.json` alone). Original spec:
 - UI to edit per-mod `Favorite` / `LocalTags` / `Note` (local data) and
-  `Name` / `Author` / `Description` / `Version` / `Website` / `ModTags` (author meta.json) —
+  `Name` / `Author` / `Description` / `Version` / `Website` / `ModTags` (author meta.json),
   e.g. grid columns + an edit dialog.
 - Collect edits into `IReadOnlyList<ModMetadataEdit>` and pass them when building the snapshot
   (`BuildBaseProposalSnapshot` → `new ProposalSnapshot(..., metadataEdits)`).
@@ -75,7 +75,7 @@ the dry-run summary and Apply confirmation. Editing a placed mod's `Name` also r
   restore, like folder proposals do.
 - Surface metadata changes in the Review Changes / dry-run summary and the Apply confirmation.
 
-### P1 — Confirm the Apply flow end-to-end ✅ DONE
+### P1: Confirm the Apply flow end-to-end ✅ DONE
 Fixed two latent crashes that triggered the moment a plan had more than one file change (any
 metadata edit): `BuildDryRunStatus` and `BuildApplyConfirmationMessage` used `SingleOrDefault()`
 and now summarize all write targets. Smoke-launched the WPF app: clean startup through
@@ -84,7 +84,7 @@ and now summarize all write targets. Smoke-launched the WPF app: clean startup t
 is covered by `MetadataEditingTests` against a temp fixture. _Not_ done: a click-through live Apply
 against a real install (needs FFXIV closed + a real/copied Penumbra config).
 
-### P2 — Update stale documentation ✅ DONE
+### P2: Update stale documentation ✅ DONE
 All nine docs below were rewritten to the file-based model (plus `ORGANIZER_SESSION_FORMAT.md` for
 the new `metadataEdits` field). Originally wrong:
 - `docs/ARCHITECTURE.md`
@@ -99,11 +99,11 @@ the new `metadataEdits` field). Originally wrong:
 Update them to reference `sort_order.json` + `mod_data/<id>.json` + `meta.json`, multi-file
 backup, and the metadata-editing engine.
 
-### P2 — Remove the unused LiteDB dependency ✅ DONE
+### P2: Remove the unused LiteDB dependency ✅ DONE
 Removed the `LiteDB` PackageReference from the Infrastructure csproj and its
 `THIRD_PARTY_NOTICES.txt` entry.
 
-### P3 — Known limitations / edge cases
+### P3: Known limitations / edge cases
 - **Authoritative-EmptyFolders footgun** ✅ documented as a contract note on `ProposalSnapshot.Folders`
   (Core/Models/DryRunModels.cs). Both production builders already seed existing empty folders;
   behavior is locked in by `DryRunAndApplyTests` (persist/drop/delete/rename) and
@@ -116,7 +116,7 @@ Removed the `LiteDB` PackageReference from the Infrastructure csproj and its
   materializes it before backup; rollback restores the baseline. See
   `LocalDataEdit_WhenModDataFileAbsent_*` test.
 - **`DiagnosticExportService` `mod_data.db` sanitization** ✅ removed.
-- **Legacy `mod_filesystem/organization.json`** — intentionally KEPT. The "ignored, non-authoritative"
+- **Legacy `mod_filesystem/organization.json`** is intentionally KEPT. The "ignored, non-authoritative"
   integration test (`OrganizationJson_IsIgnoredForAuthoritativeMapping`) and the controlled-test
   assertion are useful regression guards that no write target ever points at it; removing valid
   guards is not a net improvement.

@@ -1,4 +1,4 @@
-# Backup And Rollback Format
+# Backup and rollback format
 
 ## Scope
 

@@ -1,4 +1,4 @@
-# Penumbra Organizer — Project Context
+# Penumbra Organizer: project context
 
 ## Product goal
 
@@ -223,8 +223,8 @@ If a package contains at least one real clothing item, it normally belongs under
 Texture-file count alone must not make a clothing package a texture mod.
 
 **Slot priority rule (always wins):** if a mod has at least one content signal in the head,
-body, hand, legs, or feet equipment slots, it is Clothing regardless of any other paths present
-— for example, a mod with one `feet` item and ten accessory rings is still Clothing. This is a
+body, hand, legs, or feet equipment slots, it is Clothing regardless of any other paths present.
+For example, a mod with one `feet` item and ten accessory rings is still Clothing. This is a
 hard, highest-priority rule ahead of every other classification check. See
 `docs/HANDOFF_MOD_CATEGORY_OVERHAUL.md` for the in-progress work to make classification
 slot-driven instead of keyword-driven.

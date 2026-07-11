@@ -1,4 +1,4 @@
-# Organizer Session Format
+# Organizer session format
 
 Organizer sessions are application-owned proposal snapshots stored under:
 
@@ -59,7 +59,7 @@ A `metadataEdits` array may be present in sessions written by 0.2.0-beta builds 
 since-removed per-mod metadata-editing feature. It is now ignored on resume (the field defaults to
 empty and is no longer written), so older sessions still load.
 
-## Staleness Rules
+## Staleness rules
 
 Resume is allowed only when:
 
@@ -74,7 +74,7 @@ When the library changed materially, the app must not restore silently. The user
 
 Rows are matched by stable scan ID, never by display name alone.
 
-## Proposal Source Precedence
+## Proposal source precedence
 
 Proposal sources are:
 
@@ -86,7 +86,7 @@ Proposal sources are:
 
 Manual changes override automated suggestions. Future deterministic or imported proposal generation must not silently replace manual rows.
 
-## Undo And Redo Scope
+## Undo and redo scope
 
 Undo/redo is in-memory only in this first implementation. It covers:
 
@@ -99,7 +99,7 @@ Undo/redo is in-memory only in this first implementation. It covers:
 
 Undo history is not persisted. After resuming a saved session, the proposal state is restored and undo history starts fresh.
 
-## Selected Versus Visible Rows
+## Selected versus visible rows
 
 Primary organizer actions operate only on selected rows.
 

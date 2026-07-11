@@ -2,7 +2,7 @@
 
 Thanks for helping improve Penumbra Organizer.
 
-## Before You Start
+## Before you start
 
 This project is an early alpha. Please keep changes focused, conservative, and safe for ordinary users.
 
@@ -14,7 +14,7 @@ Do not add code that:
 * parses or repacks `.pmp` packages as part of the organizer workflow
 * includes private mod data, exported inventories, user sessions, logs, credentials, or local paths
 
-## Development Setup
+## Development setup
 
 ```powershell
 dotnet restore
@@ -22,7 +22,7 @@ dotnet build .\PenumbraOrganizer.sln
 dotnet test .\PenumbraOrganizer.sln
 ```
 
-## Pull Requests
+## Pull requests
 
 Please include:
 

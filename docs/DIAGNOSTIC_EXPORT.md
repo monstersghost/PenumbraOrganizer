@@ -1,4 +1,4 @@
-# Diagnostic Export
+# Diagnostic export
 
 `Create Diagnostic Package` generates a privacy-conscious support bundle.
 

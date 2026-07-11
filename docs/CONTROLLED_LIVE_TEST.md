@@ -1,4 +1,4 @@
-# Controlled Live Test
+# Controlled live test
 
 ## Scope
 
@@ -6,7 +6,7 @@
 
 It exists to validate the proven authoritative write path:
 
-* `sort_order.json` — the mod's entry in `Data` (folder + display leaf)
+* `sort_order.json`: the mod's entry in `Data` (folder + display leaf)
 
 It does not widen the write target. (Metadata edits, when present, additionally touch the mod's
 `meta.json` / `mod_data/<id>.json`; the controlled test focuses on the folder move.)

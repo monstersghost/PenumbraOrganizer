@@ -1,4 +1,4 @@
-# Real Installation Validation
+# Real installation validation
 
 `Validate My Installation` is a user-authorized read-only workflow for checking a real Penumbra setup before any guarded Apply attempt.
 

@@ -1,10 +1,10 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
 Only the latest public alpha is supported for security reports.
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
 Do not disclose:
 

@@ -1,4 +1,4 @@
-# Safety And Rollback
+# Safety and rollback
 
 Penumbra Organizer must be rollback-first. No live write feature should be enabled until the project has a verified backup engine, immutable dry-run plan, rollback transaction model, conflict detection, exact-byte restoration, and post-rollback verification.
 

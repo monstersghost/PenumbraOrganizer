@@ -1,4 +1,4 @@
-# Handoff: mod-category overhaul — resolved
+# Handoff: mod-category overhaul, resolved
 
 This handoff's blocker (finding a reliable NPC-detection signal) is resolved. See:
 
