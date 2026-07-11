@@ -1,7 +1,9 @@
 # Handoff: mod_data.db-orphaned mod crashes Backup and Apply
 
-_Started and fixed: 2026-07-08. Status: fix applied and tested here, not yet confirmed on the
-real Linux install that surfaced it. Continue debugging Linux in a new conversation._
+_Started and fixed: 2026-07-08. Merged via PR #10 the same day. Status: fix applied and tested
+here, not yet confirmed on the real Linux install that surfaced it. Shipped in v0.3.4-beta
+(2026-07-11), so the reporter can now test from a built release instead of building from source.
+Continue debugging Linux in a new conversation._
 
 ## The bug report
 
@@ -95,23 +97,26 @@ second commit before push. Two Minor suggestions not yet acted on:
   via the automated test suite and code review on Windows; the reporter has not yet re-tested
   with this fix.
 - The mod_data.db drift itself (why Penumbra's own database is missing/has extra entries relative
-  to disk on this install) is not investigated or fixed — out of scope, Penumbra's own data
-  hygiene, not this app's bug.
-- PR not yet created for this fix as of this handoff — see "Next steps."
+  to disk on this install) is not investigated or fixed: out of scope, Penumbra's own data
+  hygiene, not this app's bug. A follow-up session (2026-07-11, different Windows install) checked
+  a batch of "references a mod folder that is missing on disk" warnings directly against the raw
+  `mod_data.db` bytes and confirmed they're genuine: the flagged `_id` values are real
+  `LocalModData` documents, and none of them match a real folder under the configured mod root.
+  So the drift itself is real on more than one install, not a scan-code false positive; the root
+  cause inside Penumbra is still unknown.
 
 ## Next steps for whoever picks this up
 
-1. Check whether a PR already exists for branch `worktree-mod-data-db-orphan-fix` (it may have
-   been created in the same session that wrote this handoff, shortly after). If not, one is ready
-   to open — the branch is pushed, tests pass, and a draft description was already approved.
-2. Get confirmation from the Linux reporter that this specific fix resolves their crash.
+1. ~~Check whether a PR already exists for branch `worktree-mod-data-db-orphan-fix`.~~ Done:
+   merged as PR #10 on 2026-07-08.
+2. Get confirmation from the Linux reporter that this specific fix resolves their crash. They can
+   now test against the built v0.3.4-beta release instead of building from source.
 3. Watch for whether they hit further issues in the same testing pass — this is the second
    distinct bug found in one confirmation session (after the LiteDB `PluginAssemblyPath` fix), so
    a third might surface before they're fully unblocked.
-4. If the Discord release-announcement workflow (`.github/workflows/discord-release.yml`) becomes
-   relevant to this work (e.g. a beta build gets released for the reporter to test more easily
-   than building from source), remember it pings a Discord role and posts the release body
-   verbatim — see the discussion in this session's history for details, not repeated here.
+4. ~~Discord release-announcement workflow ping caveat.~~ Moot: v0.3.4-beta already released,
+   ping already fired correctly against `.github/workflows/discord-release.yml` in its normal
+   (ping-enabled) state.
 
 ## Key files (orientation)
 
