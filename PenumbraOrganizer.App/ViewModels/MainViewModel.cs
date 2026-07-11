@@ -184,6 +184,7 @@ public sealed class MainViewModel : ObservableObject
         UnprotectSelectedCommand = new RelayCommand(_ => UnprotectSelected(), _ => SelectedOrganizerMods.Count > 0);
         ProtectFolderCommand = new RelayCommand(_ => ProtectSelectedFolder(), _ => SelectedCurrentFolderNode is not null);
         UnprotectFolderCommand = new RelayCommand(_ => UnprotectSelectedFolder(), _ => SelectedCurrentFolderNode is not null);
+        ToggleHeliosphereProtectionCommand = new RelayCommand(_ => ToggleHeliosphereProtection(), _ => Mods.Any(mod => mod.IsHeliosphereManaged));
         RenameFolderCommand = new RelayCommand(_ => RenameSelectedFolder(), _ => SelectedProposedFolder is not null && !string.IsNullOrWhiteSpace(RenameFolderName));
         DeleteEmptyFolderCommand = new RelayCommand(_ => DeleteSelectedEmptyFolder(), _ => SelectedProposedFolder is not null);
         SaveSessionCommand = new AsyncRelayCommand(SaveSessionAsync, () => _inventory is not null);
@@ -248,6 +249,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ResetAllVisibleToCurrentFolderCommand { get; }
     public RelayCommand MarkSelectedProtectedCommand { get; }
     public RelayCommand UnprotectSelectedCommand { get; }
+    public RelayCommand ToggleHeliosphereProtectionCommand { get; }
     public RelayCommand ProtectFolderCommand { get; }
     public RelayCommand UnprotectFolderCommand { get; }
     public RelayCommand RenameFolderCommand { get; }
@@ -768,6 +770,7 @@ public sealed class MainViewModel : ObservableObject
                 1 => "1 Heliosphere-managed mod was found and automatically protected. Heliosphere manages its own updates for this mod, so Penumbra Organizer will never move, reclassify, or apply changes to it unless you unprotect it yourself.",
                 _ => $"{heliosphereCount} Heliosphere-managed mods were found and automatically protected. Heliosphere manages its own updates for these mods, so Penumbra Organizer will never move, reclassify, or apply changes to them unless you unprotect them yourself.",
             };
+            ToggleHeliosphereProtectionCommand.RaiseCanExecuteChanged();
 
             Collections.Clear();
             foreach (var collection in _inventory.Collections)
@@ -1759,6 +1762,27 @@ public sealed class MainViewModel : ObservableObject
     {
         var ids = SelectedOrganizerMods.Select(mod => mod.StableScanId).ToArray();
         var result = _organizerMutationService.Unprotect(CurrentProposalRows(), ids);
+        ApplyMutationResult(result, pushHistory: true);
+    }
+
+    // Bulk toggle for the Heliosphere reminder banner: flips every Heliosphere-managed mod to
+    // the opposite of whatever state they're mostly in right now (all protected -> unprotect
+    // all; anything else -> protect all), rather than toggling each mod individually.
+    private void ToggleHeliosphereProtection()
+    {
+        var heliosphereMods = Mods.Where(mod => mod.IsHeliosphereManaged).ToArray();
+        if (heliosphereMods.Length == 0)
+            return;
+
+        var ids = heliosphereMods.Select(mod => mod.StableScanId).ToArray();
+        var allProtected = heliosphereMods.All(mod => mod.Protected);
+        var actionLabel = allProtected ? "Unprotect" : "Protect";
+        if (!ConfirmAllVisible($"{actionLabel} all {ids.Length} Heliosphere-managed mods?"))
+            return;
+
+        var result = allProtected
+            ? _organizerMutationService.Unprotect(CurrentProposalRows(), ids)
+            : _organizerMutationService.Protect(CurrentProposalRows(), ids);
         ApplyMutationResult(result, pushHistory: true);
     }
 

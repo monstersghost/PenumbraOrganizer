@@ -483,6 +483,12 @@
                                             <TextBlock Margin="0,4,0,0"
                                                        Text="{Binding HeliosphereReminderMessage}"
                                                        TextWrapping="Wrap" />
+                                            <Button Command="{Binding ToggleHeliosphereProtectionCommand}"
+                                                    Content="Protect/Unprotect All"
+                                                    HorizontalAlignment="Left"
+                                                    MinWidth="150"
+                                                    Height="28"
+                                                    Margin="0,8,0,0" />
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
