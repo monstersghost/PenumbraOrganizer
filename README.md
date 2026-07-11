@@ -2,12 +2,23 @@
 
 A beginner-friendly, unofficial Windows utility for viewing and reorganizing Penumbra virtual mod folders without physically moving mod files.
 
-## Support Server on Discord ( I Hope i don't regret this)
+## Support Server on Discord
 https://discord.gg/MhQzVJ65c
+
+## Download
+
+Download the latest package from [GitHub Releases](../../releases).
+
+1. Download `PenumbraOrganizer-v0.3.4-beta-win-x64.zip`.
+2. Extract the ZIP.
+3. Double-click `PenumbraOrganizer.exe`.
+4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
+
+The app is self-contained and requires no separate .NET installation.
 
 ## Current status
 
-**0.3.3-beta**
+**0.3.4-beta**
 
 The current build can apply organization changes to Penumbra. It reads Penumbra's
 file-based config (`sort_order.json` or `mod_data.db`, collections), lets you reorganize
@@ -31,6 +42,11 @@ The current build includes:
 * selected-row and bulk proposal actions
 * proposed folder creation and rename
 * protected mods, including one-click protection for an entire current folder
+* automatic protection for mods managed by the Heliosphere client, with a badge, a one-time
+  reminder banner after scanning, and a Protect/Unprotect All button if you'd rather organize
+  them manually instead
+* one-click self-update: Update Now downloads the next release, verifies it against the
+  published checksums, and applies it automatically, saving your current session first
 * manual override for the detected Penumbra config path and Mods folder
 * undo and redo
 * organizer session saving
@@ -61,17 +77,6 @@ Penumbra Organizer does not:
   in Folder Cleanup
 * require command-line knowledge
 
-## Download
-
-Download the latest package from [GitHub Releases](../../releases).
-
-1. Download `PenumbraOrganizer-v0.3.3-beta-win-x64.zip`.
-2. Extract the ZIP.
-3. Double-click `PenumbraOrganizer.exe`.
-4. Windows SmartScreen may warn about an unsigned beta build. Check that the file came from this repository's Releases page before running it.
-
-The app is self-contained and requires no separate .NET installation.
-
 ## How to use
 
 1. Open the app and let it detect Penumbra.
@@ -98,6 +103,19 @@ The app is self-contained and requires no separate .NET installation.
 10. Create a backup, then **Backup and Apply**.
 11. If you need to undo a previous operation, open **Backups** and use **Restore Backup** (or
     **Restore Selected File Only** to roll back just one file, such as `organization.json`).
+
+## Updating
+
+The app checks GitHub Releases for a newer version. **Check for Updates** tells you whether one
+is available. If it is, **Update Now** downloads it, verifies it against the published
+checksums, and applies it: the app closes, replaces its own files, and reopens as the new
+version. Your current session is saved first, so in-progress work is not lost. If the download,
+verification, or apply step fails for any reason, nothing is touched and the app keeps running
+normally, with a plain error message instead of a partial update.
+
+Installs on v0.3.3-beta or earlier do not have the small helper program this depends on. Update
+Now on those versions opens the release page in your browser instead, the same as before. One-click
+updates work starting from v0.3.4-beta onward.
 
 ## Workbook workflow
 
@@ -137,9 +155,10 @@ Screenshots are not included yet.
 * no separate .NET installation
 * internet not required for core local features
 
-Linux is supported by running the app under Wine/Proton alongside the game. Discovery
-finds XIVLauncher.Core's config at `~/.xlcore/pluginConfigs/Penumbra.json`. This path has
-not yet been validated on a real Linux install.
+Linux is supported by running the app under Wine alongside the game. The only launch path
+confirmed to work is XIVLauncher → Wine → Open Wine Explorer (running apps in the same Wine
+prefix as the game). Other Wine/Proton setups have not been tested. Discovery finds
+XIVLauncher.Core's config at `~/.xlcore/pluginConfigs/Penumbra.json`.
 
 ## Known limitations
 
