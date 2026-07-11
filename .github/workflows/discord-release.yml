@@ -25,13 +25,19 @@ jobs:
           fi
 
           BODY=$(printf "%s" "$RELEASE_BODY" | head -c 3900)
+          ROLE_ID="1524370428196552765"
 
           jq -n \
+            --arg role_id "$ROLE_ID" \
             --arg title "$TITLE" \
             --arg url "$RELEASE_URL" \
             --arg body "$BODY" \
             --arg tag "$RELEASE_TAG" \
             '{
+              content: "<@&\($role_id)>",
+              allowed_mentions: {
+                roles: [$role_id]
+              },
               embeds: [{
                 title: $title,
                 url: $url,
