@@ -38,6 +38,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly IDiagnosticExportService _diagnosticExportService;
     private readonly IOperationHistoryService _historyService;
     private readonly IUpdateCheckService _updateCheckService;
+    private readonly IAppUpdateService _appUpdateService;
     private readonly BackupsViewModel _backups;
     private readonly ILogger<MainViewModel> _logger;
     private PenumbraInstallation? _installation;
@@ -45,6 +46,7 @@ public sealed class MainViewModel : ObservableObject
     private WorkbookExportResult? _lastWorkbookExport;
     private WorkbookImportResult? _lastWorkbookImport;
     private string? _lastManualBackupPath;
+    private UpdateCheckResult? _lastUpdateCheckResult;
     private readonly Stack<OrganizerHistoryEntry> _undoStack = new();
     private readonly Stack<OrganizerHistoryEntry> _redoStack = new();
     private readonly ObservableCollection<OrganizerFolder> _organizerFolders = new();
@@ -118,6 +120,7 @@ public sealed class MainViewModel : ObservableObject
         IDiagnosticExportService diagnosticExportService,
         IOperationHistoryService historyService,
         IUpdateCheckService updateCheckService,
+        IAppUpdateService appUpdateService,
         BackupsViewModel backups,
         ILogger<MainViewModel> logger)
     {
@@ -137,6 +140,7 @@ public sealed class MainViewModel : ObservableObject
         _diagnosticExportService = diagnosticExportService;
         _historyService = historyService;
         _updateCheckService = updateCheckService;
+        _appUpdateService = appUpdateService;
         _backups = backups;
         _logger = logger;
 
@@ -169,6 +173,7 @@ public sealed class MainViewModel : ObservableObject
         CreateDiagnosticPackageCommand = new AsyncRelayCommand(CreateDiagnosticPackageAsync);
         BackupNowCommand = new AsyncRelayCommand(CreateManualBackupAsync, () => !IsBusy);
         CheckForUpdatesCommand = new AsyncRelayCommand(CheckForUpdatesAsync, () => !IsBusy);
+        UpdateNowCommand = new AsyncRelayCommand(UpdateNowAsync, () => !IsBusy && _lastUpdateCheckResult?.UpdateAvailable == true);
         SelectStrategyCommand = new RelayCommand(SelectStrategy);
         CreateProposedFolderCommand = new RelayCommand(_ => CreateProposedFolder(), _ => CanCreateProposedFolder());
         AssignSelectedToSelectedFolderCommand = new RelayCommand(_ => AssignSelectedToSelectedFolder(), _ => SelectedProposedFolder is not null && SelectedOrganizerMods.Count > 0);
@@ -205,6 +210,22 @@ public sealed class MainViewModel : ObservableObject
         UndoCommand = new RelayCommand(_ => Undo(), _ => _undoStack.Count > 0);
         RedoCommand = new RelayCommand(_ => Redo(), _ => _redoStack.Count > 0);
         SelectedOrganizerMods.CollectionChanged += (_, _) => RefreshSelectionCommandState();
+
+        var updateLogPath = Path.Combine(AppContext.BaseDirectory, "update-log.txt");
+        try
+        {
+            if (File.Exists(updateLogPath))
+            {
+                AppendLog(File.ReadAllText(updateLogPath));
+                File.Delete(updateLogPath);
+            }
+        }
+        catch (IOException)
+        {
+            // Best-effort: if the file is transiently locked, just skip surfacing it this run rather
+            // than prevent the app from starting. It will be picked up on a later launch if it clears.
+        }
+
         _ = InitializeSidebarStateAsync();
     }
 
@@ -404,6 +425,7 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public AsyncRelayCommand CheckForUpdatesCommand { get; }
+    public AsyncRelayCommand UpdateNowCommand { get; }
 
     public string ManualConfigPath
     {
@@ -943,6 +965,7 @@ public sealed class MainViewModel : ObservableObject
         var result = await _updateCheckService.CheckForUpdateAsync(
             typeof(MainViewModel).Assembly.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0",
             CancellationToken.None);
+        _lastUpdateCheckResult = result;
 
         UpdateStatusMessage = result switch
         {
@@ -950,6 +973,103 @@ public sealed class MainViewModel : ObservableObject
             { UpdateAvailable: true } => $"A newer version is available: {result.LatestVersion}. Visit {result.ReleaseUrl} to download it.",
             _ => "You're on the latest version.",
         };
+        UpdateNowCommand.RaiseCanExecuteChanged();
+    }
+
+    private async Task UpdateNowAsync()
+    {
+        if (_lastUpdateCheckResult is not { UpdateAvailable: true } update)
+            return;
+
+        var updaterPath = Path.Combine(AppContext.BaseDirectory, "PenumbraOrganizer.Updater.exe");
+        if (!File.Exists(updaterPath))
+        {
+            // This install predates the self-update feature — fall back to the manual download link.
+            if (string.IsNullOrWhiteSpace(update.ReleaseUrl))
+                return;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(update.ReleaseUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to open the release page");
+                MessageBox.Show(
+                    $"Couldn't open the release page automatically. Visit {update.ReleaseUrl} to download the update.",
+                    "Update Penumbra Organizer",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            return;
+        }
+
+        if (MessageBox.Show(
+            $"Update to {update.LatestVersion}? Penumbra Organizer will close and restart. Your current session will be saved first.",
+            "Update Penumbra Organizer",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        await SaveSessionAsync();
+
+        AppUpdatePrepareResult? prepareResult = null;
+        await RunBusyAsync("Preparing update...", async () =>
+        {
+            var progress = new Progress<string>(message => ProgressMessage = message);
+            prepareResult = await _appUpdateService.PrepareUpdateAsync(update, progress, CancellationToken.None);
+        });
+
+        if (prepareResult is not { Success: true })
+        {
+            MessageBox.Show(
+                $"Couldn't prepare the update: {prepareResult?.ErrorMessage ?? "Unknown error."}",
+                "Update failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(updaterPath)
+            {
+                ArgumentList =
+                {
+                    "--pid", Environment.ProcessId.ToString(),
+                    "--source", prepareResult.ExtractedFolderPath!,
+                    "--dest", AppContext.BaseDirectory,
+                },
+                UseShellExecute = false,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch the updater");
+            // The update was fully prepared but never handed off -- clean up the temp extraction
+            // so it doesn't linger, and leave the app running normally rather than shutting down
+            // into a state where nothing will actually apply the update.
+            try
+            {
+                if (Directory.Exists(prepareResult.ExtractedFolderPath))
+                    Directory.Delete(prepareResult.ExtractedFolderPath!, recursive: true);
+            }
+            catch
+            {
+                // Best-effort cleanup -- a leftover temp folder is harmless.
+            }
+
+            MessageBox.Show(
+                $"Couldn't launch the updater: {ex.Message}. The update was not applied — Penumbra Organizer will keep running normally.",
+                "Update failed",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        System.Windows.Application.Current.Shutdown();
     }
 
     private async Task ImportWorkbookAsync()

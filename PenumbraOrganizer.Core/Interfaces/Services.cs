@@ -250,3 +250,8 @@ public interface IUpdateCheckService
 {
     Task<UpdateCheckResult> CheckForUpdateAsync(string currentVersion, CancellationToken cancellationToken);
 }
+
+public interface IAppUpdateService
+{
+    Task<AppUpdatePrepareResult> PrepareUpdateAsync(UpdateCheckResult update, IProgress<string>? progress, CancellationToken cancellationToken);
+}
