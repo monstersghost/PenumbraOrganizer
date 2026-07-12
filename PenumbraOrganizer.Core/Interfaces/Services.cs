@@ -65,11 +65,6 @@ public interface IOrganizerSessionService
     Task DiscardLastSessionAsync(CancellationToken cancellationToken);
 }
 
-public interface ICreatorCanonicalizer
-{
-    string Canonicalize(string creatorName);
-}
-
 public interface IProtectionService
 {
     bool IsProtectedPath(string currentVirtualFolder);
