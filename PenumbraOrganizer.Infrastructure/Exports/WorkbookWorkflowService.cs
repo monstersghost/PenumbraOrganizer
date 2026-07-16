@@ -4,9 +4,9 @@ using ClosedXML.Excel;
 using System.IO.Compression;
 using Microsoft.Extensions.Logging;
 using PenumbraOrganizer.Core.Classification;
+using PenumbraOrganizer.Core.Identity;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
-using PenumbraOrganizer.Infrastructure.Sessions;
 
 public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 {
@@ -38,8 +38,8 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
 
             var generatedAtUtc = DateTimeOffset.UtcNow;
             var sourceExportId = $"workbook-{generatedAtUtc:yyyyMMddTHHmmssZ}-{Guid.NewGuid():N}";
-            var scanIdentity = OrganizerSessionService.BuildScanIdentity(inventory);
-            var installationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
+            var scanIdentity = ScanIdentity.BuildScanIdentity(inventory);
+            var installationIdentity = ScanIdentity.BuildInstallationIdentity(inventory.Installation);
 
             using var workbook = new XLWorkbook();
             BuildEditableSheet(workbook, inventory, proposals, organizationPreferences);
@@ -361,14 +361,14 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             errors.Add("The workbook format version is unsupported.");
         }
 
-        var currentInstallationIdentity = OrganizerSessionService.BuildInstallationIdentity(inventory.Installation);
+        var currentInstallationIdentity = ScanIdentity.BuildInstallationIdentity(inventory.Installation);
         if (!meta.TryGetValue("installationIdentity", out var installationIdentity) ||
             !string.Equals(installationIdentity, currentInstallationIdentity, StringComparison.Ordinal))
         {
             errors.Add("This workbook belongs to a different Penumbra library.");
         }
 
-        var currentScanIdentity = OrganizerSessionService.BuildScanIdentity(inventory);
+        var currentScanIdentity = ScanIdentity.BuildScanIdentity(inventory);
         if (!meta.TryGetValue("scanIdentity", out var scanIdentity) ||
             !string.Equals(scanIdentity, currentScanIdentity, StringComparison.Ordinal))
         {

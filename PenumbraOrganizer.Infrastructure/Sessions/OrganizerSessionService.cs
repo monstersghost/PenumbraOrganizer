@@ -3,6 +3,7 @@ namespace PenumbraOrganizer.Infrastructure.Sessions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using PenumbraOrganizer.Core.Identity;
 using PenumbraOrganizer.Core.Interfaces;
 using PenumbraOrganizer.Core.Models;
 
@@ -92,16 +93,10 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
     }
 
     public static string BuildScanIdentity(ScanInventory inventory)
-    {
-        var input = string.Join('\n', inventory.Mods.OrderBy(mod => mod.StableScanId, StringComparer.Ordinal).Select(mod => $"{mod.StableScanId}|{mod.CurrentVirtualFolder}"));
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
-    }
+        => ScanIdentity.BuildScanIdentity(inventory);
 
     public static string BuildInstallationIdentity(PenumbraInstallation installation)
-    {
-        var input = $"{NormalizeForIdentity(installation.ConfigDirectory)}|{NormalizeForIdentity(installation.ModRoot)}";
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
-    }
+        => ScanIdentity.BuildInstallationIdentity(installation);
 
     public static string BuildSessionIdentity(OrganizerSessionDocument session)
     {
@@ -147,6 +142,4 @@ public sealed class OrganizerSessionService : IOrganizerSessionService
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString())));
     }
 
-    private static string NormalizeForIdentity(string path)
-        => path.Trim().Replace('\\', '/').ToUpperInvariant();
 }
