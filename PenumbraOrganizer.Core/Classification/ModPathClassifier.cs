@@ -149,7 +149,7 @@ public static class ModPathClassifier
         var root = segments.Length >= 2 ? $"{segments[0]}/{segments[1]}" : segments.ElementAtOrDefault(0) ?? string.Empty;
         var primaryId = segments.Length >= 3 ? segments[2] : null;
         var fileName = segments.Length > 0 ? segments[^1] : normalizedPath;
-        var suffix = ExtractFileSuffix(fileName);
+        var suffix = EquipmentSlotMapper.ExtractRawSuffixToken(fileName);
         var secondaryId = segments.FirstOrDefault(IsSecondaryIdSegment);
         return new CanonicalGameTarget(normalizedPath, root, suffix, primaryId, secondaryId);
     }
@@ -159,12 +159,4 @@ public static class ModPathClassifier
            && segment[0] is 'b' or 'f' or 'h' or 't' or 'z'
            && segment[1..].All(char.IsDigit);
 
-    private static string? ExtractFileSuffix(string fileName)
-    {
-        var withoutExtension = Path.GetFileNameWithoutExtension(fileName);
-        var lastUnderscore = withoutExtension.LastIndexOf('_');
-        return lastUnderscore >= 0 && lastUnderscore < withoutExtension.Length - 1
-            ? withoutExtension[(lastUnderscore + 1)..]
-            : null;
-    }
 }
