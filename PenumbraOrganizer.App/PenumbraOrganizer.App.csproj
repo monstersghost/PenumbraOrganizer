@@ -38,10 +38,11 @@
     <InformationalVersion>0.3.4-beta</InformationalVersion>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
-    <PublishSingleFile>true</PublishSingleFile>
+    <!-- PublishSingleFile intentionally off: the self-extracting single-file exe was flagged
+         by Windows Defender (Trojan:Win32/Tecabans.STV!cl, 2026-07-19) as a heuristic false
+         positive. Plain multi-file self-contained publish triggers this far less often. -->
     <PublishReadyToRun>true</PublishReadyToRun>
     <PublishTrimmed>false</PublishTrimmed>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>

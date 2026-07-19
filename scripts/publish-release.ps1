@@ -8,34 +8,58 @@ $root = Split-Path -Parent $PSScriptRoot
 $appProject = Join-Path $root 'PenumbraOrganizer.App\PenumbraOrganizer.App.csproj'
 $updaterProject = Join-Path $root 'PenumbraOrganizer.Updater\PenumbraOrganizer.Updater.csproj'
 $releaseRoot = Join-Path $root 'artifacts\release'
-$publishDir = Join-Path $releaseRoot 'publish'
+$appPublishDir = Join-Path $releaseRoot 'publish-app'
+$updaterPublishDir = Join-Path $releaseRoot 'publish-updater'
 $packageDir = Join-Path $releaseRoot 'package'
 $zipPath = Join-Path $releaseRoot 'PenumbraOrganizer-v0.3.4-beta-win-x64.zip'
-$exePath = Join-Path $publishDir 'PenumbraOrganizer.exe'
-$updaterExePath = Join-Path $publishDir 'PenumbraOrganizer.Updater.exe'
+$exePath = Join-Path $appPublishDir 'PenumbraOrganizer.exe'
+$updaterExePath = Join-Path $updaterPublishDir 'PenumbraOrganizer.Updater.exe'
 
 if (Test-Path $releaseRoot) {
     Remove-Item -Recurse -Force $releaseRoot
 }
 
-New-Item -ItemType Directory -Force -Path $publishDir | Out-Null
+New-Item -ItemType Directory -Force -Path $appPublishDir | Out-Null
+New-Item -ItemType Directory -Force -Path $updaterPublishDir | Out-Null
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 
-dotnet publish $appProject -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir
+# PublishSingleFile is deliberately off: a self-extracting single-file exe is a strong
+# heuristic trigger for AV false positives (e.g. Defender flagging v0.3.4-beta as
+# Trojan:Win32/Tecabans.STV!cl on 2026-07-19). Plain multi-file self-contained publish
+# triggers this far less often. App and Updater are published to separate directories
+# (not merged during publish) since each is self-contained and their runtime dependency
+# trees shouldn't be interleaved before the final package copy.
+dotnet publish $appProject -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o $appPublishDir
 
 if (-not (Test-Path $exePath)) {
     throw "Publish failed: PenumbraOrganizer.exe was not created."
 }
 
-Copy-Item $exePath $packageDir
+Copy-Item (Join-Path $appPublishDir '*') $packageDir -Recurse -Force -Exclude '*.pdb'
 
-dotnet publish $updaterProject -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir
+dotnet publish $updaterProject -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o $updaterPublishDir
 
 if (-not (Test-Path $updaterExePath)) {
     throw "Publish failed: PenumbraOrganizer.Updater.exe was not created."
 }
 
-Copy-Item $updaterExePath $packageDir
+# App and Updater both self-contain the .NET runtime, and a few shared-name framework
+# assemblies (WindowsBase.dll, System.Drawing.dll, Microsoft.VisualBasic.dll) resolve to
+# different actual DLLs for each: App's are the real Windows Desktop (WPF) implementations,
+# Updater's are stub reference assemblies (empirically confirmed 2026-07-19 -- App's
+# WindowsBase.dll is ~2.2MB, Updater's is ~16KB). Blindly overwriting would silently ship a
+# broken WPF runtime, so only files NOT already present from the App copy are added here.
+Get-ChildItem $updaterPublishDir -Recurse -File | Where-Object { $_.Extension -ne '.pdb' } | ForEach-Object {
+    $relativePath = $_.FullName.Substring($updaterPublishDir.Length).TrimStart('\')
+    $destPath = Join-Path $packageDir $relativePath
+    if (-not (Test-Path $destPath)) {
+        $destDir = Split-Path -Parent $destPath
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+        }
+        Copy-Item $_.FullName $destPath
+    }
+}
 Copy-Item (Join-Path $root 'README_FOR_USERS.txt') $packageDir
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.txt') $packageDir
 Copy-Item (Join-Path $root 'LICENSE') $packageDir
