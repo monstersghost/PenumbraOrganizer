@@ -112,15 +112,30 @@ public sealed class RecoveryServicesTests
     }
 
     [Fact]
-    public async Task MalformedExpectedJson_FailsVerification()
+    public async Task MalformedExpectedJson_OnWriteTarget_FailsVerification()
     {
         using var context = new RecoveryTestContext();
         var file = context.WriteTextFile(@"state\organization.json", "{ invalid json");
 
-        var details = await context.CreateBackupAsync(new SourceFile(file));
+        var details = await context.CreateBackupAsync(new SourceFile(file, IsWriteTarget: true));
 
         details.Operation.BackupStatus.Should().Be(BackupStatus.Failed);
         details.Operation.LastError.Should().Contain("Expected JSON backup is invalid");
+    }
+
+    [Fact]
+    public async Task MalformedExpectedJson_OnNonWriteTarget_SucceedsWithWarning()
+    {
+        using var context = new RecoveryTestContext();
+        var file = context.WriteTextFile(@"state\collections\stale-collection.json", "{ invalid json");
+
+        var details = await context.CreateBackupAsync(new SourceFile(file, IsWriteTarget: false));
+
+        details.Operation.BackupStatus.Should().Be(BackupStatus.Verified);
+        details.Operation.VerificationStatus.Should().Be(OperationVerificationStatus.Verified);
+        details.Operation.Warnings.Should().ContainSingle(w => w.Contains("Backup JSON is invalid"));
+        details.Manifest!.Files[0].JsonValidationStatus.Should().Be(JsonValidationStatus.Invalid);
+        details.Manifest.Files[0].BackupSha256.Should().Be(details.Manifest.Files[0].OriginalSha256);
     }
 
     [Fact]
@@ -717,7 +732,7 @@ public sealed class RecoveryServicesTests
             var request = new BackupRequest(
                 Guid.NewGuid(),
                 "scan-identity",
-                files.Select(file => new BackupFileRequest(file.Path, file.Protected, ["scan-id"], "plan-id")).ToArray(),
+                files.Select(file => new BackupFileRequest(file.Path, file.Protected, ["scan-id"], "plan-id", file.IsWriteTarget)).ToArray(),
                 ApplicationVersion: "tests",
                 PenumbraVersion: "1.6.1.10",
                 AffectedModCount: files.Length);
@@ -781,7 +796,7 @@ public sealed class RecoveryServicesTests
         }
     }
 
-    private sealed record SourceFile(string Path, bool Protected = false);
+    private sealed record SourceFile(string Path, bool Protected = false, bool IsWriteTarget = false);
     private sealed record TransactionEntry(string TargetPath, string ExpectedAppliedSha256, bool ExistedBeforeApply, ApplyResultStatus ApplyResultStatus);
 
     private static string Hash(string value)

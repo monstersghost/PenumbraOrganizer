@@ -27,6 +27,7 @@ public sealed class BackupVerificationService : IBackupVerificationService
     public async Task<BackupVerificationResult> VerifyAsync(Guid operationId, CancellationToken cancellationToken)
     {
         var issues = new List<string>();
+        var warnings = new List<string>();
         var verifiedCount = 0;
         var operation = await AtomicJsonFileStore.ReadRequiredAsync<BackupOperation>(_layout.GetOperationPath(operationId), cancellationToken);
         var manifest = await AtomicJsonFileStore.ReadAsync<BackupManifest>(_layout.GetManifestPath(operationId), cancellationToken);
@@ -91,10 +92,19 @@ public sealed class BackupVerificationService : IBackupVerificationService
                 if (file.Classification == BackupFileClassification.Json)
                 {
                     var jsonStatus = await RecoveryFileInspector.ValidateJsonAsync(backupPath, cancellationToken);
-                    if (jsonStatus != JsonValidationStatus.Valid || file.JsonValidationStatus != JsonValidationStatus.Valid)
+                    var isJsonValid = jsonStatus == JsonValidationStatus.Valid && file.JsonValidationStatus == JsonValidationStatus.Valid;
+                    if (!isJsonValid)
                     {
-                        issues.Add($"Backup JSON is invalid for {file.RelativeBackupPath}.");
-                        continue;
+                        var message = $"Backup JSON is invalid for {file.RelativeBackupPath}.";
+                        if (file.IsWriteTarget)
+                        {
+                            issues.Add(message);
+                            continue;
+                        }
+
+                        // Not a write target: the file was still copied byte-for-byte and hash-verified,
+                        // it just wasn't valid JSON on disk to begin with. That doesn't block the backup.
+                        warnings.Add($"{message} Apply does not write to this file, so it was kept as an exact copy of the source.");
                     }
                 }
 
@@ -108,7 +118,8 @@ public sealed class BackupVerificationService : IBackupVerificationService
             issues.Count == 0,
             verifiedCount,
             issues.Count,
-            issues);
+            issues,
+            warnings);
 
         var verificationDocument = await AtomicJsonFileStore.ReadAsync<OperationVerificationDocument>(_layout.GetVerificationPath(operationId), cancellationToken)
             ?? new OperationVerificationDocument();
@@ -125,6 +136,7 @@ public sealed class BackupVerificationService : IBackupVerificationService
             VerificationStatus = result.Succeeded ? OperationVerificationStatus.Verified : OperationVerificationStatus.Failed,
             FailureCount = result.FailureCount,
             LastError = result.Succeeded ? null : string.Join(Environment.NewLine, result.Issues),
+            Warnings = warnings.Count > 0 ? warnings : null,
         };
         await AtomicJsonFileStore.WriteAsync(
             _layout.GetOperationPath(operationId),

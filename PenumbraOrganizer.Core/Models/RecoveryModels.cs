@@ -83,7 +83,12 @@ public sealed record BackupFileRequest(
     string SourcePath,
     bool Protected,
     IReadOnlyList<string>? AssociatedStableScanIds = null,
-    string? WritablePlanOperationId = null);
+    string? WritablePlanOperationId = null,
+    // True when Apply intends to overwrite this file. A malformed JSON file that Apply will
+    // never touch is copied byte-for-byte (hash-verified) and only warned about; a malformed
+    // JSON write target still hard-fails the backup, since we can't safely diff/roll back a
+    // file we can't parse.
+    bool IsWriteTarget = false);
 
 public sealed record BackupRequest(
     Guid OperationId,
@@ -112,7 +117,8 @@ public sealed record BackupOperation(
     bool RollbackAvailable,
     string? LastError,
     PenumbraUiObservationStatus? ObservationStatus,
-    DateTimeOffset? ObservationRecordedAtUtc);
+    DateTimeOffset? ObservationRecordedAtUtc,
+    IReadOnlyList<string>? Warnings = null);
 
 public sealed record BackupManifest(
     Guid OperationId,
@@ -133,7 +139,8 @@ public sealed record BackupFileEntry(
     JsonValidationStatus JsonValidationStatus,
     bool Protected,
     IReadOnlyList<string> AssociatedStableScanIds,
-    string? WritablePlanOperationId);
+    string? WritablePlanOperationId,
+    bool IsWriteTarget = false);
 
 public sealed record BackupVerificationResult(
     Guid OperationId,
@@ -141,7 +148,8 @@ public sealed record BackupVerificationResult(
     bool Succeeded,
     int VerifiedFileCount,
     int FailureCount,
-    IReadOnlyList<string> Issues);
+    IReadOnlyList<string> Issues,
+    IReadOnlyList<string>? Warnings = null);
 
 public sealed record RollbackTransaction(
     Guid OperationId,

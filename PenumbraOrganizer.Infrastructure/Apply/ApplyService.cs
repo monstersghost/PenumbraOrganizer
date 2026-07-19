@@ -131,7 +131,8 @@ public sealed class ApplyService : IApplyService
                     path,
                     Protected: false,
                     scanIdsByPath.TryGetValue(path, out var scanIds) ? scanIds : Array.Empty<string>(),
-                    plan.PlanId.ToString("N")))
+                    plan.PlanId.ToString("N"),
+                    IsWriteTarget: writeTargetsByPath.Contains(path)))
                 .ToArray(),
             plan.ApplicationVersion,
             plan.InstalledPenumbraVersion,

@@ -90,7 +90,11 @@ public sealed class BackupService : IBackupService
                 var jsonStatus = classification == BackupFileClassification.Json
                     ? await RecoveryFileInspector.ValidateJsonAsync(tempBackupPath, cancellationToken)
                     : JsonValidationStatus.NotApplicable;
-                if (classification == BackupFileClassification.Json && jsonStatus != JsonValidationStatus.Valid)
+                // A malformed JSON write target can't be safely diffed or rolled back later, so
+                // that still hard-fails. A malformed JSON file Apply will never write to is just
+                // copied byte-for-byte (already hash-verified above) -- BackupVerificationService
+                // surfaces it as a warning instead of blocking the whole operation.
+                if (classification == BackupFileClassification.Json && jsonStatus != JsonValidationStatus.Valid && file.IsWriteTarget)
                     throw new InvalidOperationException($"Expected JSON backup is invalid for {sourcePath}.");
 
                 File.Move(tempBackupPath, backupPath, overwrite: true);
@@ -106,7 +110,8 @@ public sealed class BackupService : IBackupService
                     jsonStatus,
                     Protected: false,
                     file.AssociatedStableScanIds ?? Array.Empty<string>(),
-                    file.WritablePlanOperationId));
+                    file.WritablePlanOperationId,
+                    file.IsWriteTarget));
             }
 
             operation = operation with { BackupStatus = BackupStatus.Verifying, AffectedFileCount = entries.Count };
