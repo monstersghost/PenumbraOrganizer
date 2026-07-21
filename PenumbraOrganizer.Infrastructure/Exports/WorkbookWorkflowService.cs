@@ -533,7 +533,10 @@ public sealed class WorkbookWorkflowService : IWorkbookWorkflowService
             return false;
         }
 
-        if (int.TryParse(parts[0], out var code))
+        // Category codes are always positive (see WorkbookCategoryCatalog.Definitions), so a
+        // negative number can never be an attempted code shorthand -- it can only be a literal
+        // folder name that happens to start with a negative number (e.g. "-16/SomeCreator").
+        if (int.TryParse(parts[0], out var code) && code > 0)
         {
             if (!WorkbookCategoryCatalog.TryGetByCode(code, out var category))
             {

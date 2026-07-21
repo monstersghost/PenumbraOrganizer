@@ -58,6 +58,30 @@ public sealed class WorkbookWorkflowTests
     }
 
     [Fact]
+    public async Task Import_TreatsNegativeNumberDestinationAsLiteralFolderName_NotCategoryCodeShorthand()
+    {
+        // Category codes only run 1-16 (see WorkbookCategoryCatalog.Definitions), so a negative
+        // number can never legitimately be an attempted code shorthand -- it can only be a real
+        // folder name that happens to start with a negative number.
+        var service = CreateService();
+        var inventory = CreateInventory(("Dress01", "Bizu Dress", "Bizu", "Old/Folder"));
+        var export = await service.ExportAsync(inventory, Proposals(inventory), Preferences(OrganizationStrategy.StartManually), CreateWorkbookPath(), CancellationToken.None);
+
+        using (var workbook = new XLWorkbook(export.WorkbookPath))
+        {
+            var sheet = workbook.Worksheet("Edit Destinations");
+            sheet.Cell(2, 7).Value = "-16/SomeCreator";
+            workbook.Save();
+        }
+
+        var imported = await service.ImportAsync(export.WorkbookPath, inventory, CancellationToken.None);
+
+        imported.Errors.Should().BeEmpty();
+        imported.Rows.Should().ContainSingle();
+        imported.Rows[0].ResolvedDestination.Should().Be("-16/SomeCreator");
+    }
+
+    [Fact]
     public async Task Import_DistinguishesBlankDestinationFromExplicitReviewDestination()
     {
         var service = CreateService();
