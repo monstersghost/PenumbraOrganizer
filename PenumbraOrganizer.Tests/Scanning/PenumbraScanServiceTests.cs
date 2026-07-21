@@ -446,6 +446,66 @@ public sealed class PenumbraScanServiceTests
     }
 
     [Fact]
+    public async Task ScanAsync_ExtractsSignalsFromPenumbra170CombinedMetaJson()
+    {
+        using var fixture = new TemporaryPenumbraFixture();
+        fixture.WriteMainConfig();
+        fixture.WritePluginManifest();
+        // Penumbra 1.7.0 merged default_mod.json and group_*.json into meta.json itself:
+        // the default option's data now lives under "DefaultData", and each former group_*.json
+        // is now an entry in a top-level "Groups" array. No other files are written on disk.
+        fixture.CreateMod(
+            "Combined Mod",
+            """
+            {
+              "FileVersion": 4,
+              "Name": "Combined Mod",
+              "Author": "Someone",
+              "DefaultData": {
+                "Files": {
+                  "chara/equipment/e1234/model/c0201e1234_top.mdl": "files\\top.mdl"
+                },
+                "Manipulations": []
+              },
+              "Groups": [
+                {
+                  "Type": "Multi",
+                  "Name": "Color",
+                  "Options": [
+                    {
+                      "Name": "Black",
+                      "Files": {
+                        "chara/equipment/e0387/model/c0101e0387_sho.mdl": "files\\black.mdl"
+                      },
+                      "Manipulations": []
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        fixture.WriteSortOrder(("Combined Mod", "Combined Mod"));
+
+        var installation = new PenumbraInstallation(
+            fixture.PenumbraJsonPath,
+            fixture.PenumbraConfigPath,
+            fixture.ModRoot,
+            fixture.PluginAssemblyPath,
+            fixture.PluginManifestPath,
+            "1.7.0.0",
+            DiscoveryConfidence.High,
+            Array.Empty<DiscoveryEvidence>(),
+            Array.Empty<string>());
+
+        var service = new PenumbraScanService(NullLogger<PenumbraScanService>.Instance, new ProtectionService());
+        var inventory = await service.ScanAsync(installation, null, CancellationToken.None);
+
+        var mod = inventory.Mods.Should().ContainSingle(m => m.Name == "Combined Mod").Subject;
+        mod.DetectedCategory.Should().Be(ModCategory.Gear);
+        mod.Targets.Should().HaveCount(2);
+    }
+
+    [Fact]
     public async Task ScanAsync_AutoProtectsAndFlagsHeliosphereManagedMods_ByDirectoryPrefix()
     {
         using var fixture = new TemporaryPenumbraFixture();

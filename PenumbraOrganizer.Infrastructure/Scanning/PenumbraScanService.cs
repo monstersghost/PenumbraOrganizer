@@ -187,6 +187,10 @@ public sealed class PenumbraScanService : IPenumbraScanService
                     website = GetString(root, "Website");
                     description = GetString(root, "Description");
                     tags = GetStringArray(root, "ModTags");
+
+                    // Penumbra 1.7.0+ folds default_mod.json and group_*.json into meta.json
+                    // itself, under "DefaultData" and "Groups" respectively.
+                    ExtractContentSignals(root, contentPaths);
                 }
                 else
                 {
@@ -419,13 +423,29 @@ public sealed class PenumbraScanService : IPenumbraScanService
     {
         ExtractFilesAndManipulations(root, paths);
 
-        if (root.TryGetProperty("Options", out var options) && options.ValueKind == JsonValueKind.Array)
+        // Penumbra 1.7.0+ meta.json: the old default_mod.json content lives under "DefaultData".
+        if (root.TryGetProperty("DefaultData", out var defaultData) && defaultData.ValueKind == JsonValueKind.Object)
+            ExtractFilesAndManipulations(defaultData, paths);
+
+        ExtractOptionsAndContainers(root, paths);
+
+        // Penumbra 1.7.0+ meta.json: each old group_*.json is now an entry in "Groups".
+        if (root.TryGetProperty("Groups", out var groups) && groups.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var group in groups.EnumerateArray())
+                ExtractOptionsAndContainers(group, paths);
+        }
+    }
+
+    private static void ExtractOptionsAndContainers(JsonElement element, ICollection<string> paths)
+    {
+        if (element.TryGetProperty("Options", out var options) && options.ValueKind == JsonValueKind.Array)
         {
             foreach (var option in options.EnumerateArray())
                 ExtractFilesAndManipulations(option, paths);
         }
 
-        if (root.TryGetProperty("Containers", out var containers) && containers.ValueKind == JsonValueKind.Array)
+        if (element.TryGetProperty("Containers", out var containers) && containers.ValueKind == JsonValueKind.Array)
         {
             foreach (var container in containers.EnumerateArray())
                 ExtractFilesAndManipulations(container, paths);
