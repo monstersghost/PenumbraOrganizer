@@ -402,10 +402,17 @@
                     <Grid Grid.Row="1"
                           Margin="0,16,0,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="330" />
+                            <ColumnDefinition Width="330" MinWidth="200" />
                             <ColumnDefinition Width="14" />
-                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" MinWidth="320" />
                         </Grid.ColumnDefinitions>
+
+                        <GridSplitter Grid.Column="1"
+                                      Width="4"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Stretch"
+                                      Background="{StaticResource AppBorderBrush}"
+                                      ResizeBehavior="PreviousAndNext" />
 
                         <Border Grid.Column="0"
                                 Background="{StaticResource SurfaceBrush}"
@@ -432,7 +439,17 @@
                                           HeadersVisibility="Column"
                                           SelectionMode="Single">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Current folder" Binding="{Binding Path}" Width="*" />
+                                        <DataGridTemplateColumn Header="Current folder" Width="*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Path}"
+                                                               TextWrapping="Wrap"
+                                                               ToolTip="{Binding Path}"
+                                                               VerticalAlignment="Center"
+                                                               Margin="4,2" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Mods" Binding="{Binding DirectModCount}" Width="70" />
                                     </DataGrid.Columns>
                                 </DataGrid>
