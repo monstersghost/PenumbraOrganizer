@@ -1,3 +1,6 @@
+# New Plugin now available, Much better than the app! get it here:
+## https://github.com/monstersghost/PenumbraOrganizerPlugin
+
 # Penumbra Organizer
 
 A beginner-friendly, unofficial Windows utility for viewing and reorganizing Penumbra virtual mod folders without physically moving mod files.
